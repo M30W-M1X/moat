@@ -1,0 +1,167 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/sirupsen/logrus"
+
+	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
+	"github.com/M30W-M1X/microvm_controller/internal/config"
+)
+
+// repeatedFlag collects a flag that the caller may pass more than once.
+type repeatedFlag []string
+
+func (r *repeatedFlag) String() string { return strings.Join(*r, ",") }
+func (r *repeatedFlag) Set(v string) error {
+	*r = append(*r, v)
+	return nil
+}
+
+// runRun starts a microVM, runs one command in it, streams the output, then
+// stops the VM. The process exit code becomes the microvmctl exit code.
+func runRun(args []string) int {
+	fs := flag.NewFlagSet("run", flag.ExitOnError)
+	mf := machineFlags{
+		id:     fs.String("id", fmt.Sprintf("run-%d", os.Getpid()), "machine id"),
+		kernel: fs.String("kernel", "", "use this vmlinux path instead of the default"),
+		rootfs: fs.String("rootfs", "", "use this rootfs.ext4 path instead of the default"),
+		vcpus:  fs.Int64("vcpus", 1, "guest vCPUs"),
+		mem:    fs.Int64("mem", 256, "guest memory MiB"),
+		jail:   fs.Bool("jail", false, "run under jailer (needs root)"),
+		keep:   fs.Bool("keep", false, "keep the VM running after the command"),
+	}
+	dir := fs.String("dir", "", "working directory in the guest")
+	tty := fs.Bool("tty", false, "run the command attached to a PTY")
+	timeout := fs.Duration("timeout", 0, "kill the command after this long; 0 means no limit")
+	var env, puts, gets repeatedFlag
+	fs.Var(&env, "env", "set an environment variable KEY=VALUE (repeatable)")
+	fs.Var(&puts, "put", "copy LOCAL:REMOTE into the guest before the command (repeatable)")
+	fs.Var(&gets, "get", "copy REMOTE:LOCAL out of the guest after the command (repeatable)")
+	_ = fs.Parse(args)
+
+	argv := fs.Args()
+	if len(argv) == 0 {
+		fmt.Fprintln(os.Stderr, "run: no command given (use: microvmctl run [flags] -- CMD [ARG...])")
+		return 2
+	}
+
+	log := newLog()
+	m, err := config.NewMachine(*mf.id)
+	if err != nil {
+		log.WithError(err).Error("build machine config")
+		return 1
+	}
+	mf.apply(&m, log)
+
+	ctx, stop := signalContext()
+	defer stop()
+
+	inst, cli, err := bootMachine(ctx, m, log)
+	if err != nil {
+		log.WithError(err).Error("boot")
+		return 1
+	}
+	defer stopMachine(inst, cli, log)
+
+	if err := doPuts(ctx, cli, puts, log); err != nil {
+		log.WithError(err).Error("put")
+		return 1
+	}
+
+	res, err := cli.Exec(ctx, agentclient.ExecOptions{
+		Argv:    argv,
+		Env:     parseEnv(env),
+		Dir:     *dir,
+		TTY:     *tty,
+		Timeout: *timeout,
+	}, os.Stdout, os.Stderr)
+	if err != nil {
+		log.WithError(err).Error("exec")
+		return 1
+	}
+	log.WithFields(logrus.Fields{
+		"pid": res.PID, "code": res.Code, "signal": res.Signal, "timed_out": res.TimedOut,
+	}).Info("command finished")
+
+	if err := doGets(ctx, cli, gets, log); err != nil {
+		log.WithError(err).Error("get")
+		return 1
+	}
+
+	if *mf.keep {
+		log.Info("-keep is set. The VM stays running. Press Ctrl-C to exit. The VM keeps running after exit.")
+		<-ctx.Done()
+	}
+
+	if res.TimedOut {
+		return 124 // match GNU timeout
+	}
+	if res.Code < 0 {
+		return 128 + res.Signal
+	}
+	return res.Code
+}
+
+func doPuts(ctx context.Context, cli *agentclient.Client, specs repeatedFlag, log *logrus.Logger) error {
+	for _, spec := range specs {
+		local, remote, ok := splitPair(spec)
+		if !ok {
+			return fmt.Errorf("-put %q: want LOCAL:REMOTE", spec)
+		}
+		callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		w, err := cli.PutFile(callCtx, local, remote)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("put %s -> %s: %w", local, remote, err)
+		}
+		log.WithFields(logrus.Fields{"local": local, "remote": remote, "bytes": w.BytesWritten, "sha256": w.SHA256}).Info("put file")
+	}
+	return nil
+}
+
+func doGets(ctx context.Context, cli *agentclient.Client, specs repeatedFlag, log *logrus.Logger) error {
+	for _, spec := range specs {
+		remote, local, ok := splitPair(spec)
+		if !ok {
+			return fmt.Errorf("-get %q: want REMOTE:LOCAL", spec)
+		}
+		callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		r, err := cli.GetFile(callCtx, remote, local)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("get %s -> %s: %w", remote, local, err)
+		}
+		log.WithFields(logrus.Fields{"remote": remote, "local": local, "bytes": r.Size, "sha256": r.SHA256}).Info("get file")
+	}
+	return nil
+}
+
+// splitPair splits "a:b" into "a" and "b" at the first colon.
+func splitPair(s string) (first, second string, ok bool) {
+	i := strings.IndexByte(s, ':')
+	if i < 0 {
+		return "", "", false
+	}
+	return s[:i], s[i+1:], true
+}
+
+// parseEnv turns KEY=VALUE strings into a map.
+func parseEnv(pairs repeatedFlag) map[string]string {
+	if len(pairs) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(pairs))
+	for _, p := range pairs {
+		k, v, ok := strings.Cut(p, "=")
+		if ok {
+			out[k] = v
+		}
+	}
+	return out
+}

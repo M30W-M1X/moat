@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+// Package agent.v1 is the guest-agent RPC surface for Phase 2: run a process
+// and stream its output, and move files in and out of the VM. The host reaches
+// this service over vsock, through Firecracker's vsock multiplex socket.
+package agent.v1;
+
+option go_package = "github.com/M30W-M1X/microvm_controller/gen/agent/v1;agentv1";
+
+service Agent {
+  // Info returns basic facts about the guest and the agent. Use it as a
+  // readiness check after start.
+  rpc Info(InfoRequest) returns (InfoResponse);
+
+  // Exec runs one process. The stream carries a Started event, then stdout and
+  // stderr chunks, then one Exit event. The stream ends after Exit.
+  rpc Exec(ExecRequest) returns (stream ExecEvent);
+
+  // WriteFile writes one file. The first chunk sets path and mode. Every chunk
+  // carries data bytes.
+  rpc WriteFile(stream WriteFileChunk) returns (WriteFileResponse);
+
+  // ReadFile reads one file. Each chunk carries data bytes. The final chunk
+  // sets eof, size, and sha256, and carries no data.
+  rpc ReadFile(ReadFileRequest) returns (stream FileChunk);
+}
+
+message InfoRequest {}
+
+message InfoResponse {
+  string agent_version = 1;
+  int64 pid = 2;
+  string kernel_release = 3; // uname -r
+  double uptime_seconds = 4;
+}
+
+message ExecRequest {
+  repeated string argv = 1;       // argv[0] is the program to run
+  map<string, string> env = 2;    // added to the agent environment
+  string dir = 3;                 // working directory; empty means "/"
+  bytes stdin = 4;                // written to the process, then stdin closes
+  bool tty = 5;                   // run the process attached to a PTY
+  uint32 tty_cols = 6;            // PTY width; used only when tty is true
+  uint32 tty_rows = 7;            // PTY height; used only when tty is true
+  uint32 timeout_ms = 8;          // kill the process group after this long; 0 means no limit
+}
+
+message ExecEvent {
+  oneof event {
+    Started started = 1;
+    bytes stdout = 2;
+    bytes stderr = 3; // always empty when tty is true; the PTY merges the streams
+    Exit exit = 4;
+  }
+}
+
+message Started {
+  int32 pid = 1;
+}
+
+message Exit {
+  int32 code = 1;      // process exit code; -1 when a signal ended it
+  int32 signal = 2;    // signal number that ended the process; 0 when none
+  bool timed_out = 3;  // true when timeout_ms passed and the agent killed the group
+}
+
+message WriteFileChunk {
+  string path = 1;  // set on the first chunk only
+  uint32 mode = 2;  // octal permission bits, set on the first chunk; 0 means 0644
+  bytes data = 3;   // file content; may be empty on the header-only first chunk
+}
+
+message WriteFileResponse {
+  uint64 bytes_written = 1;
+  string sha256 = 2;
+}
+
+message ReadFileRequest {
+  string path = 1;
+}
+
+message FileChunk {
+  bytes data = 1;
+  bool eof = 2;      // true on the final chunk only
+  uint64 size = 3;   // total file size; set on the final chunk
+  string sha256 = 4; // hex SHA-256 of the file; set on the final chunk
+}

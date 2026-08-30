@@ -80,13 +80,25 @@ for VM lifecycle, never "boot" / "tear down").
 - **GPU:** out of scope for Firecracker (no VFIO). If needed later, a parallel gVisor /
   Cloud Hypervisor backend — keep the VM-driver interface abstract.
 
-**Roadmap:** P1 minimal microVM + vsock echo ✅ · P2 exec + file I/O guest agent ·
+**Roadmap:** P1 minimal microVM + vsock echo ✅ · P2 exec + file I/O guest agent ✅ ·
 P3 netns/TAP/nftables + cgroups · P4 snapshot/UFFD + warm pool + orphan reaper ·
 P5 public gRPC/REST gateway + Prometheus metrics + egress guardrail proxy.
 
-**Status:** P1 done (branch `phase-1-minimal-microvm`) — `microvmctl demo` starts a
-Firecracker microVM, the static guest agent runs as PID 1, and a host↔guest vsock echo
-round-trips. The jailer path (`-jail`) is coded but not yet exercised (needs root).
+**Status:** P1 + P2 done.
+- P1: `microvmctl demo` starts a microVM; the static agent runs as PID 1; host↔guest
+  vsock works.
+- P2: `agent.v1.Agent` gRPC service over vsock (`proto/agent/v1/agent.proto`,
+  generated into `gen/`). `Exec` (streamed stdout/stderr, exit code, PTY, timeout →
+  kill group), `WriteFile` / `ReadFile` (sha256, byte-exact), `Info`. Host client:
+  `internal/agentclient`. CLI: `microvmctl run [flags] -- CMD` with `-env`, `-tty`,
+  `-timeout`, `-put`, `-get`. Integration test: `make test-integration`.
+- The jailer path (`-jail`) is coded but not yet exercised (needs root).
+
+### Protobuf
+
+`gen/` is committed. Regenerate with `make proto` (needs `make tools` once: installs
+`buf`, `protoc-gen-go`, `protoc-gen-go-grpc` into `$GOBIN` — no root). `buf` is a
+single Go binary; there is no system `protoc`.
 
 ## Tooling notes
 

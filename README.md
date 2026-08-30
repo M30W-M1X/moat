@@ -1,29 +1,51 @@
 # microvm_controller
 
-A Go control plane that boots, isolates, and reaps **Firecracker microVMs** as
+A Go control plane that starts, isolates, and reaps **Firecracker microVMs** as
 disposable, hardware-isolated sandboxes for untrusted AI-agent code and tool use.
 
 See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
 `docs/implementation-plan.html` for the full plan.
 
-## Status: Phase 1 — minimal viable microVM ✅
+## Status
 
-One command boots a microVM and round-trips a message with an in-VM agent over
-vsock:
+- **Phase 1 ✅** — one command starts a microVM and reaches an in-VM agent over vsock.
+- **Phase 2 ✅** — the agent runs processes and moves files, over a gRPC service
+  (`agent.v1.Agent`) on vsock.
+
+### Phase 1: smoke test
 
 ```
 $ microvmctl demo
-... microVM booted   elapsed=24ms
-... Run /sbin/guest-agent as init process
-guest-agent: listening on vsock port 5252
-... vsock echo round-trip OK   sent=ping recv=ping
+... microVM started   elapsed=24ms
+guest-agent: serving agent.v1.Agent on vsock port 5252
+... agent Info OK   agent_version=phase2 guest_pid=1 kernel=6.1.182
 ... microVM stopped
 ```
 
-What runs: the host CLI (`cmd/microvmctl`) uses `firecracker-go-sdk` to start a
-Firecracker process, boots a downloaded CI `vmlinux` with a minimal ext4 rootfs,
-and our static guest agent (`guest/agent`) runs as PID 1 and serves a vsock echo
-on port 5252. The host connects through Firecracker's vsock mux socket
+### Phase 2: run a command in a fresh microVM
+
+```
+$ microvmctl run -- uname -a
+Linux (none) 6.1.182 #1 SMP ... x86_64 Linux
+... command finished   code=0 pid=266
+
+$ microvmctl run -- sh -c 'echo out; echo err 1>&2; exit 7'; echo "exit=$?"
+out
+err
+exit=7
+
+# copy a file in, run against it, copy a result out
+$ microvmctl run -put ./data.csv:/tmp/data.csv -get /tmp/out.json:./out.json \
+    -- sh -c 'wc -l /tmp/data.csv > /tmp/out.json'
+
+$ microvmctl run -tty -- top -b -n1        # PTY-attached
+$ microvmctl run -timeout 5s -- sleep 60   # exit 124 on timeout
+```
+
+The host CLI (`cmd/microvmctl`) uses `firecracker-go-sdk` to start Firecracker with a
+downloaded CI `vmlinux` and a minimal ext4 rootfs. The static guest agent
+(`guest/agent`) runs as PID 1 and serves `agent.v1.Agent` on vsock port 5252. The host
+client (`internal/agentclient`) dials it as gRPC through Firecracker's vsock mux socket
 (`internal/vsockconn`).
 
 ## Requirements
@@ -31,49 +53,52 @@ on port 5252. The host connects through Firecracker's vsock mux socket
 - Linux with `/dev/kvm` readable by your user (bare metal, or a VM with nested
   virtualization)
 - `firecracker` and `jailer` on `PATH` (tested with v1.16.1)
-- Go 1.27+
+- Go 1.27+, `make`
 - `podman` and `mkfs.ext4` (to build the rootfs — no root needed)
 - `curl` (to fetch the kernel)
+- To regenerate protobuf: `make tools` (installs `buf` + plugins into `$GOBIN`, no root)
 
 ## Build & run
 
 ```sh
-# host CLI + static guest agent
-go build -o bin/microvmctl ./cmd/microvmctl
-CGO_ENABLED=0 go build -ldflags='-s -w' -o bin/guest-agent ./guest/agent
-
-# VM images -> build/artifacts/{vmlinux,rootfs.ext4}
-build/fetch-kernel.sh  build/artifacts/vmlinux
-build/build-rootfs.sh  build/artifacts/rootfs.ext4  bin/guest-agent
-
-# boot + vsock round-trip
-bin/microvmctl demo
+make build agent      # bin/microvmctl + static bin/guest-agent
+make images            # build/artifacts/{vmlinux,rootfs.ext4}
+make demo             # Phase 1 smoke test
+make run ARGS='-- uname -a'
+make test             # fast unit tests
+make test-integration # boots real microVMs, drives the agent (needs /dev/kvm)
 ```
 
-With `make` installed, `make demo` does all of the above.
-
-### Useful flags
+## `microvmctl run` flags
 
 ```
-microvmctl demo -msg "hello"     # echo a custom string through the guest
-microvmctl demo -keep            # leave the VM running (Ctrl-C to detach)
-microvmctl demo -mem 512 -vcpus 2
-microvmctl demo -jail            # run under the jailer (needs root)
+-id / -kernel / -rootfs / -vcpus / -mem / -jail / -keep   (as for demo)
+-dir DIR            working directory in the guest
+-env KEY=VALUE      set an environment variable (repeatable)
+-tty               run the command attached to a PTY
+-timeout DUR       kill the command after DUR (e.g. 30s); 0 means no limit
+-put LOCAL:REMOTE  copy a file into the guest before the command (repeatable)
+-get REMOTE:LOCAL  copy a file out of the guest after the command (repeatable)
 ```
+
+Exit code: the guest process exit code; `124` on timeout; `128+signal` on a signal.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
-| `cmd/microvmctl` | host control CLI (Phase 1: `demo`) |
+| `cmd/microvmctl` | host control CLI: `demo`, `run` |
+| `proto/agent/v1` | `agent.v1.Agent` protobuf service |
+| `gen/agent/v1` | generated protobuf + gRPC code (committed) |
 | `internal/config` | machine config, paths, kernel args |
 | `internal/vm` | Firecracker driver (firecracker-go-sdk wrapper) |
 | `internal/vsockconn` | host→guest vsock dial through Firecracker's mux socket |
-| `guest/agent` | in-VM agent; runs as PID 1, vsock echo (grows into exec/file I/O in Phase 2) |
+| `internal/agentclient` | host-side gRPC client for the in-VM agent |
+| `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
 | `build/` | `fetch-kernel.sh`, `build-rootfs.sh` |
-| `run/` | per-VM runtime state (gitignored) |
-| `build/artifacts/` | downloaded/built VM images (gitignored) |
+| `run/`, `build/artifacts/` | per-VM runtime state and VM images (gitignored) |
 
 ## Not yet (see roadmap in `CLAUDE.md`)
 
-Networking, cgroups, snapshot/restore + warm pool, the northbound API — Phases 2–5.
+Networking + cgroups (P3), snapshot/restore + warm pool + orphan reaper (P4), the
+public northbound API + metrics (P5).

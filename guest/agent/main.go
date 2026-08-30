@@ -1,25 +1,23 @@
-// Command guest-agent is the agent that runs inside the VM. In Phase 1 it runs
-// as PID 1 (init=/sbin/guest-agent). It runs a vsock echo service. The echo
-// service lets the host controller confirm two things: the VM starts, and the
-// host and guest can communicate.
+// Command guest-agent is the agent that runs inside the VM. In Phase 2 it runs
+// as PID 1 (init=/sbin/guest-agent) and serves the agent.v1.Agent gRPC service
+// over vsock: run a process and stream its output, and move files in and out of
+// the VM.
 //
-// Later phases add the full agent function: process execution with a PTY and
-// streamed stdout and stderr, file read and write in chunks, a health
-// heartbeat, and a clock resync after a snapshot resume. See CLAUDE.md.
+// The host reaches this service through Firecracker's vsock multiplex socket.
+// See proto/agent/v1/agent.proto and internal/agentclient.
 //
 // Build a static binary: CGO_ENABLED=0 go build -o guest-agent ./guest/agent
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"os"
-	"os/signal"
 	"runtime"
 	"syscall"
-	"time"
 
+	"google.golang.org/grpc"
+
+	agentv1 "github.com/M30W-M1X/microvm_controller/gen/agent/v1"
 	"github.com/mdlayher/vsock"
 )
 
@@ -32,10 +30,10 @@ func main() {
 
 	if isPID1 {
 		mountPseudoFS()
+		ensureBaseEnv()
 		// As PID 1 this process must never return. The kernel panics if init
 		// exits.
 		defer haltForever("main returned")
-		go reapChildren()
 	}
 
 	// Bind to VMADDR_CID_ANY. The guest has only one relevant CID.
@@ -47,77 +45,57 @@ func main() {
 		}
 		os.Exit(1)
 	}
-	logf("listening on vsock port %d", vsockPort)
+	logf("serving agent.v1.Agent on vsock port %d", vsockPort)
 
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			logf("accept: %v", err)
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		go handle(conn)
+	srv := grpc.NewServer(
+		grpc.MaxRecvMsgSize(16<<20),
+		grpc.MaxSendMsgSize(16<<20),
+	)
+	agentv1.RegisterAgentServer(srv, &server{})
+
+	err = srv.Serve(l)
+	logf("grpc server stopped: %v", err)
+	if isPID1 {
+		haltForever("grpc server stopped")
 	}
 }
 
-// handle sends each input line back without change. For the line "INFO" it sends
-// a one-line status reply instead. The "INFO" line helps with manual tests.
-func handle(conn io.ReadWriteCloser) {
-	defer conn.Close()
-	sc := bufio.NewScanner(conn)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		line := sc.Text()
-		if line == "INFO" {
-			fmt.Fprintf(conn, "guest-agent ok uptime=%s\n", uptime())
-			continue
-		}
-		if _, err := fmt.Fprintf(conn, "%s\n", line); err != nil {
-			return
-		}
+// ensureBaseEnv sets a usable PATH, HOME, and TERM when the kernel passed none
+// to PID 1. exec.Command resolves a bare program name against this PATH, and
+// child processes inherit these values.
+func ensureBaseEnv() {
+	if os.Getenv("PATH") == "" {
+		_ = os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	}
+	if os.Getenv("HOME") == "" {
+		_ = os.Setenv("HOME", "/root")
+	}
+	if os.Getenv("TERM") == "" {
+		_ = os.Setenv("TERM", "xterm")
 	}
 }
 
 func mountPseudoFS() {
-	type m struct{ src, dst, fs string }
+	type m struct {
+		src, dst, fs, data string
+	}
 	for _, x := range []m{
-		{"proc", "/proc", "proc"},
-		{"sysfs", "/sys", "sysfs"},
-		{"devtmpfs", "/dev", "devtmpfs"}, // the kernel usually mounts this already (CONFIG_DEVTMPFS_MOUNT)
+		{"proc", "/proc", "proc", ""},
+		{"sysfs", "/sys", "sysfs", ""},
+		{"devtmpfs", "/dev", "devtmpfs", ""},                            // the kernel usually mounts this already (CONFIG_DEVTMPFS_MOUNT)
+		{"devpts", "/dev/pts", "devpts", "gid=5,mode=620,ptmxmode=666"}, // needed for PTY exec
 	} {
 		_ = os.MkdirAll(x.dst, 0o755)
-		err := syscall.Mount(x.src, x.dst, x.fs, 0, "")
+		err := syscall.Mount(x.src, x.dst, x.fs, 0, x.data)
 		if err == nil || err == syscall.EBUSY {
 			continue // EBUSY means the kernel mounted it already
 		}
 		logf("warn: mount %s on %s: %v", x.fs, x.dst, err)
 	}
-}
-
-// reapChildren removes zombie child processes so they do not collect under
-// PID 1.
-func reapChildren() {
-	ch := make(chan os.Signal, 8)
-	signal.Notify(ch, syscall.SIGCHLD)
-	for range ch {
-		for {
-			var ws syscall.WaitStatus
-			pid, err := syscall.Wait4(-1, &ws, syscall.WNOHANG, nil)
-			if pid <= 0 || err != nil {
-				break
-			}
-		}
+	// Some rootfs images have no /dev/ptmx node. Point it at the devpts one.
+	if _, err := os.Stat("/dev/ptmx"); err != nil {
+		_ = os.Symlink("pts/ptmx", "/dev/ptmx")
 	}
-}
-
-func uptime() string {
-	b, err := os.ReadFile("/proc/uptime")
-	if err != nil {
-		return "unknown"
-	}
-	var secs float64
-	fmt.Sscanf(string(b), "%f", &secs)
-	return time.Duration(secs * float64(time.Second)).Round(time.Second).String()
 }
 
 func haltForever(reason string) {
