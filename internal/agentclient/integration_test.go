@@ -20,8 +20,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/vm"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/vm"
 )
 
 func bootForTest(t *testing.T) (*Client, func()) {

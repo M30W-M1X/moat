@@ -16,8 +16,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	agentv1 "github.com/M30W-M1X/microvm_controller/gen/agent/v1"
-	"github.com/M30W-M1X/microvm_controller/internal/vsockconn"
+	agentv1 "github.com/M30W-M1X/moat/gen/agent/v1"
+	"github.com/M30W-M1X/moat/internal/vsockconn"
 )
 
 const maxMsg = 16 << 20

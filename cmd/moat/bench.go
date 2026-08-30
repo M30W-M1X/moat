@@ -7,10 +7,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/pool"
-	"github.com/M30W-M1X/microvm_controller/internal/vm"
+	"github.com/M30W-M1X/moat/internal/agentclient"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/pool"
+	"github.com/M30W-M1X/moat/internal/vm"
 )
 
 // runBench measures how long it takes to acquire a ready microVM from a warm

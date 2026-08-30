@@ -7,7 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/config"
+	"github.com/M30W-M1X/moat/internal/config"
 )
 
 // runDemo starts a microVM and calls Agent.Info over vsock. This is the smoke

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/vm"
+	"github.com/M30W-M1X/moat/internal/cgroup"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/vm"
 )
 
 // TestBootWithCgroupLimits boots a microVM with a CPU cap and a disk bandwidth

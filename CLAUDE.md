@@ -1,4 +1,4 @@
-# microvm_controller
+# Moat
 
 A Go control plane that boots, isolates, and reaps **Firecracker microVMs** as
 disposable, hardware-isolated sandboxes for untrusted AI-agent code and tool use.
@@ -101,16 +101,16 @@ pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus me
 + egress proxy ✅.
 
 **Status:** P1 + P2 + P3 done.
-- P1: `microvmctl demo` starts a microVM; the static agent runs as PID 1; host↔guest
+- P1: `moat demo` starts a microVM; the static agent runs as PID 1; host↔guest
   vsock works.
 - P2: `agent.v1.Agent` gRPC service over vsock (`proto/agent/v1/agent.proto`,
   generated into `gen/`). `Exec` (streamed stdout/stderr, exit code, PTY, timeout →
   kill group), `WriteFile` / `ReadFile` (sha256, byte-exact), `Info`. Host client:
-  `internal/agentclient`. CLI: `microvmctl run [flags] -- CMD` with `-env`, `-tty`,
+  `internal/agentclient`. CLI: `moat run [flags] -- CMD` with `-env`, `-tty`,
   `-timeout`, `-put`, `-get`. Integration test: `make test-integration`.
 - P3 networking (`internal/netconf`): per-VM network namespace + veth + TAP + `/30`
   IPAM + `nftables` isolation rules (drop → host / other VMs / `169.254.0.0/16`,
-  masquerade for egress). `microvmctl run -net [-uplink auto|none|<iface>]
+  masquerade for egress). `moat run -net [-uplink auto|none|<iface>]
   [-net-pool CIDR]`. `Apply`/`Destroy` need CAP_NET_ADMIN + CAP_SYS_ADMIN — real
   root, or `unshare --user --map-root-user --mount --net`. Test: `make test-net`
   (runs rootless in a user+net namespace).
@@ -120,18 +120,18 @@ pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus me
   delegation is in effect. `cgroup.Available()` preflights; `Instance.Stop` removes
   the cgroup after the VMM exits. Firecracker per-VM rate limiters cap rootfs and
   network bandwidth (`models.RateLimiter`, one-second token bucket). CLI:
-  `microvmctl run -cpu 0.5 -mem-max 256 -pids 128 -disk-bw BYTES -net-bw BYTES`.
-  Daemon: `microvmd -cpu-max -mem-max -pids-max -disk-bw -net-bw` per template.
+  `moat run -cpu 0.5 -mem-max 256 -pids 128 -disk-bw BYTES -net-bw BYTES`.
+  Daemon: `moatd -cpu-max -mem-max -pids-max -disk-bw -net-bw` per template.
   Test: `make test-integration` (`internal/vm` `TestBootWithCgroupLimits`,
   `internal/cgroup` unit tests).
 - P4 (`internal/vm` snapshot + `internal/pool`): full snapshot/restore
-  (`microvmctl snapshot` / `restore`) — restore reaches a ready agent in ~25 ms vs
-  ~1.1 s cold. Warm pool of running microVMs (`internal/pool`, `microvmctl bench`)
+  (`moat snapshot` / `restore`) — restore reaches a ready agent in ~25 ms vs
+  ~1.1 s cold. Warm pool of running microVMs (`internal/pool`, `moat bench`)
   — p50 acquire ~1 ms; leases carry a TTL and idle timeout and a sweeper
   force-releases stragglers (`bench -lease-ttl` / `-lease-idle`, `Lease.Touch`).
-  Orphan reaper (`vm.Reconcile`, `microvmctl reap`) kills Firecracker processes a
-  crash left behind. `cmd/microvm-uffd` is a working userfaultfd page-fault
-  handler; `microvmctl restore -uffd` streams guest pages from `mem.bin` on
+  Orphan reaper (`vm.Reconcile`, `moat reap`) kills Firecracker processes a
+  crash left behind. `cmd/moat-uffd` is a working userfaultfd page-fault
+  handler; `moat restore -uffd` streams guest pages from `mem.bin` on
   demand via a raw `snapshot/load` with `mem_backend`. Tests: `make test-integration`.
 - UFFD restore needs read access to `/dev/userfaultfd` or
   `vm.unprivileged_userfaultfd=1` — real root on this box (Gotcha `G-14`). The
@@ -143,26 +143,26 @@ pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus me
   changed pages plus a full `snapshot.bin`. `RestoreDiff` rebases the sparse
   diff onto a copy of the base memory (`RebaseMemory`, `SEEK_DATA`/`SEEK_HOLE`)
   and restores from the merge. A diff snapshot must come from a fresh restore,
-  never a resumed instance (Gotcha `G-12`). CLI: `microvmctl snapshot -exec
-  ... -diff-exec ...` writes `<dir>` + `<dir>/diff`; `microvmctl restore -diff`.
+  never a resumed instance (Gotcha `G-12`). CLI: `moat snapshot -exec
+  ... -diff-exec ...` writes `<dir>` + `<dir>/diff`; `moat restore -diff`.
   On this box a 256 MiB guest's diff `mem.bin` is ~2 MiB on disk.
 - Still todo for P4: a snapshot-templated pool.
-- P5 (`cmd/microvmd`, `internal/server`, `internal/egress`): HTTP/JSON API —
+- P5 (`cmd/moatd`, `internal/server`, `internal/egress`): HTTP/JSON API —
   `POST/GET/DELETE /v1/sandboxes`, streaming `POST /v1/sandboxes/{id}/exec`
   (NDJSON), `PUT/GET /v1/sandboxes/{id}/files/{path}`. Bearer-token auth, per-token
   + global concurrency quotas, multiple templates, TTL janitor, warm-pool option,
-  startup orphan reconcile. `GET /metrics` (Prometheus, `microvmd_*`), structured
+  startup orphan reconcile. `GET /metrics` (Prometheus, `moat_*`), structured
   JSON request logs. `internal/egress` is a CONNECT/HTTP forward proxy with a
   domain allow/deny policy; networked sandboxes get `HTTP(S)_PROXY` pointed at it.
-  Run: `make serve` or `MICROVMD_TOKENS=id:secret microvmd -pool 4`. API reference:
+  Run: `make serve` or `MOAT_TOKENS=id:secret moatd -pool 4`. API reference:
   `docs/api.md`. Tests: `make test-integration` (`internal/server`) +
   `internal/egress` unit tests.
-- `microvmd -config FILE` (JSON) defines the templates, the tokens, and a
+- `moatd -config FILE` (JSON) defines the templates, the tokens, and a
   per-token policy: `templates` allowlist, `max_concurrent`, `max_ttl`,
   `deny_network`. Enforced in `handleCreate` before any boot — a blocked
   request gets `403`. `server.Config.Policies map[string]TokenPolicy`. Sample:
-  `docs/microvmd.example.json`. Loader + validation: `cmd/microvmd/config.go`.
-- Transparent egress (`internal/egress/transparent.go`): `microvmd
+  `docs/moatd.example.json`. Loader + validation: `cmd/moatd/config.go`.
+- Transparent egress (`internal/egress/transparent.go`): `moatd
   -egress-transparent ADDR` starts a second listener that takes raw
   connections. An nftables `prerouting` DNAT in each sandbox namespace
   (`Plan.RedirectPort`) forces guest TCP 80/443 to it, so the guest cannot

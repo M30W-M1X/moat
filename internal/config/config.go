@@ -11,8 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
-	"github.com/M30W-M1X/microvm_controller/internal/netconf"
+	"github.com/M30W-M1X/moat/internal/cgroup"
+	"github.com/M30W-M1X/moat/internal/netconf"
 )
 
 // VsockPort is the AF_VSOCK port. The guest agent listens on this port. The host

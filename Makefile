@@ -1,4 +1,4 @@
-# microvm_controller
+# Moat — Makefile
 #
 # make demo    build all parts, download a kernel, start a microVM, check the agent
 # make run ARGS='-- uname -a'   start a VM and run a command in it
@@ -21,15 +21,15 @@ all: build daemon uffd agent
 
 ## build the host control CLI
 build:
-	$(GO) build $(GOFLAGS) -o $(BIN)/microvmctl ./cmd/microvmctl
+	$(GO) build $(GOFLAGS) -o $(BIN)/moat ./cmd/moat
 
 ## build the northbound API daemon
 daemon:
-	$(GO) build $(GOFLAGS) -o $(BIN)/microvmd ./cmd/microvmd
+	$(GO) build $(GOFLAGS) -o $(BIN)/moatd ./cmd/moatd
 
 ## build the userfaultfd page-fault handler (used by `restore -uffd`)
 uffd:
-	$(GO) build $(GOFLAGS) -o $(BIN)/microvm-uffd ./cmd/microvm-uffd
+	$(GO) build $(GOFLAGS) -o $(BIN)/moat-uffd ./cmd/moat-uffd
 
 ## build the guest agent that runs inside the VM (static, runs as PID 1)
 agent:
@@ -60,15 +60,15 @@ $(ROOTFS): agent build/build-rootfs.sh
 
 ## Phase 1 exit test: start a VM and check the agent over vsock
 demo: build agent images
-	$(BIN)/microvmctl demo
+	$(BIN)/moat demo
 
 ## Phase 2: start a VM and run a command in it, e.g. make run ARGS='-- uname -a'
 run: build agent images
-	$(BIN)/microvmctl run $(ARGS)
+	$(BIN)/moat run $(ARGS)
 
-## Phase 5: run the API daemon (MICROVMD_TOKENS=id:secret make serve)
+## Phase 5: run the API daemon (MOAT_TOKENS=id:secret make serve)
 serve: daemon agent images
-	MICROVMD_TOKENS="$${MICROVMD_TOKENS:-dev:devsecret}" $(BIN)/microvmd $(ARGS)
+	MOAT_TOKENS="$${MOAT_TOKENS:-dev:devsecret}" $(BIN)/moatd $(ARGS)
 
 fmt:
 	$(GO) fmt ./...

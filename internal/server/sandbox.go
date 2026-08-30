@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
-	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/netconf"
-	"github.com/M30W-M1X/microvm_controller/internal/pool"
-	"github.com/M30W-M1X/microvm_controller/internal/vm"
+	"github.com/M30W-M1X/moat/internal/agentclient"
+	"github.com/M30W-M1X/moat/internal/cgroup"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/netconf"
+	"github.com/M30W-M1X/moat/internal/pool"
+	"github.com/M30W-M1X/moat/internal/vm"
 )
 
 // Template names a kernel and rootfs a sandbox can start from, plus the

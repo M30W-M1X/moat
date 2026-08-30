@@ -1,4 +1,4 @@
-module github.com/M30W-M1X/microvm_controller
+module github.com/M30W-M1X/moat
 
 go 1.27
 

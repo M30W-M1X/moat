@@ -11,10 +11,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
-	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/netconf"
+	"github.com/M30W-M1X/moat/internal/agentclient"
+	"github.com/M30W-M1X/moat/internal/cgroup"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/netconf"
 )
 
 // setupNet allocates an address block, builds the network for m, and applies
@@ -68,7 +68,7 @@ func (r *repeatedFlag) Set(v string) error {
 }
 
 // runRun starts a microVM, runs one command in it, streams the output, then
-// stops the VM. The process exit code becomes the microvmctl exit code.
+// stops the VM. The process exit code becomes the moat exit code.
 func runRun(args []string) int {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	mf := machineFlags{
@@ -99,7 +99,7 @@ func runRun(args []string) int {
 
 	argv := fs.Args()
 	if len(argv) == 0 {
-		fmt.Fprintln(os.Stderr, "run: no command given (use: microvmctl run [flags] -- CMD [ARG...])")
+		fmt.Fprintln(os.Stderr, "run: no command given (use: moat run [flags] -- CMD [ARG...])")
 		return 2
 	}
 

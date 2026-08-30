@@ -1,11 +1,11 @@
-// Command microvmd is the northbound daemon for microvm_controller. It serves an
+// Command moatd is the northbound daemon for Moat. It serves an
 // HTTP/JSON API for sandbox lifecycle, command execution, and file transfer,
 // with bearer-token auth, concurrency quotas, multiple templates, a warm pool,
 // Prometheus metrics at /metrics, structured request logs, and an egress
 // domain-filter proxy for networked sandboxes.
 //
-//	microvmd -addr :8080 -pool 4
-//	MICROVMD_TOKENS="ci:s3cr3t,dev:hunter2" microvmd
+//	moatd -addr :8080 -pool 4
+//	MOAT_TOKENS="ci:s3cr3t,dev:hunter2" moatd
 package main
 
 import (
@@ -22,17 +22,17 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/egress"
-	"github.com/M30W-M1X/microvm_controller/internal/server"
-	"github.com/M30W-M1X/microvm_controller/internal/vm"
+	"github.com/M30W-M1X/moat/internal/cgroup"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/egress"
+	"github.com/M30W-M1X/moat/internal/server"
+	"github.com/M30W-M1X/moat/internal/vm"
 )
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address for the API")
 	cfgFile := flag.String("config", "", "JSON file of templates, tokens, and per-token policy")
-	tokensFlag := flag.String("tokens", "", "comma list of id:secret (else $MICROVMD_TOKENS)")
+	tokensFlag := flag.String("tokens", "", "comma list of id:secret (else $MOAT_TOKENS)")
 	poolSize := flag.Int("pool", 0, "warm, non-networked sandboxes to keep ready")
 	globalMax := flag.Int("global-max", 64, "max concurrent sandboxes (0 = unlimited)")
 	tokenMax := flag.Int("token-max", 16, "max concurrent sandboxes per token (0 = unlimited)")
@@ -105,7 +105,7 @@ func main() {
 	} else {
 		cfg.Tokens = parseTokens(*tokensFlag)
 		if len(cfg.Tokens) == 0 {
-			log.Fatal("no tokens: pass -config FILE, -tokens id:secret,..., or set $MICROVMD_TOKENS")
+			log.Fatal("no tokens: pass -config FILE, -tokens id:secret,..., or set $MOAT_TOKENS")
 		}
 		cfg.Templates = []server.Template{{
 			Name:   "default",
@@ -172,7 +172,7 @@ func main() {
 		srv.Shutdown(sc)
 	}()
 
-	log.WithField("addr", *addr).Info("microvmd listening")
+	log.WithField("addr", *addr).Info("moatd listening")
 	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.WithError(err).Fatal("http server")
 	}
@@ -181,7 +181,7 @@ func main() {
 func parseTokens(flagVal string) map[string]string {
 	raw := flagVal
 	if raw == "" {
-		raw = os.Getenv("MICROVMD_TOKENS")
+		raw = os.Getenv("MOAT_TOKENS")
 	}
 	out := map[string]string{}
 	for _, pair := range strings.Split(raw, ",") {

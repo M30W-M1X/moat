@@ -18,8 +18,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/server"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/server"
 )
 
 func startServer(t *testing.T, poolSize, tokenMax int) (*httptest.Server, string) {
@@ -156,8 +156,8 @@ func TestAPILifecycle(t *testing.T) {
 	mr := do(t, ts, "GET", "/metrics", "", "")
 	mb, _ := io.ReadAll(mr.Body)
 	mr.Body.Close()
-	if !bytes.Contains(mb, []byte("microvmd_sandboxes_created_total")) {
-		t.Error("/metrics missing microvmd_sandboxes_created_total")
+	if !bytes.Contains(mb, []byte("moat_sandboxes_created_total")) {
+		t.Error("/metrics missing moat_sandboxes_created_total")
 	}
 }
 

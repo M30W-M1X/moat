@@ -17,8 +17,8 @@ import (
 	ops "github.com/firecracker-microvm/firecracker-go-sdk/client/operations"
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
+	"github.com/M30W-M1X/moat/internal/cgroup"
+	"github.com/M30W-M1X/moat/internal/config"
 )
 
 // Instance is a microVM. The microVM can be running, paused, or stopped.

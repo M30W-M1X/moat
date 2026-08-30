@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/vm"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/vm"
 )
 
 // runReap kills Firecracker processes left behind by a crash and removes their

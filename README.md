@@ -1,4 +1,4 @@
-# microvm_controller
+# Moat
 
 A Go control plane that starts, isolates, and reaps **Firecracker microVMs** as
 disposable, hardware-isolated sandboxes for untrusted AI-agent code and tool use.
@@ -24,19 +24,19 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   page-fault handler (`restore -uffd`) that streams guest pages on demand, and diff
   snapshots (`snapshot -diff-exec`, `restore -diff`) whose memory file holds only
   the changed pages (`~2 MiB` on disk for a `256 MiB` guest).
-- **Phase 5 ✅** — `microvmd`, the northbound HTTP/JSON API: create/exec/files/delete
+- **Phase 5 ✅** — `moatd`, the northbound HTTP/JSON API: create/exec/files/delete
   sandboxes with bearer-token auth, concurrency quotas, templates, TTLs, a warm pool,
   Prometheus metrics, structured logs, and an egress domain-filter proxy (also a
   transparent mode, `-egress-transparent`, that an nftables redirect forces
   guest 80/443 through — SNI/Host filtered, no TLS termination). A `-config FILE`
   (JSON) defines templates, tokens, and a per-token policy (template allowlist,
   max concurrent, max TTL, deny networking). See [`docs/api.md`](docs/api.md) and
-  [`docs/microvmd.example.json`](docs/microvmd.example.json).
+  [`docs/moatd.example.json`](docs/moatd.example.json).
 
 ### Phase 1: smoke test
 
 ```
-$ microvmctl demo
+$ moat demo
 ... microVM started   elapsed=24ms
 guest-agent: serving agent.v1.Agent on vsock port 5252
 ... agent Info OK   agent_version=phase2 guest_pid=1 kernel=6.1.182
@@ -46,67 +46,67 @@ guest-agent: serving agent.v1.Agent on vsock port 5252
 ### Phase 2: run a command in a fresh microVM
 
 ```
-$ microvmctl run -- uname -a
+$ moat run -- uname -a
 Linux (none) 6.1.182 #1 SMP ... x86_64 Linux
 ... command finished   code=0 pid=266
 
-$ microvmctl run -- sh -c 'echo out; echo err 1>&2; exit 7'; echo "exit=$?"
+$ moat run -- sh -c 'echo out; echo err 1>&2; exit 7'; echo "exit=$?"
 out
 err
 exit=7
 
 # copy a file in, run against it, copy a result out
-$ microvmctl run -put ./data.csv:/tmp/data.csv -get /tmp/out.json:./out.json \
+$ moat run -put ./data.csv:/tmp/data.csv -get /tmp/out.json:./out.json \
     -- sh -c 'wc -l /tmp/data.csv > /tmp/out.json'
 
-$ microvmctl run -tty -- top -b -n1        # PTY-attached
-$ microvmctl run -timeout 5s -- sleep 60   # exit 124 on timeout
+$ moat run -tty -- top -b -n1        # PTY-attached
+$ moat run -timeout 5s -- sleep 60   # exit 124 on timeout
 
 # isolated networking (needs root, or run the whole command under
 #   unshare --user --map-root-user --mount --net --fork -- ... )
-$ microvmctl run -net -- sh -c 'wget -qO- https://example.com | head -1'
-$ microvmctl run -net -- ping -c1 169.254.169.254   # blocked by the isolation rules
+$ moat run -net -- sh -c 'wget -qO- https://example.com | head -1'
+$ moat run -net -- ping -c1 169.254.169.254   # blocked by the isolation rules
 ```
 
 ### Phase 4: snapshot, restore, warm pool
 
 ```
-$ microvmctl snapshot -id tpl -exec 'apk add --no-cache python3'   # boot, prep, snapshot
-$ microvmctl restore  -id tpl -- python3 --version                 # ~25 ms to a ready agent
+$ moat snapshot -id tpl -exec 'apk add --no-cache python3'   # boot, prep, snapshot
+$ moat restore  -id tpl -- python3 --version                 # ~25 ms to a ready agent
 ... restored, agent ready   elapsed=24ms
 
-$ microvmctl restore -id tpl -uffd -- free -m    # pages stream from mem.bin on demand
+$ moat restore -id tpl -uffd -- free -m    # pages stream from mem.bin on demand
                                                  # (needs root / vm.unprivileged_userfaultfd=1)
 
 # diff snapshot: full base, then a memory diff of the changes made after it
-$ microvmctl snapshot -id tpl -exec 'apk add python3' -diff-exec 'pip install requests'
+$ moat snapshot -id tpl -exec 'apk add python3' -diff-exec 'pip install requests'
 ... full snapshot written   mem_bytes=268435456
 ... diff snapshot written   mem_apparent=268435456   mem_disk_bytes=1949696
-$ microvmctl restore -id tpl -diff -- python3 -c 'import requests'   # rebases base+diff
+$ moat restore -id tpl -diff -- python3 -c 'import requests'   # rebases base+diff
 
-$ microvmctl bench -pool 4 -iters 25
+$ moat bench -pool 4 -iters 25
 pool warm   elapsed=1.2s   size=4
 acquire over 25 cycles:  min 0.5ms  p50 1ms  p90 2ms  p99 2ms  max 2ms
 PASS: p50 acquire < 50ms
 
-$ microvmctl reap        # kill Firecracker processes a crash left behind
+$ moat reap        # kill Firecracker processes a crash left behind
 reaped 1: [orphan1]
 ```
 
 ### Phase 5: the daemon
 
 ```
-$ MICROVMD_TOKENS="dev:s3cr3t" microvmd -addr :8080 -pool 4
+$ MOAT_TOKENS="dev:s3cr3t" moatd -addr :8080 -pool 4
 $ T='Authorization: Bearer s3cr3t'
 $ ID=$(curl -s -XPOST -H "$T" localhost:8080/v1/sandboxes | jq -r .id)
 $ curl -s -XPOST -H "$T" -d '{"argv":["uname","-a"]}' localhost:8080/v1/sandboxes/$ID/exec
 {"stream":"stdout","data":"TGludXggLi4uCg=="}
 {"stream":"exit","code":0,"signal":0,"timed_out":false}
-$ curl -s localhost:8080/metrics | grep microvmd_sandboxes_active
+$ curl -s localhost:8080/metrics | grep moat_sandboxes_active
 ```
 
 
-The host CLI (`cmd/microvmctl`) uses `firecracker-go-sdk` to start Firecracker with a
+The host CLI (`cmd/moat`) uses `firecracker-go-sdk` to start Firecracker with a
 downloaded CI `vmlinux` and a minimal ext4 rootfs. The static guest agent
 (`guest/agent`) runs as PID 1 and serves `agent.v1.Agent` on vsock port 5252. The host
 client (`internal/agentclient`) dials it as gRPC through Firecracker's vsock mux socket
@@ -125,7 +125,7 @@ client (`internal/agentclient`) dials it as gRPC through Firecracker's vsock mux
 ## Build & run
 
 ```sh
-make build agent      # bin/microvmctl + static bin/guest-agent
+make build agent      # bin/moat + static bin/guest-agent
 make images            # build/artifacts/{vmlinux,rootfs.ext4}
 make demo             # Phase 1 smoke test
 make run ARGS='-- uname -a'
@@ -133,7 +133,7 @@ make test             # fast unit tests
 make test-integration # boots real microVMs, drives the agent (needs /dev/kvm)
 ```
 
-## `microvmctl run` flags
+## `moat run` flags
 
 ```
 -id / -kernel / -rootfs / -vcpus / -mem / -jail / -keep   (as for demo)
@@ -159,7 +159,7 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 
 | Path | Purpose |
 | --- | --- |
-| `cmd/microvmctl` | host control CLI: `demo`, `run` |
+| `cmd/moat` | host control CLI: `demo`, `run` |
 | `proto/agent/v1` | `agent.v1.Agent` protobuf service |
 | `gen/agent/v1` | generated protobuf + gRPC code (committed) |
 | `internal/config` | machine config, paths, kernel args |
@@ -169,8 +169,8 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/netconf` | per-VM netns + veth + TAP + `/30` IPAM + nftables isolation rules |
 | `internal/cgroup` | cgroup v2 CPU / memory / PID caps on the VMM (delegated subtree, no root) |
 | `internal/pool` | warm pool of running microVMs; one-shot lease + TTL/idle reaping + refill |
-| `cmd/microvm-uffd` | userfaultfd page-fault handler for `restore -uffd` |
-| `cmd/microvmd` | northbound HTTP/JSON API daemon |
+| `cmd/moat-uffd` | userfaultfd page-fault handler for `restore -uffd` |
+| `cmd/moatd` | northbound HTTP/JSON API daemon |
 | `internal/server` | API handlers, sandbox registry, auth, quotas, TTL janitor, metrics |
 | `internal/egress` | CONNECT/HTTP forward proxy with a domain allow/deny policy |
 | `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |

@@ -10,17 +10,17 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/vm"
+	"github.com/M30W-M1X/moat/internal/agentclient"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/vm"
 )
 
 // runSnapshot cold-boots a microVM, runs an optional prep command, and writes a
-// full snapshot. Restore it later with `microvmctl restore -id <same id>`.
+// full snapshot. Restore it later with `moat restore -id <same id>`.
 //
 // With -diff-exec, it then restores that snapshot in a fresh process with
 // dirty-page tracking on, runs the second command, and writes a diff snapshot
-// into <dir>/diff. Restore the pair with `microvmctl restore -diff`.
+// into <dir>/diff. Restore the pair with `moat restore -diff`.
 func runSnapshot(args []string) int {
 	fs := flag.NewFlagSet("snapshot", flag.ExitOnError)
 	mf := commonMachineFlags(fs, "snap")
@@ -135,7 +135,7 @@ func runRestore(args []string) int {
 	mf := commonMachineFlags(fs, "snap")
 	snap := fs.String("snapshot", "", "snapshot directory (default: run/<id>/snap)")
 	uffd := fs.Bool("uffd", false, "restore with the userfaultfd memory backend (pages stream on demand)")
-	uffdBin := fs.String("uffd-bin", "", "path to microvm-uffd (default: next to microvmctl)")
+	uffdBin := fs.String("uffd-bin", "", "path to moat-uffd (default: next to moat)")
 	diff := fs.Bool("diff", false, "restore from a base snapshot plus <dir>/diff (rebases the diff memory first)")
 	_ = fs.Parse(args)
 	argv := fs.Args()
@@ -214,14 +214,14 @@ func diskBytes(path string) int64 {
 	return st.Blocks * 512
 }
 
-// resolveUffdBin returns explicit if set, else microvm-uffd next to this binary,
+// resolveUffdBin returns explicit if set, else moat-uffd next to this binary,
 // else the bare name for a PATH lookup.
 func resolveUffdBin(explicit string) string {
 	if explicit != "" {
 		return explicit
 	}
 	if self, err := os.Executable(); err == nil {
-		cand := filepath.Join(filepath.Dir(self), "microvm-uffd")
+		cand := filepath.Join(filepath.Dir(self), "moat-uffd")
 		if _, err := os.Stat(cand); err == nil {
 			return cand
 		}

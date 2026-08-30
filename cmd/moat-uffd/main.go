@@ -1,10 +1,10 @@
-// Command microvm-uffd is a userfaultfd page-fault handler for Firecracker
+// Command moat-uffd is a userfaultfd page-fault handler for Firecracker
 // snapshot restore. Firecracker connects to a Unix socket, passes the
 // userfaultfd descriptor and the guest memory layout, and from then on every
 // guest page fault is serviced here from the snapshot memory file. Restore
 // returns as soon as the CPU state loads; pages stream in on demand.
 //
-//	microvm-uffd --socket /run/x/uffd.sock --mem /run/x/snap/mem.bin
+//	moat-uffd --socket /run/x/uffd.sock --mem /run/x/snap/mem.bin
 //
 // Protocol matches Firecracker v1.16.x: the first socket message is a JSON
 // array of {base_host_virt_addr,size,offset,page_size} mappings, with the uffd
@@ -64,11 +64,11 @@ func main() {
 	memPath := flag.String("mem", "", "snapshot memory file")
 	flag.Parse()
 	if *sockPath == "" || *memPath == "" {
-		fmt.Fprintln(os.Stderr, "usage: microvm-uffd --socket PATH --mem PATH")
+		fmt.Fprintln(os.Stderr, "usage: moat-uffd --socket PATH --mem PATH")
 		os.Exit(2)
 	}
 	if err := run(*sockPath, *memPath); err != nil {
-		fmt.Fprintf(os.Stderr, "microvm-uffd: %v\n", err)
+		fmt.Fprintf(os.Stderr, "moat-uffd: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -98,7 +98,7 @@ func run(sockPath, memPath string) error {
 	defer unix.Munmap(backing)
 	backingBase := uint64(uintptr(unsafe.Pointer(&backing[0])))
 
-	fmt.Println("microvm-uffd: ready")
+	fmt.Println("moat-uffd: ready")
 
 	conn, err := ln.AcceptUnix()
 	if err != nil {
@@ -115,7 +115,7 @@ func run(sockPath, memPath string) error {
 		return fmt.Errorf("no memory mappings received")
 	}
 	pageSize := maps[0].PageSize
-	fmt.Printf("microvm-uffd: serving %d region(s), page size %d\n", len(maps), pageSize)
+	fmt.Printf("moat-uffd: serving %d region(s), page size %d\n", len(maps), pageSize)
 
 	return serve(uffd, backing, backingBase, maps, pageSize)
 }
@@ -159,7 +159,7 @@ func serve(uffd int, backing []byte, backingBase uint64, maps []mapping, pageSiz
 		case uffdEventPagefault:
 			addr := binary.LittleEndian.Uint64(msg[16:24])
 			if err := copyPage(uffd, backingBase, maps, addr&^(pageSize-1), pageSize); err != nil {
-				fmt.Fprintf(os.Stderr, "microvm-uffd: fault %#x: %v\n", addr, err)
+				fmt.Fprintf(os.Stderr, "moat-uffd: fault %#x: %v\n", addr, err)
 			}
 		case uffdEventRemove:
 			start := binary.LittleEndian.Uint64(msg[8:16])

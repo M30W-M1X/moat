@@ -1,4 +1,4 @@
-// Package server is the northbound HTTP API for microvm_controller: create and
+// Package server is the northbound HTTP API for Moat: create and
 // destroy sandboxes, run commands in them, and move files, with bearer-token
 // auth, per-token and global concurrency quotas, multiple templates, Prometheus
 // metrics, and structured request logs.
@@ -22,10 +22,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/netconf"
-	"github.com/M30W-M1X/microvm_controller/internal/pool"
+	"github.com/M30W-M1X/moat/internal/agentclient"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/netconf"
+	"github.com/M30W-M1X/moat/internal/pool"
 )
 
 // Config configures a Server.

@@ -1,10 +1,10 @@
-// Command microvmctl is the control CLI for microvm_controller.
+// Command moat is the control CLI for the Moat microVM sandbox platform.
 //
-//	microvmctl demo                  start a microVM and check the agent over vsock
-//	microvmctl run [flags] -- CMD    start a microVM, run CMD in it, stream output, stop
-//	microvmctl snapshot / restore    write and load a full VM snapshot
-//	microvmctl bench                 measure warm-pool acquire latency
-//	microvmctl reap                  remove microVMs left behind by a crash
+//	moat demo                  start a microVM and check the agent over vsock
+//	moat run [flags] -- CMD    start a microVM, run CMD in it, stream output, stop
+//	moat snapshot / restore    write and load a full VM snapshot
+//	moat bench                 measure warm-pool acquire latency
+//	moat reap                  remove microVMs left behind by a crash
 package main
 
 import (
@@ -17,9 +17,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/vm"
+	"github.com/M30W-M1X/moat/internal/agentclient"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/vm"
 )
 
 func main() {
@@ -51,15 +51,15 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `microvmctl - Firecracker microVM control
+	fmt.Fprint(os.Stderr, `moat - Firecracker microVM control
 
 usage:
-  microvmctl demo     [flags]
-  microvmctl run      [flags] -- CMD [ARG...]
-  microvmctl snapshot [flags] [-out DIR] [-exec 'CMD']
-  microvmctl restore  [flags] [-snapshot DIR] [-- CMD ...]
-  microvmctl bench    [-pool N] [-iters M] [-reap]
-  microvmctl reap     [-run-dir DIR]
+  moat demo     [flags]
+  moat run      [flags] -- CMD [ARG...]
+  moat snapshot [flags] [-out DIR] [-exec 'CMD']
+  moat restore  [flags] [-snapshot DIR] [-- CMD ...]
+  moat bench    [-pool N] [-iters M] [-reap]
+  moat reap     [-run-dir DIR]
 
 demo flags:
   -id string       machine id (default: demo-<pid>)

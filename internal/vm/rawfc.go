@@ -16,7 +16,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/config"
+	"github.com/M30W-M1X/moat/internal/config"
 )
 
 // UFFDAvailable reports whether Firecracker can create a userfaultfd object on
@@ -39,10 +39,10 @@ func UFFDAvailable() error {
 
 // RestoreUFFD starts a Firecracker microVM from a snapshot with the userfaultfd
 // memory backend. Guest RAM is not read up front: a page-fault handler
-// (microvm-uffd) streams pages from mem.bin on demand. This keeps restore
+// (moat-uffd) streams pages from mem.bin on demand. This keeps restore
 // latency and host memory flat regardless of guest size.
 //
-// uffdBin is the path to the microvm-uffd binary; empty resolves it on PATH.
+// uffdBin is the path to the moat-uffd binary; empty resolves it on PATH.
 // UFFDAvailable must pass first.
 func RestoreUFFD(ctx context.Context, m config.Machine, snapDir, uffdBin string, log *logrus.Logger) (*Instance, error) {
 	if err := UFFDAvailable(); err != nil {
@@ -60,8 +60,8 @@ func RestoreUFFD(ctx context.Context, m config.Machine, snapDir, uffdBin string,
 		return nil, err
 	}
 	if uffdBin == "" {
-		if uffdBin, err = exec.LookPath("microvm-uffd"); err != nil {
-			return nil, fmt.Errorf("microvm-uffd not found on PATH: %w", err)
+		if uffdBin, err = exec.LookPath("moat-uffd"); err != nil {
+			return nil, fmt.Errorf("moat-uffd not found on PATH: %w", err)
 		}
 	}
 	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
@@ -79,11 +79,11 @@ func RestoreUFFD(ctx context.Context, m config.Machine, snapDir, uffdBin string,
 	in.rawUFFD = exec.CommandContext(ctx, uffdBin, "--socket", uffdSock, "--mem", memPath)
 	in.rawUFFD.Stdout, in.rawUFFD.Stderr = os.Stdout, os.Stderr
 	if err := in.rawUFFD.Start(); err != nil {
-		return nil, fmt.Errorf("start microvm-uffd: %w", err)
+		return nil, fmt.Errorf("start moat-uffd: %w", err)
 	}
 	if err := waitForFile(uffdSock, 3*time.Second); err != nil {
 		_ = in.stopRaw()
-		return nil, fmt.Errorf("microvm-uffd socket: %w", err)
+		return nil, fmt.Errorf("moat-uffd socket: %w", err)
 	}
 
 	// 2. Start Firecracker, inside the network namespace when one is set.

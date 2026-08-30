@@ -29,7 +29,7 @@ func Preflight() error {
 	}
 	probe := filepath.Join(resolveNetnsDir(), "preflight")
 	if err := createNetns(probe); err != nil {
-		return fmt.Errorf("cannot create a network namespace (run microvmctl as root, "+
+		return fmt.Errorf("cannot create a network namespace (run moat as root, "+
 			"or inside 'unshare --user --map-root-user --mount --net'): %w", err)
 	}
 	deleteNetns(probe)

@@ -1,15 +1,15 @@
-# microvmd HTTP API
+# moatd HTTP API
 
-`microvmd` is the northbound daemon. It serves a JSON API for sandbox lifecycle,
+`moatd` is the northbound daemon. It serves a JSON API for sandbox lifecycle,
 command execution, and file transfer.
 
 ## Run
 
 ```sh
-MICROVMD_TOKENS="ci:s3cr3t,dev:hunter2" microvmd -addr :8080 -pool 4
+MOAT_TOKENS="ci:s3cr3t,dev:hunter2" moatd -addr :8080 -pool 4
 ```
 
-Flags: `-addr`, `-config FILE`, `-tokens id:secret,...` (or `$MICROVMD_TOKENS`),
+Flags: `-addr`, `-config FILE`, `-tokens id:secret,...` (or `$MOAT_TOKENS`),
 `-pool N`, `-global-max`, `-token-max`, `-default-ttl`, `-max-ttl`, `-kernel`,
 `-rootfs`, `-vcpus`, `-mem`, `-cpu-max`, `-mem-max`, `-pids-max`, `-disk-bw`,
 `-net-bw`, `-net-pool`, `-uplink`, `-egress-addr`, `-egress-allow`,
@@ -20,7 +20,7 @@ Flags: `-addr`, `-config FILE`, `-tokens id:secret,...` (or `$MICROVMD_TOKENS`),
 `-config FILE` reads a JSON file that defines the templates, the tokens, and a
 per-token policy. It replaces `-tokens` and the single flag-built template. A
 non-zero value in the file's `defaults` block overrides the matching flag. See
-`docs/microvmd.example.json`.
+`docs/moatd.example.json`.
 
 ```json
 {
@@ -111,13 +111,13 @@ the digest. `404` when the file does not exist.
 ## Observability
 
 - `GET /metrics` — Prometheus text. Series include
-  `microvmd_sandboxes_active{template}`,
-  `microvmd_sandboxes_created_total{template,source}`,
-  `microvmd_sandbox_create_seconds{source}`,
-  `microvmd_exec_total{outcome}`, `microvmd_file_bytes_total{direction}`,
-  `microvmd_quota_rejects_total`, `microvmd_pool_ready`,
-  `microvmd_http_requests_total{route,status}`,
-  `microvmd_egress_requests_total{decision}`.
+  `moat_sandboxes_active{template}`,
+  `moat_sandboxes_created_total{template,source}`,
+  `moat_sandbox_create_seconds{source}`,
+  `moat_exec_total{outcome}`, `moat_file_bytes_total{direction}`,
+  `moat_quota_rejects_total`, `moat_pool_ready`,
+  `moat_http_requests_total{route,status}`,
+  `moat_egress_requests_total{decision}`.
 - Request logs are one structured JSON line per request (`method`, `route`,
   `status`, `dur_ms`).
 

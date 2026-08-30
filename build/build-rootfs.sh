@@ -45,7 +45,7 @@ install -Dm0755 "$AGENT" "$root/sbin/guest-agent"
 # The Firecracker CI kernels mount devtmpfs on their own. Still, create the
 # mount-point directories.
 mkdir -p "$root/proc" "$root/sys" "$root/dev" "$root/tmp" "$root/run"
-# This helps manual debugging with `microvmctl demo -keep` and the serial
+# This helps manual debugging with `moat demo -keep` and the serial
 # console.
 printf 'root:x:0:0:root:/root:/bin/sh\n' > "$root/etc/passwd" 2>/dev/null || true
 

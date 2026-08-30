@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	agentv1 "github.com/M30W-M1X/microvm_controller/gen/agent/v1"
+	agentv1 "github.com/M30W-M1X/moat/gen/agent/v1"
 )
 
 const agentVersion = "phase2"

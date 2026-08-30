@@ -9,7 +9,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/netconf"
+	"github.com/M30W-M1X/moat/internal/netconf"
 )
 
 // Reconcile finds Firecracker processes under runRoot that no owner claims and

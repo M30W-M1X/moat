@@ -12,9 +12,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
-	"github.com/M30W-M1X/microvm_controller/internal/config"
-	"github.com/M30W-M1X/microvm_controller/internal/vm"
+	"github.com/M30W-M1X/moat/internal/agentclient"
+	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/vm"
 )
 
 func quietLog() *logrus.Logger {
@@ -107,9 +107,9 @@ func TestRestoreUFFD(t *testing.T) {
 	if err := vm.UFFDAvailable(); err != nil {
 		t.Skipf("userfaultfd not available: %v", err)
 	}
-	uffdBin := filepath.Join("..", "..", "bin", "microvm-uffd")
+	uffdBin := filepath.Join("..", "..", "bin", "moat-uffd")
 	if _, err := os.Stat(uffdBin); err != nil {
-		t.Skipf("microvm-uffd not built (run: make uffd): %v", err)
+		t.Skipf("moat-uffd not built (run: make uffd): %v", err)
 	}
 
 	m, err := config.NewMachine("it-uffd")

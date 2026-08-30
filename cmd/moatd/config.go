@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
-	"github.com/M30W-M1X/microvm_controller/internal/server"
+	"github.com/M30W-M1X/moat/internal/cgroup"
+	"github.com/M30W-M1X/moat/internal/server"
 )
 
 // fileConfig is the on-disk shape of the -config file. It defines the templates,

@@ -3,7 +3,7 @@
 // namespace, and nftables rules that let the guest reach the internet but not
 // the host, the other microVMs, or the cloud metadata address.
 //
-// Apply and Destroy need CAP_NET_ADMIN and CAP_SYS_ADMIN. Run microvmctl as
+// Apply and Destroy need CAP_NET_ADMIN and CAP_SYS_ADMIN. Run moat as
 // root, or inside a user namespace that mapped root
 // (unshare --user --map-root-user --mount --net). The IPAM and rule-building
 // code in this file and plan.go needs no privilege.

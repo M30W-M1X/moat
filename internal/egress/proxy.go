@@ -68,7 +68,7 @@ func New(pol Policy, log *logrus.Logger, reg prometheus.Registerer) *Proxy {
 		dial: d,
 		rt:   &http.Transport{DialContext: d.DialContext, ForceAttemptHTTP2: false},
 		decision: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "microvmd_egress_requests_total",
+			Name: "moat_egress_requests_total",
 			Help: "Egress proxy requests by decision (allow, deny).",
 		}, []string{"decision"}),
 	}
