@@ -1,0 +1,93 @@
+package server
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/sirupsen/logrus"
+)
+
+// awsSecretLine is a realistic-shaped fake, not a real credential.
+const awsSecretLine = "AWS_SECRET_ACCESS_KEY=aZ2bYc4dXe6fWg8hVi0jUk2lTm4nSo6pRq8rQs0t"
+
+func newScreenServer(t *testing.T, cfg Config) *Server {
+	t.Helper()
+	log := logrus.New()
+	log.SetLevel(logrus.PanicLevel)
+	if len(cfg.Templates) == 0 {
+		cfg.Templates = []Template{{Name: "default", Kernel: "/none", RootFS: "/none", VCPUs: 1, MemMiB: 128}}
+	}
+	if len(cfg.Tokens) == 0 {
+		cfg.Tokens = map[string]string{"t": "s"}
+	}
+	s, err := New(cfg, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestScreenBlocksByDefault(t *testing.T) {
+	s := newScreenServer(t, Config{})
+	if s.scanner == nil {
+		t.Fatal("scanner should be built by default")
+	}
+	d := s.screen("t", "env:AWS_SECRET_ACCESS_KEY", []byte(awsSecretLine), false)
+	if d.action != "block" {
+		t.Fatalf("action = %q, want block", d.action)
+	}
+	if len(d.findings) == 0 {
+		t.Fatal("expected findings")
+	}
+}
+
+func TestScreenPassesCleanContent(t *testing.T) {
+	s := newScreenServer(t, Config{})
+	d := s.screen("t", "/work/app.toml", []byte("name = widget\nport = 8443\n"), false)
+	if d.action != "clean" {
+		t.Fatalf("action = %q, want clean", d.action)
+	}
+}
+
+func TestScreenOverrideNeedsPolicy(t *testing.T) {
+	s := newScreenServer(t, Config{
+		Policies: map[string]TokenPolicy{"priv": {AllowSecretOverride: true}},
+	})
+	// allow_secrets set, but token has no override permission -> still block.
+	if d := s.screen("t", "stdin", []byte(awsSecretLine), true); d.action != "block" {
+		t.Errorf("unprivileged override: action = %q, want block", d.action)
+	}
+	// permitted token -> allow.
+	if d := s.screen("priv", "stdin", []byte(awsSecretLine), true); d.action != "allow" {
+		t.Errorf("privileged override: action = %q, want allow", d.action)
+	}
+	// permitted token but request did not ask -> block.
+	if d := s.screen("priv", "stdin", []byte(awsSecretLine), false); d.action != "block" {
+		t.Errorf("privileged, no allow_secrets: action = %q, want block", d.action)
+	}
+}
+
+func TestScreenRedactMode(t *testing.T) {
+	s := newScreenServer(t, Config{SecretRedact: true})
+	d := s.screen("t", "/work/.env", []byte("prefix\n"+awsSecretLine+"\nsuffix\n"), false)
+	if d.action != "redact" {
+		t.Fatalf("action = %q, want redact", d.action)
+	}
+	got := string(d.content)
+	if strings.Contains(got, "aZ2bYc4dXe6fWg8h") {
+		t.Errorf("redacted content still holds the secret:\n%s", got)
+	}
+	if !strings.HasPrefix(got, "prefix\n") || !strings.HasSuffix(got, "\nsuffix\n") {
+		t.Errorf("redaction damaged surrounding bytes:\n%s", got)
+	}
+}
+
+func TestScreenDisabled(t *testing.T) {
+	s := newScreenServer(t, Config{SecretScanOff: true})
+	if s.scanner != nil {
+		t.Fatal("scanner should be nil when SecretScanOff")
+	}
+	if d := s.screen("t", "x", []byte(awsSecretLine), false); d.action != "clean" {
+		t.Errorf("disabled scanner: action = %q, want clean", d.action)
+	}
+}

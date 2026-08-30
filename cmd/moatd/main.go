@@ -53,6 +53,8 @@ func main() {
 	egressAllow := flag.String("egress-allow", "", "comma list of allowed egress domains (empty = all)")
 	egressDeny := flag.String("egress-deny", "", "comma list of denied egress domains")
 	egressTransparent := flag.String("egress-transparent", "", "listen address for the transparent egress proxy; forces guest 80/443 through it")
+	secretScan := flag.Bool("secret-scan", true, "screen files, env, and stdin for credentials on the way into a sandbox")
+	secretRedact := flag.Bool("secret-redact", false, "replace a detected secret with a marker instead of a 409")
 	jsonLog := flag.Bool("json-log", true, "emit structured JSON logs")
 	flag.Parse()
 
@@ -67,13 +69,15 @@ func main() {
 	}
 
 	cfg := server.Config{
-		GlobalMax:  *globalMax,
-		TokenMax:   *tokenMax,
-		PoolSize:   *poolSize,
-		DefaultTTL: *defaultTTL,
-		MaxTTL:     *maxTTL,
-		NetPool:    *netPool,
-		Uplink:     *uplink,
+		GlobalMax:     *globalMax,
+		TokenMax:      *tokenMax,
+		PoolSize:      *poolSize,
+		DefaultTTL:    *defaultTTL,
+		MaxTTL:        *maxTTL,
+		NetPool:       *netPool,
+		Uplink:        *uplink,
+		SecretScanOff: !*secretScan,
+		SecretRedact:  *secretRedact,
 	}
 
 	if *cfgFile != "" {

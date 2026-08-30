@@ -15,7 +15,59 @@ import (
 	"github.com/M30W-M1X/moat/internal/cgroup"
 	"github.com/M30W-M1X/moat/internal/config"
 	"github.com/M30W-M1X/moat/internal/netconf"
+	"github.com/M30W-M1X/moat/internal/secretscan"
 )
+
+// screenLocalIngress scans every -put file and -env value for credentials
+// before the VM starts. It returns 0 to proceed, or a non-zero exit code when
+// a secret is found and -allow-secret is not set.
+func screenLocalIngress(puts, env repeatedFlag, allow bool, log *logrus.Logger) int {
+	sc, err := secretscan.New()
+	if err != nil {
+		log.WithError(err).Warn("secret scanner unavailable; skipping the ingress check")
+		return 0
+	}
+	found := false
+	report := func(where string, fs []secretscan.Finding) {
+		found = true
+		for _, f := range fs {
+			log.WithFields(logrus.Fields{
+				"where": where, "rule": f.Rule, "line": f.Line, "secret": f.Secret,
+			}).Warn("secret detected in ingress content")
+		}
+	}
+	for _, spec := range puts {
+		local, _, ok := strings.Cut(spec, ":")
+		if !ok {
+			continue
+		}
+		data, err := os.ReadFile(local)
+		if err != nil {
+			continue // doPuts reports the real error later
+		}
+		if fs := sc.Scan(local, data); len(fs) > 0 {
+			report("-put "+local, fs)
+		}
+	}
+	for _, kv := range env {
+		k, _, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		if fs := sc.Scan("env:"+k, []byte(kv)); len(fs) > 0 {
+			report("-env "+k, fs)
+		}
+	}
+	if !found {
+		return 0
+	}
+	if allow {
+		log.Warn("-allow-secret is set; sending the flagged content anyway")
+		return 0
+	}
+	log.Error("blocked: a credential would enter the sandbox. Remove it, or pass -allow-secret.")
+	return 2
+}
 
 // setupNet allocates an address block, builds the network for m, and applies
 // it. The returned function tears the network down.
@@ -91,6 +143,7 @@ func runRun(args []string) int {
 	pidsMax := fs.Int64("pids", 0, "cgroup pids.max (0 = no cap)")
 	diskBW := fs.Int64("disk-bw", 0, "rootfs bandwidth limit in bytes/sec (0 = no limit)")
 	netBW := fs.Int64("net-bw", 0, "network bandwidth limit in bytes/sec (0 = no limit)")
+	allowSecret := fs.Bool("allow-secret", false, "send -put files and -env values even if they hold a credential")
 	var env, puts, gets repeatedFlag
 	fs.Var(&env, "env", "set an environment variable KEY=VALUE (repeatable)")
 	fs.Var(&puts, "put", "copy LOCAL:REMOTE into the guest before the command (repeatable)")
@@ -113,6 +166,10 @@ func runRun(args []string) int {
 	m.Limits = cgroup.Limits{CPUCores: *cpu, MemBytes: *memMax << 20, PIDs: *pidsMax}
 	m.DiskBWBytesPerSec = *diskBW
 	m.NetBWBytesPerSec = *netBW
+
+	if code := screenLocalIngress(puts, env, *allowSecret, log); code != 0 {
+		return code
+	}
 
 	if *netOn {
 		cleanup, err := setupNet(&m, *netPool, *uplink, log)

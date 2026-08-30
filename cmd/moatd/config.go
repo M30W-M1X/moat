@@ -40,6 +40,7 @@ type fileToken struct {
 	MaxConcurrent int      `json:"max_concurrent"` // 0 = server token_max
 	MaxTTL        string   `json:"max_ttl"`        // duration string; empty = server max_ttl
 	DenyNetwork   bool     `json:"deny_network"`
+	AllowSecrets  bool     `json:"allow_secret_override"` // may pass secret-flagged content
 }
 
 type fileDefaults struct {
@@ -138,12 +139,13 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 				return out, fmt.Errorf("%s: token %q allows unknown template %q", path, ft.ID, name)
 			}
 		}
-		if len(ft.Templates) > 0 || ft.MaxConcurrent > 0 || maxTTL > 0 || ft.DenyNetwork {
+		if len(ft.Templates) > 0 || ft.MaxConcurrent > 0 || maxTTL > 0 || ft.DenyNetwork || ft.AllowSecrets {
 			out.Policies[ft.ID] = server.TokenPolicy{
-				Templates:     ft.Templates,
-				MaxConcurrent: ft.MaxConcurrent,
-				MaxTTL:        maxTTL,
-				DenyNetwork:   ft.DenyNetwork,
+				Templates:           ft.Templates,
+				MaxConcurrent:       ft.MaxConcurrent,
+				MaxTTL:              maxTTL,
+				DenyNetwork:         ft.DenyNetwork,
+				AllowSecretOverride: ft.AllowSecrets,
 			}
 		}
 	}

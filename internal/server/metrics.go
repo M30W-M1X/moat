@@ -9,6 +9,7 @@ type metrics struct {
 	createSeconds    *prometheus.HistogramVec
 	execTotal        *prometheus.CounterVec
 	fileBytes        *prometheus.CounterVec
+	secretFindings   *prometheus.CounterVec
 	quotaRejects     prometheus.Counter
 	httpRequests     *prometheus.CounterVec
 	httpSeconds      *prometheus.HistogramVec
@@ -38,6 +39,10 @@ func newMetrics(reg prometheus.Registerer, poolReady func() float64) *metrics {
 			Name: "moat_file_bytes_total",
 			Help: "Bytes transferred to and from sandboxes, by direction.",
 		}, []string{"direction"}),
+		secretFindings: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "moat_secret_findings_total",
+			Help: "Secrets found in ingress content, by rule and action (block, redact, allow).",
+		}, []string{"rule", "action"}),
 		quotaRejects: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "moat_quota_rejects_total",
 			Help: "Create requests refused because a quota was full.",
@@ -59,7 +64,7 @@ func newMetrics(reg prometheus.Registerer, poolReady func() float64) *metrics {
 
 	reg.MustRegister(
 		m.sandboxesActive, m.sandboxesCreated, m.createSeconds, m.execTotal,
-		m.fileBytes, m.quotaRejects, m.httpRequests, m.httpSeconds, m.poolReady,
+		m.fileBytes, m.secretFindings, m.quotaRejects, m.httpRequests, m.httpSeconds, m.poolReady,
 	)
 	return m
 }

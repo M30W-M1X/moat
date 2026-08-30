@@ -190,3 +190,48 @@ func TestQuota(t *testing.T) {
 	r3.Body.Close()
 	do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close()
 }
+
+func TestSecretFirewall(t *testing.T) {
+	ts, token := startServer(t, 0, 4) // secret scanning is on by default
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":120}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create = %d", resp.StatusCode)
+	}
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+	t.Cleanup(func() { do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close() })
+
+	// A realistic-shaped fake AWS secret, not a real credential.
+	secretFile := "AWS_SECRET_ACCESS_KEY=aZ2bYc4dXe6fWg8hVi0jUk2lTm4nSo6pRq8rQs0t\n"
+
+	// PUT a file that holds a secret -> 409.
+	pr := do(t, ts, "PUT", "/v1/sandboxes/"+sb.ID+"/files/work/.env", token, secretFile)
+	body, _ := io.ReadAll(pr.Body)
+	pr.Body.Close()
+	if pr.StatusCode != 409 {
+		t.Fatalf("put secret = %d, want 409: %s", pr.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("secret detected")) {
+		t.Errorf("409 body missing the reason: %s", body)
+	}
+
+	// A clean file still goes through.
+	cr := do(t, ts, "PUT", "/v1/sandboxes/"+sb.ID+"/files/work/ok.txt", token, "name = widget\nport = 8443\n")
+	cr.Body.Close()
+	if cr.StatusCode != 200 {
+		t.Fatalf("put clean file = %d, want 200", cr.StatusCode)
+	}
+
+	// exec with a secret in an env value -> 409, command never runs.
+	er := do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", token,
+		`{"argv":["true"],"env":{"AWS_SECRET_ACCESS_KEY":"aZ2bYc4dXe6fWg8hVi0jUk2lTm4nSo6pRq8rQs0t"}}`)
+	eb, _ := io.ReadAll(er.Body)
+	er.Body.Close()
+	if er.StatusCode != 409 {
+		t.Fatalf("exec with secret env = %d, want 409: %s", er.StatusCode, eb)
+	}
+}

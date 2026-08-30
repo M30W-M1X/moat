@@ -171,7 +171,21 @@ pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus me
   the TLS SNI (no TLS termination), applies the same `Policy`, and splices. SNI
   and Host parsing are unit-tested; the DNAT rule needs a real root host (same
   as the rest of `netconf`, Gotcha `G-11`).
-- Still todo for P5: a gRPC surface alongside REST.
+- Ingress secret firewall (`internal/secretscan`, M1): every file, env value,
+  and stdin crossing into a sandbox is scanned. It evaluates the vendored
+  Gitleaks rule set (`internal/secretscan/gitleaks.toml`, MIT, embedded) with a
+  slim in-repo evaluator — regex + keyword prefilter + Shannon entropy +
+  allowlists. The Gitleaks module itself is **not** imported (it pulls 200+
+  deps). On a hit `moatd` returns `409`; a token with `AllowSecretOverride`
+  plus `allow_secrets` on the request may pass it (audited); `moatd
+  -secret-redact` swaps each secret for a marker instead. `moat run` scans
+  `-put` files and `-env` values client-side (`-allow-secret` to override).
+  Metric `moat_secret_findings_total{rule,action}`. Config file:
+  `allow_secret_override` per token. Tests: `internal/secretscan`,
+  `internal/server` (`TestScreen*`, `TestSecretFirewall`).
+- Still todo for M1 (self-serve): `moat-mcp` MCP server + `SKILL.md`, the
+  `curl | sh` installer + templates registry. Still todo for P5: a gRPC
+  surface alongside REST.
 - Pool members stay **running**, not paused: on this Firecracker build the guest
   vsock stops answering after `PauseVM`/`ResumeVM` on the same process (Gotcha
   `G-12`). Snapshot restore (a fresh process) is unaffected.

@@ -10,8 +10,8 @@
     },
     {
       "name": "build",
-      "kernel": "/var/lib/microvm/vmlinux",
-      "rootfs": "/var/lib/microvm/build-rootfs.ext4",
+      "kernel": "/var/lib/moat/vmlinux",
+      "rootfs": "/var/lib/moat/build-rootfs.ext4",
       "vcpus": 4,
       "mem_mib": 4096,
       "cpu_max": 4,
@@ -37,7 +37,8 @@
     },
     {
       "id": "admin",
-      "secret": "replace-me-admin"
+      "secret": "replace-me-admin",
+      "allow_secret_override": true
     }
   ],
   "defaults": {

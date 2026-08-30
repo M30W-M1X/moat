@@ -32,6 +32,10 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   (JSON) defines templates, tokens, and a per-token policy (template allowlist,
   max concurrent, max TTL, deny networking). See [`docs/api.md`](docs/api.md) and
   [`docs/moatd.example.json`](docs/moatd.example.json).
+- **Ingress secret firewall ✅** — every file, env value, and stdin crossing
+  into a sandbox is scanned with the vendored Gitleaks rule set. A hit returns
+  `409` (or is redacted with `-secret-redact`); a permitted token may override.
+  `moat run` scans `-put` / `-env` client-side. `internal/secretscan`.
 
 ### Phase 1: smoke test
 

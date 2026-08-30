@@ -5,6 +5,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/base64"
@@ -26,6 +27,7 @@ import (
 	"github.com/M30W-M1X/moat/internal/config"
 	"github.com/M30W-M1X/moat/internal/netconf"
 	"github.com/M30W-M1X/moat/internal/pool"
+	"github.com/M30W-M1X/moat/internal/secretscan"
 )
 
 // Config configures a Server.
@@ -46,6 +48,15 @@ type Config struct {
 	// namespace that forces guest TCP port 80 and 443 through the transparent
 	// egress proxy on that port. The guest cannot opt out.
 	EgressRedirectPort int
+
+	// SecretScanOff turns the ingress secret firewall off. It is on by default.
+	SecretScanOff bool
+	// SecretRedact makes a detected secret get replaced with a marker and let
+	// through, instead of a 409. It has no effect when SecretScanOff is set.
+	SecretRedact bool
+	// MaxUploadBytes caps a file upload so the scanner can hold it in memory.
+	// 0 selects the default (64 MiB).
+	MaxUploadBytes int64
 }
 
 // TokenPolicy narrows what one token may do. A zero field falls back to the
@@ -55,6 +66,10 @@ type TokenPolicy struct {
 	MaxConcurrent int           // per-token concurrent sandboxes; 0 = Config.TokenMax
 	MaxTTL        time.Duration // cap on a sandbox TTL; 0 = Config.MaxTTL
 	DenyNetwork   bool          // reject a request for a networked sandbox
+
+	// AllowSecretOverride lets a request from this token set "allow_secrets" to
+	// pass content that the secret firewall flagged. It is off by default.
+	AllowSecretOverride bool
 }
 
 // templateAllowed reports whether p permits the named template.
@@ -80,6 +95,8 @@ type Server struct {
 	pool    *pool.Pool
 	ipam    *netconf.Allocator
 	uplink  string
+	scanner *secretscan.Scanner // nil when SecretScanOff
+	maxUp   int64
 	m       *metrics
 	promReg *prometheus.Registry
 
@@ -138,6 +155,21 @@ func New(cfg Config, log *logrus.Logger) (*Server, error) {
 	for _, t := range cfg.Templates {
 		s.tmpl[t.Name] = t
 	}
+
+	s.maxUp = cfg.MaxUploadBytes
+	if s.maxUp <= 0 {
+		s.maxUp = 64 << 20
+	}
+	if !cfg.SecretScanOff {
+		sc, err := secretscan.New()
+		if err != nil {
+			return nil, fmt.Errorf("build secret scanner: %w", err)
+		}
+		s.scanner = sc
+		log.WithFields(logrus.Fields{"rules": sc.RuleCount(), "skipped": sc.Skipped()}).
+			Info("ingress secret firewall active")
+	}
+
 	s.m = newMetrics(s.promReg, func() float64 {
 		if s.pool == nil {
 			return 0
@@ -446,12 +478,65 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 type execReq struct {
-	Argv      []string          `json:"argv"`
-	Env       map[string]string `json:"env"`
-	Dir       string            `json:"dir"`
-	Stdin     string            `json:"stdin"` // base64
-	TTY       bool              `json:"tty"`
-	TimeoutMS int               `json:"timeout_ms"`
+	Argv         []string          `json:"argv"`
+	Env          map[string]string `json:"env"`
+	Dir          string            `json:"dir"`
+	Stdin        string            `json:"stdin"` // base64
+	TTY          bool              `json:"tty"`
+	TimeoutMS    int               `json:"timeout_ms"`
+	AllowSecrets bool              `json:"allow_secrets"` // pass secret-flagged env/stdin
+}
+
+// ingressDecision is the secret firewall's verdict on one blob.
+type ingressDecision struct {
+	action   string // clean, allow, redact, block
+	content  []byte // the bytes to use (redacted when action == "redact")
+	findings []secretscan.Finding
+}
+
+// screen runs the secret firewall over data. name is the target (a guest path,
+// or "env:KEY", or "stdin"), used for logging and path allowlists. allowReq is
+// the request's allow_secrets flag.
+func (s *Server) screen(tid, name string, data []byte, allowReq bool) ingressDecision {
+	if s.scanner == nil {
+		return ingressDecision{action: "clean", content: data}
+	}
+	fs := s.scanner.Scan(name, data)
+	if len(fs) == 0 {
+		return ingressDecision{action: "clean", content: data}
+	}
+	action, content := "block", data
+	switch {
+	case s.cfg.SecretRedact:
+		action, content = "redact", s.scanner.Redact(data, fs)
+	case allowReq && s.cfg.Policies[tid].AllowSecretOverride:
+		action = "allow"
+	}
+	for _, f := range fs {
+		s.m.secretFindings.WithLabelValues(f.Rule, action).Inc()
+	}
+	rules := map[string]bool{}
+	for _, f := range fs {
+		rules[f.Rule] = true
+	}
+	list := make([]string, 0, len(rules))
+	for r := range rules {
+		list = append(list, r)
+	}
+	s.log.WithFields(logrus.Fields{
+		"token": tid, "target": name, "findings": len(fs),
+		"rules": strings.Join(list, ","), "action": action,
+	}).Warn("secret_detected")
+	return ingressDecision{action: action, content: content, findings: fs}
+}
+
+// writeSecretBlock writes the 409 for blocked ingress content.
+func writeSecretBlock(w http.ResponseWriter, where string, fs []secretscan.Finding) {
+	writeJSON(w, http.StatusConflict, map[string]any{
+		"error":    "secret detected in " + where + " — not sent",
+		"hint":     "remove the credential, or resend with allow_secrets if your token permits it",
+		"findings": fs,
+	})
 }
 
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
@@ -472,6 +557,34 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	if req.Stdin != "" && err != nil {
 		writeErr(w, http.StatusBadRequest, "stdin must be base64")
 		return
+	}
+
+	// Secret firewall: screen every env value and stdin before the command
+	// runs. This is before the egress-proxy env below, so injected values are
+	// not scanned.
+	if s.scanner != nil {
+		tid := tokenID(r)
+		for k, v := range req.Env {
+			// Scan the assignment form so NAME=value rules can fire.
+			d := s.screen(tid, "env:"+k, []byte(k+"="+v), req.AllowSecrets)
+			if d.action == "block" {
+				writeSecretBlock(w, "env var "+k, d.findings)
+				return
+			}
+			if d.action == "redact" {
+				req.Env[k] = strings.TrimPrefix(string(d.content), k+"=")
+			}
+		}
+		if len(stdin) > 0 {
+			d := s.screen(tid, "stdin", stdin, req.AllowSecrets)
+			if d.action == "block" {
+				writeSecretBlock(w, "stdin", d.findings)
+				return
+			}
+			if d.action == "redact" {
+				stdin = d.content
+			}
+		}
 	}
 
 	// Networked sandboxes must send outbound HTTP through the egress proxy so
@@ -534,7 +647,29 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := "/" + strings.TrimPrefix(r.PathValue("path"), "/")
-	res, err := sb.client().WriteFile(r.Context(), path, 0o644, r.Body)
+
+	var body io.Reader = r.Body
+	if s.scanner != nil {
+		raw, err := io.ReadAll(io.LimitReader(r.Body, s.maxUp+1))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "read body: "+err.Error())
+			return
+		}
+		if int64(len(raw)) > s.maxUp {
+			writeErr(w, http.StatusRequestEntityTooLarge,
+				fmt.Sprintf("file larger than the %d-byte scan limit", s.maxUp))
+			return
+		}
+		allow := r.URL.Query().Get("allow_secrets") == "true"
+		d := s.screen(tokenID(r), path, raw, allow)
+		if d.action == "block" {
+			writeSecretBlock(w, path, d.findings)
+			return
+		}
+		body = bytes.NewReader(d.content)
+	}
+
+	res, err := sb.client().WriteFile(r.Context(), path, 0o644, body)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "write file: "+err.Error())
 		return

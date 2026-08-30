@@ -13,7 +13,8 @@ Flags: `-addr`, `-config FILE`, `-tokens id:secret,...` (or `$MOAT_TOKENS`),
 `-pool N`, `-global-max`, `-token-max`, `-default-ttl`, `-max-ttl`, `-kernel`,
 `-rootfs`, `-vcpus`, `-mem`, `-cpu-max`, `-mem-max`, `-pids-max`, `-disk-bw`,
 `-net-bw`, `-net-pool`, `-uplink`, `-egress-addr`, `-egress-allow`,
-`-egress-deny`, `-egress-transparent`, `-json-log`.
+`-egress-deny`, `-egress-transparent`, `-secret-scan` (default on),
+`-secret-redact`, `-json-log`.
 
 ## Config file
 
@@ -36,7 +37,28 @@ non-zero value in the file's `defaults` block overrides the matching flag. See
 ```
 
 A token with an empty `templates` list may use any template. `max_concurrent`
-`0` falls back to `token_max`; `max_ttl` empty falls back to `max_ttl`.
+`0` falls back to `token_max`; `max_ttl` empty falls back to `max_ttl`. Add
+`"allow_secret_override": true` to a token to let its requests carry
+secret-flagged content (see below).
+
+## Secret firewall
+
+On by default. Every file, environment value, and stdin crossing into a
+sandbox is scanned with the Gitleaks rule set (regex + keyword + Shannon
+entropy). A match returns `409` and the content is not sent:
+
+```json
+{ "error": "secret detected in /work/.env — not sent",
+  "hint": "remove the credential, or resend with allow_secrets if your token permits it",
+  "findings": [ { "rule": "aws-secret-key", "line": 3, "secret": "aZ****(40 chars)", "entropy": 5.1 } ] }
+```
+
+To override, the caller's token needs `allow_secret_override` and the request
+must ask for it: `"allow_secrets": true` in the exec body, or
+`?allow_secrets=true` on the file `PUT`. Overrides are logged. Start `moatd`
+with `-secret-redact` to replace each secret with a marker and let the rest of
+the content through instead of blocking. `-secret-scan=false` turns the
+firewall off.
 
 ## Auth
 
@@ -79,8 +101,11 @@ Run one process. Body:
 
 ```json
 { "argv": ["sh","-c","echo hi"], "env": {"K":"V"}, "dir": "/",
-  "stdin": "<base64>", "tty": false, "timeout_ms": 0 }
+  "stdin": "<base64>", "tty": false, "timeout_ms": 0, "allow_secrets": false }
 ```
+
+`409` when an env value or stdin holds a credential (see Secret firewall); the
+command does not run.
 
 Response is `application/x-ndjson`, one JSON object per line:
 
@@ -101,7 +126,9 @@ not terminate TLS.
 ### `PUT /v1/sandboxes/{id}/files/{path}`
 
 Write the raw request body to `/{path}` in the guest. `200` with
-`{ "bytes_written": N, "sha256": "…" }`.
+`{ "bytes_written": N, "sha256": "…" }`. `409` when the body holds a credential
+(see Secret firewall); add `?allow_secrets=true` to override if the token
+permits it. `413` when the body is larger than the scan limit (64 MiB).
 
 ### `GET /v1/sandboxes/{id}/files/{path}`
 
@@ -115,6 +142,7 @@ the digest. `404` when the file does not exist.
   `moat_sandboxes_created_total{template,source}`,
   `moat_sandbox_create_seconds{source}`,
   `moat_exec_total{outcome}`, `moat_file_bytes_total{direction}`,
+  `moat_secret_findings_total{rule,action}`,
   `moat_quota_rejects_total`, `moat_pool_ready`,
   `moat_http_requests_total{route,status}`,
   `moat_egress_requests_total{decision}`.
