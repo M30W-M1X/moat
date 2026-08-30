@@ -608,6 +608,18 @@ func (s *Server) screen(tid, name string, data []byte, allowReq bool) ingressDec
 		"token": tid, "target": name, "findings": len(fs),
 		"rules": strings.Join(list, ","), "action": action,
 	}).Warn("secret_detected")
+
+	auditType := audit.TypeSecretBlock
+	switch action {
+	case "allow":
+		auditType = audit.TypeSecretAllow
+	case "redact":
+		auditType = audit.TypeSecretRedact
+	}
+	_ = s.audit.RecordSync(context.Background(), audit.Event{
+		Type: auditType, Token: tid,
+		Attrs: map[string]any{"target": name, "rules": list, "findings": len(fs)},
+	})
 	return ingressDecision{action: action, content: content, findings: fs}
 }
 

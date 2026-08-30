@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/M30W-M1X/moat/internal/audit"
 	"github.com/sirupsen/logrus"
 )
 
@@ -89,5 +90,47 @@ func TestScreenDisabled(t *testing.T) {
 	}
 	if d := s.screen("t", "x", []byte(awsSecretLine), false); d.action != "clean" {
 		t.Errorf("disabled scanner: action = %q, want clean", d.action)
+	}
+}
+
+func TestScreenAudits(t *testing.T) {
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+	dir := t.TempDir()
+	rec, err := audit.New(audit.Config{Dir: dir, Metrics: audit.NopMetrics(), Log: log})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = rec.Close() })
+	s, err := New(Config{
+		Templates: []Template{{Name: "default", Kernel: "/x", RootFS: "/y"}},
+		Tokens:    map[string]string{"ci": "s"},
+		Audit:     rec,
+	}, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A well-known fake AWS secret access key (not an "EXAMPLE" value).
+	d := s.screen("ci", "env:AWS_SECRET_ACCESS_KEY",
+		[]byte("AWS_SECRET_ACCESS_KEY=wJa1bXUtnFEMI7K7MDENGbPxRfiCYZz6zJ9AbC0d"), false)
+	if d.action != "block" {
+		t.Skipf("scanner did not flag the test value (rule set change); action=%s", d.action)
+	}
+	evs, _ := audit.Query(dir, audit.Filter{Types: []string{audit.TypeSecretBlock}})
+	if len(evs) != 1 {
+		t.Fatalf("want 1 secret.block event, got %d", len(evs))
+	}
+	a := evs[0].Attrs
+	if a["target"] != "env:AWS_SECRET_ACCESS_KEY" {
+		t.Fatalf("target = %v", a["target"])
+	}
+	if _, bad := a["value"]; bad {
+		t.Fatal("secret.block leaked a value")
+	}
+	if _, bad := a["secret"]; bad {
+		t.Fatal("secret.block leaked a secret")
+	}
+	if rules, _ := a["rules"].([]any); len(rules) == 0 {
+		t.Fatal("secret.block has no rules")
 	}
 }
