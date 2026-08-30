@@ -134,13 +134,8 @@
   @media (max-width:760px){ .nav nav a:not(.navcta){display:none} }
 
   /* ---------- hero ---------- */
-  .hero{position:relative; overflow:hidden; border-top:none; padding-block:clamp(56px,10vw,120px)}
-  .hero::before{content:""; position:absolute; inset:-40% -20% auto -20%; height:120%;
-    background:
-      radial-gradient(60% 50% at 22% 18%, color-mix(in srgb, var(--moat) 20%, transparent), transparent 70%),
-      radial-gradient(45% 40% at 82% 8%, color-mix(in srgb, var(--ember) 16%, transparent), transparent 70%);
-    filter:blur(20px); z-index:0; animation:drift 22s ease-in-out infinite alternate}
-  @keyframes drift{ to{ transform:translate3d(0,26px,0) scale(1.06) } }
+  .hero{position:relative; border-top:none; padding-block:clamp(56px,10vw,120px);
+    background:linear-gradient(180deg, color-mix(in srgb, var(--surface) 55%, var(--ground)) 0%, var(--ground) 62%)}
   .hero .wrap{position:relative; z-index:1; display:grid; grid-template-columns:1.05fr .95fr; gap:clamp(28px,5vw,64px); align-items:center}
   .hero h1{font-size:clamp(34px, 6.4vw, 62px); font-weight:700}
   .hero h1 .hl{color:var(--ember)}
@@ -308,7 +303,6 @@
   .reveal.in{opacity:1; transform:none}
   @media (prefers-reduced-motion:reduce){
     .reveal{opacity:1; transform:none; transition:none}
-    .hero::before{animation:none}
     .term .cursor{animation:none}
   }
 </style>
