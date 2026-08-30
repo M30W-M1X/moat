@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/netip"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -322,6 +323,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sandboxes/{id}/exec", s.auth(s.handleExec))
 	mux.HandleFunc("PUT /v1/sandboxes/{id}/files/{path...}", s.auth(s.handlePutFile))
 	mux.HandleFunc("GET /v1/sandboxes/{id}/files/{path...}", s.auth(s.handleGetFile))
+	mux.HandleFunc("GET /v1/audit", s.auth(s.handleAudit))
 
 	return s.recover(s.observe(mux))
 }
@@ -860,6 +862,95 @@ func (c *countingWriter) Write(b []byte) (int, error) {
 	n, err := c.w.Write(b)
 	c.n += int64(n)
 	return n, err
+}
+
+func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
+	if !s.audit.Enabled() {
+		writeErr(w, http.StatusNotFound, "audit log is disabled on this server")
+		return
+	}
+	tid := tokenID(r)
+	all := s.cfg.Policies[tid].auditAll()
+
+	q := r.URL.Query()
+	f := audit.Filter{
+		Sandbox: q.Get("sandbox"),
+		Types:   q["type"],
+		Limit:   atoiOr(q.Get("limit"), 1000),
+		Desc:    q.Get("order") == "desc",
+	}
+	if all {
+		f.Token = q.Get("token")
+	}
+	if since := q.Get("since"); since != "" {
+		if ts, ok := parseWhen(since); ok {
+			f.Since = ts
+		}
+	}
+	if until := q.Get("until"); until != "" {
+		if ts, ok := parseWhen(until); ok {
+			f.Until = ts
+		}
+	}
+
+	evs, err := s.audit.LiveQuery(f)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "read audit log: "+err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.WriteHeader(http.StatusOK)
+	enc := json.NewEncoder(w)
+	for _, e := range evs {
+		if !all && !s.auditVisible(tid, e) {
+			continue
+		}
+		_ = enc.Encode(auditWire(e))
+	}
+}
+
+// auditVisible reports whether tid may see event e without the "all" scope.
+func (s *Server) auditVisible(tid string, e audit.Event) bool {
+	if e.Token == tid {
+		return true
+	}
+	if e.Sandbox != "" {
+		if owner, ok := s.audit.SandboxToken(e.Sandbox); ok && owner == tid {
+			return true
+		}
+	}
+	return false
+}
+
+// auditWire is the JSON shape returned to API clients.
+func auditWire(e audit.Event) map[string]any {
+	return map[string]any{
+		"seq": e.Seq, "ts": e.TS.UTC().Format(time.RFC3339Nano), "type": e.Type,
+		"sandbox": e.Sandbox, "token": e.Token, "attrs": e.Attrs,
+		"prev": e.Prev, "hash": e.Hash,
+	}
+}
+
+func atoiOr(s string, def int) int {
+	if n, err := strconv.Atoi(s); err == nil && n > 0 {
+		return n
+	}
+	return def
+}
+
+// parseWhen accepts RFC3339 or a Go duration with a leading "-" (e.g. -15m),
+// which it subtracts from now.
+func parseWhen(s string) (time.Time, bool) {
+	if ts, err := time.Parse(time.RFC3339, s); err == nil {
+		return ts, true
+	}
+	if strings.HasPrefix(s, "-") {
+		if d, err := time.ParseDuration(s); err == nil {
+			return time.Now().Add(d), true
+		}
+	}
+	return time.Time{}, false
 }
 
 // mustOwn resolves the {id} path value and checks the caller owns it.

@@ -341,6 +341,123 @@ func TestAuditExecAndFiles(t *testing.T) {
 	}
 }
 
+func TestAuditReadScoping(t *testing.T) {
+	dir := t.TempDir()
+	ts, ciToken := startServerWithAudit(t, dir) // "secret1" for t1/ci
+
+	// t1 creates a sandbox and runs one exec.
+	resp := do(t, ts, "POST", "/v1/sandboxes", ciToken, `{"ttl_seconds":120}`)
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+	ex := do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", ciToken, `{"argv":["/bin/true"],"timeout_ms":3000}`)
+	io.Copy(io.Discard, ex.Body)
+	ex.Body.Close()
+	time.Sleep(300 * time.Millisecond)
+
+	// A different token with no policy sees none of t1's events.
+	other := do(t, ts, "GET", "/v1/audit", "s3wrong", "") // invalid token
+	if other.StatusCode != 401 {
+		t.Fatalf("bad token audit read = %d", other.StatusCode)
+	}
+	other.Body.Close()
+
+	// secops (audit_read: all) sees t1's create + exec.
+	sec := do(t, ts, "GET", "/v1/audit?sandbox="+sb.ID, "s3", "")
+	defer sec.Body.Close()
+	if sec.StatusCode != 200 {
+		t.Fatalf("secops audit read = %d", sec.StatusCode)
+	}
+	n := 0
+	dec := json.NewDecoder(sec.Body)
+	for dec.More() {
+		var e map[string]any
+		if err := dec.Decode(&e); err != nil {
+			break
+		}
+		n++
+	}
+	if n < 2 {
+		t.Fatalf("secops saw %d events for %s, want >= 2", n, sb.ID)
+	}
+
+	// ci sees its own sandbox's events.
+	own := do(t, ts, "GET", "/v1/audit?sandbox="+sb.ID, ciToken, "")
+	defer own.Body.Close()
+	m := 0
+	d2 := json.NewDecoder(own.Body)
+	for d2.More() {
+		var e map[string]any
+		if d2.Decode(&e) != nil {
+			break
+		}
+		m++
+	}
+	if m < 2 {
+		t.Fatalf("ci saw %d of its own events, want >= 2", m)
+	}
+}
+
+// TestAuditReadFilters exercises the type filter and the relative time window.
+func TestAuditReadFilters(t *testing.T) {
+	dir := t.TempDir()
+	ts, ciToken := startServerWithAudit(t, dir)
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", ciToken, `{"ttl_seconds":120}`)
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+	ex := do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", ciToken, `{"argv":["/bin/true"],"timeout_ms":3000}`)
+	io.Copy(io.Discard, ex.Body)
+	ex.Body.Close()
+	time.Sleep(300 * time.Millisecond)
+
+	// A ?type=exec filter returns only exec events.
+	byType := do(t, ts, "GET", "/v1/audit?sandbox="+sb.ID+"&type=exec", "s3", "")
+	defer byType.Body.Close()
+	if byType.StatusCode != 200 {
+		t.Fatalf("type filter read = %d", byType.StatusCode)
+	}
+	execN := 0
+	dt := json.NewDecoder(byType.Body)
+	for dt.More() {
+		var e map[string]any
+		if dt.Decode(&e) != nil {
+			break
+		}
+		if e["type"] != "exec" {
+			t.Fatalf("type filter returned a %v event", e["type"])
+		}
+		execN++
+	}
+	if execN < 1 {
+		t.Fatalf("type=exec returned %d events, want >= 1", execN)
+	}
+
+	// A ?since=-1h window still returns the recent events.
+	win := do(t, ts, "GET", "/v1/audit?sandbox="+sb.ID+"&since=-1h", "s3", "")
+	defer win.Body.Close()
+	if win.StatusCode != 200 {
+		t.Fatalf("since window read = %d", win.StatusCode)
+	}
+	winN := 0
+	dw := json.NewDecoder(win.Body)
+	for dw.More() {
+		var e map[string]any
+		if dw.Decode(&e) != nil {
+			break
+		}
+		winN++
+	}
+	if winN < 2 {
+		t.Fatalf("since=-1h returned %d events, want >= 2", winN)
+	}
+}
+
 func TestSecretFirewall(t *testing.T) {
 	ts, token := startServer(t, 0, 4) // secret scanning is on by default
 
