@@ -323,3 +323,41 @@ func (r *Recorder) recover() error {
 	}
 	return nil
 }
+
+// LiveQuery runs Query over the recorder's own directory, holding the write
+// lock so an in-flight append does not race the scan.
+func (r *Recorder) LiveQuery(f Filter) ([]Event, error) {
+	if !r.enabled {
+		return nil, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.f != nil {
+		_ = r.f.Sync()
+	}
+	return Query(r.cfg.Dir, f)
+}
+
+// LiveReport builds the rollup for one sandbox from the live log.
+func (r *Recorder) LiveReport(sandboxID string) (Report, error) {
+	evs, err := r.LiveQuery(Filter{Sandbox: sandboxID, Limit: maxLimit})
+	if err != nil {
+		return Report{}, err
+	}
+	rep := BuildReport(evs)
+	v, _ := Verify(r.cfg.Dir) // chain state of the whole log
+	rep.Chain.Verified = v.OK
+	return rep, nil
+}
+
+// SandboxToken returns the token id that created sandboxID.
+func (r *Recorder) SandboxToken(sandboxID string) (string, bool) {
+	if !r.enabled {
+		return "", false
+	}
+	evs, err := r.LiveQuery(Filter{Sandbox: sandboxID, Types: []string{TypeSandboxCreate}, Limit: 1})
+	if err != nil || len(evs) == 0 {
+		return "", false
+	}
+	return evs[0].Token, true
+}
