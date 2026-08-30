@@ -30,16 +30,39 @@ import (
 
 // Config configures a Server.
 type Config struct {
-	Templates  []Template        // the first entry is the default
-	Tokens     map[string]string // token id -> secret
-	GlobalMax  int               // 0 = unlimited
-	TokenMax   int               // 0 = unlimited
-	PoolSize   int               // warm, non-networked sandboxes; 0 = no pool
+	Templates  []Template             // the first entry is the default
+	Tokens     map[string]string      // token id -> secret
+	Policies   map[string]TokenPolicy // token id -> extra limits; optional
+	GlobalMax  int                    // 0 = unlimited
+	TokenMax   int                    // 0 = unlimited
+	PoolSize   int                    // warm, non-networked sandboxes; 0 = no pool
 	DefaultTTL time.Duration
 	MaxTTL     time.Duration
 	NetPool    string // CIDR for networked sandboxes
 	Uplink     string // parent interface for networked sandboxes ("none" to skip NAT)
 	EgressPort int    // if set, networked sandboxes get HTTP(S)_PROXY on this port
+}
+
+// TokenPolicy narrows what one token may do. A zero field falls back to the
+// server-wide setting. Set it per token id in Config.Policies.
+type TokenPolicy struct {
+	Templates     []string      // allowed template names; empty = all
+	MaxConcurrent int           // per-token concurrent sandboxes; 0 = Config.TokenMax
+	MaxTTL        time.Duration // cap on a sandbox TTL; 0 = Config.MaxTTL
+	DenyNetwork   bool          // reject a request for a networked sandbox
+}
+
+// templateAllowed reports whether p permits the named template.
+func (p TokenPolicy) templateAllowed(name string) bool {
+	if len(p.Templates) == 0 {
+		return true
+	}
+	for _, t := range p.Templates {
+		if t == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Server holds the API state.
@@ -99,7 +122,7 @@ func New(cfg Config, log *logrus.Logger) (*Server, error) {
 	s := &Server{
 		cfg:         cfg,
 		log:         log,
-		reg:         newRegistry(cfg.GlobalMax, cfg.TokenMax),
+		reg:         newRegistry(cfg.GlobalMax),
 		tmpl:        map[string]Template{},
 		defTmpl:     cfg.Templates[0].Name,
 		ipam:        ipam,
@@ -311,6 +334,9 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	tid := tokenID(r)
+	policy, hasPolicy := s.cfg.Policies[tid]
+
 	name := req.Template
 	if name == "" {
 		name = s.defTmpl
@@ -320,6 +346,15 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "unknown template "+name)
 		return
 	}
+	if hasPolicy && !policy.templateAllowed(name) {
+		writeErr(w, http.StatusForbidden, "this token may not use template "+name)
+		return
+	}
+	if req.Networked && hasPolicy && policy.DenyNetwork {
+		writeErr(w, http.StatusForbidden, "this token may not create a networked sandbox")
+		return
+	}
+
 	ttl := s.cfg.DefaultTTL
 	if req.TTLSeconds > 0 {
 		ttl = time.Duration(req.TTLSeconds) * time.Second
@@ -327,9 +362,15 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	if ttl > s.cfg.MaxTTL {
 		ttl = s.cfg.MaxTTL
 	}
+	if hasPolicy && policy.MaxTTL > 0 && ttl > policy.MaxTTL {
+		ttl = policy.MaxTTL
+	}
 
-	tid := tokenID(r)
-	if err := s.reg.reserve(tid); err != nil {
+	tokenMax := s.cfg.TokenMax
+	if hasPolicy && policy.MaxConcurrent > 0 {
+		tokenMax = policy.MaxConcurrent
+	}
+	if err := s.reg.reserve(tid, tokenMax); err != nil {
 		s.m.quotaRejects.Inc()
 		writeErr(w, http.StatusTooManyRequests, err.Error())
 		return

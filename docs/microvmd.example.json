@@ -1,0 +1,50 @@
+{
+  "templates": [
+    {
+      "name": "default",
+      "vcpus": 1,
+      "mem_mib": 256,
+      "cpu_max": 0.5,
+      "mem_max_mib": 512,
+      "pids_max": 256
+    },
+    {
+      "name": "build",
+      "kernel": "/var/lib/microvm/vmlinux",
+      "rootfs": "/var/lib/microvm/build-rootfs.ext4",
+      "vcpus": 4,
+      "mem_mib": 4096,
+      "cpu_max": 4,
+      "mem_max_mib": 4096,
+      "disk_bw": 104857600
+    }
+  ],
+  "tokens": [
+    {
+      "id": "ci",
+      "secret": "replace-me-ci",
+      "templates": ["default", "build"],
+      "max_concurrent": 8,
+      "max_ttl": "30m"
+    },
+    {
+      "id": "demo",
+      "secret": "replace-me-demo",
+      "templates": ["default"],
+      "max_concurrent": 2,
+      "max_ttl": "10m",
+      "deny_network": true
+    },
+    {
+      "id": "admin",
+      "secret": "replace-me-admin"
+    }
+  ],
+  "defaults": {
+    "global_max": 64,
+    "token_max": 16,
+    "default_ttl": "15m",
+    "max_ttl": "1h",
+    "pool": 4
+  }
+}

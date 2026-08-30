@@ -73,30 +73,29 @@ type registry struct {
 	byID      map[string]*Sandbox
 	perToken  map[string]int
 	globalMax int
-	tokenMax  int
 }
 
-func newRegistry(globalMax, tokenMax int) *registry {
+func newRegistry(globalMax int) *registry {
 	return &registry{
 		byID:      make(map[string]*Sandbox),
 		perToken:  make(map[string]int),
 		globalMax: globalMax,
-		tokenMax:  tokenMax,
 	}
 }
 
 var errQuota = fmt.Errorf("sandbox quota reached")
 
-// reserve checks the quotas and reserves a slot for tokenID. Call release on
+// reserve checks the quotas and reserves a slot for tokenID. tokenMax is the
+// effective per-token limit for this caller (0 = unlimited). Call release on a
 // failure to create, or when the sandbox is destroyed.
-func (r *registry) reserve(tokenID string) error {
+func (r *registry) reserve(tokenID string, tokenMax int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.globalMax > 0 && len(r.byID) >= r.globalMax {
 		return fmt.Errorf("%w: global limit %d", errQuota, r.globalMax)
 	}
-	if r.tokenMax > 0 && r.perToken[tokenID] >= r.tokenMax {
-		return fmt.Errorf("%w: per-token limit %d", errQuota, r.tokenMax)
+	if tokenMax > 0 && r.perToken[tokenID] >= tokenMax {
+		return fmt.Errorf("%w: per-token limit %d", errQuota, tokenMax)
 	}
 	r.perToken[tokenID]++
 	return nil

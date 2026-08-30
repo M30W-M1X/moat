@@ -9,10 +9,34 @@ command execution, and file transfer.
 MICROVMD_TOKENS="ci:s3cr3t,dev:hunter2" microvmd -addr :8080 -pool 4
 ```
 
-Flags: `-addr`, `-tokens id:secret,...` (or `$MICROVMD_TOKENS`), `-pool N`,
-`-global-max`, `-token-max`, `-default-ttl`, `-max-ttl`, `-kernel`, `-rootfs`,
-`-vcpus`, `-mem`, `-net-pool`, `-uplink`, `-egress-addr`, `-egress-allow`,
+Flags: `-addr`, `-config FILE`, `-tokens id:secret,...` (or `$MICROVMD_TOKENS`),
+`-pool N`, `-global-max`, `-token-max`, `-default-ttl`, `-max-ttl`, `-kernel`,
+`-rootfs`, `-vcpus`, `-mem`, `-cpu-max`, `-mem-max`, `-pids-max`, `-disk-bw`,
+`-net-bw`, `-net-pool`, `-uplink`, `-egress-addr`, `-egress-allow`,
 `-egress-deny`, `-json-log`.
+
+## Config file
+
+`-config FILE` reads a JSON file that defines the templates, the tokens, and a
+per-token policy. It replaces `-tokens` and the single flag-built template. A
+non-zero value in the file's `defaults` block overrides the matching flag. See
+`docs/microvmd.example.json`.
+
+```json
+{
+  "templates": [
+    { "name": "default", "vcpus": 1, "mem_mib": 256, "cpu_max": 0.5 }
+  ],
+  "tokens": [
+    { "id": "ci", "secret": "…", "templates": ["default"],
+      "max_concurrent": 8, "max_ttl": "30m", "deny_network": true }
+  ],
+  "defaults": { "global_max": 64, "pool": 4, "default_ttl": "15m" }
+}
+```
+
+A token with an empty `templates` list may use any template. `max_concurrent`
+`0` falls back to `token_max`; `max_ttl` empty falls back to `max_ttl`.
 
 ## Auth
 
@@ -37,7 +61,8 @@ Create a sandbox. Body (all optional):
   "networked": false, "guest_ip": "" }
 ```
 
-`429` when the per-token or global concurrency quota is full.
+`429` when the per-token or global concurrency quota is full. `403` when a
+token policy forbids the template or a networked sandbox.
 
 ### `GET /v1/sandboxes`
 

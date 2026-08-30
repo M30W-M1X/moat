@@ -145,6 +145,13 @@ pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus me
   Run: `make serve` or `MICROVMD_TOKENS=id:secret microvmd -pool 4`. API reference:
   `docs/api.md`. Tests: `make test-integration` (`internal/server`) +
   `internal/egress` unit tests.
+- `microvmd -config FILE` (JSON) defines the templates, the tokens, and a
+  per-token policy: `templates` allowlist, `max_concurrent`, `max_ttl`,
+  `deny_network`. Enforced in `handleCreate` before any boot — a blocked
+  request gets `403`. `server.Config.Policies map[string]TokenPolicy`. Sample:
+  `docs/microvmd.example.json`. Loader + validation: `cmd/microvmd/config.go`.
+- Still todo for P5: a gRPC surface alongside REST, transparent egress
+  enforcement via an nftables redirect.
 - Pool members stay **running**, not paused: on this Firecracker build the guest
   vsock stops answering after `PauseVM`/`ResumeVM` on the same process (Gotcha
   `G-12`). Snapshot restore (a fresh process) is unaffected.

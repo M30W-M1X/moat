@@ -26,8 +26,10 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   the changed pages (`~2 MiB` on disk for a `256 MiB` guest).
 - **Phase 5 ✅** — `microvmd`, the northbound HTTP/JSON API: create/exec/files/delete
   sandboxes with bearer-token auth, concurrency quotas, templates, TTLs, a warm pool,
-  Prometheus metrics, structured logs, and an egress domain-filter proxy. See
-  [`docs/api.md`](docs/api.md).
+  Prometheus metrics, structured logs, and an egress domain-filter proxy. A
+  `-config FILE` (JSON) defines templates, tokens, and a per-token policy
+  (template allowlist, max concurrent, max TTL, deny networking). See
+  [`docs/api.md`](docs/api.md) and [`docs/microvmd.example.json`](docs/microvmd.example.json).
 
 ### Phase 1: smoke test
 

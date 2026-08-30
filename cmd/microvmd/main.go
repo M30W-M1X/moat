@@ -31,6 +31,7 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address for the API")
+	cfgFile := flag.String("config", "", "JSON file of templates, tokens, and per-token policy")
 	tokensFlag := flag.String("tokens", "", "comma list of id:secret (else $MICROVMD_TOKENS)")
 	poolSize := flag.Int("pool", 0, "warm, non-networked sandboxes to keep ready")
 	globalMax := flag.Int("global-max", 64, "max concurrent sandboxes (0 = unlimited)")
@@ -59,24 +60,62 @@ func main() {
 		log.SetFormatter(&logrus.JSONFormatter{})
 	}
 
-	tokens := parseTokens(*tokensFlag)
-	if len(tokens) == 0 {
-		log.Fatal("no tokens: pass -tokens id:secret,... or set $MICROVMD_TOKENS")
-	}
-
 	dm, err := config.NewMachine("default-template")
 	if err != nil {
 		log.WithError(err).Fatal("resolve default template paths")
 	}
-	tpl := server.Template{
-		Name:   "default",
-		Kernel: orDefault(*kernel, dm.KernelImagePath),
-		RootFS: orDefault(*rootfs, dm.RootFSPath),
-		VCPUs:  *vcpus,
-		MemMiB: *mem,
-		Limits: cgroup.Limits{CPUCores: *cpuMax, MemBytes: *memMax << 20, PIDs: *pidsMax},
-		DiskBW: *diskBW,
-		NetBW:  *netBW,
+
+	cfg := server.Config{
+		GlobalMax:  *globalMax,
+		TokenMax:   *tokenMax,
+		PoolSize:   *poolSize,
+		DefaultTTL: *defaultTTL,
+		MaxTTL:     *maxTTL,
+		NetPool:    *netPool,
+		Uplink:     *uplink,
+	}
+
+	if *cfgFile != "" {
+		fc, err := loadConfigFile(*cfgFile, dm.KernelImagePath, dm.RootFSPath)
+		if err != nil {
+			log.WithError(err).Fatal("load config file")
+		}
+		cfg.Templates = fc.Templates
+		cfg.Tokens = fc.Tokens
+		cfg.Policies = fc.Policies
+		// A non-zero value in the file's defaults block wins over the flag.
+		cfg.GlobalMax = orInt(fc.GlobalMax, cfg.GlobalMax)
+		cfg.TokenMax = orInt(fc.TokenMax, cfg.TokenMax)
+		cfg.PoolSize = orInt(fc.Pool, cfg.PoolSize)
+		if fc.DefaultTTL > 0 {
+			cfg.DefaultTTL = fc.DefaultTTL
+		}
+		if fc.MaxTTL > 0 {
+			cfg.MaxTTL = fc.MaxTTL
+		}
+		cfg.NetPool = orDefault(fc.NetPool, cfg.NetPool)
+		if fc.Uplink != "" {
+			cfg.Uplink = fc.Uplink
+		}
+		log.WithFields(logrus.Fields{
+			"templates": len(cfg.Templates), "tokens": len(cfg.Tokens),
+			"policies": len(cfg.Policies),
+		}).Info("loaded config file")
+	} else {
+		cfg.Tokens = parseTokens(*tokensFlag)
+		if len(cfg.Tokens) == 0 {
+			log.Fatal("no tokens: pass -config FILE, -tokens id:secret,..., or set $MICROVMD_TOKENS")
+		}
+		cfg.Templates = []server.Template{{
+			Name:   "default",
+			Kernel: orDefault(*kernel, dm.KernelImagePath),
+			RootFS: orDefault(*rootfs, dm.RootFSPath),
+			VCPUs:  *vcpus,
+			MemMiB: *mem,
+			Limits: cgroup.Limits{CPUCores: *cpuMax, MemBytes: *memMax << 20, PIDs: *pidsMax},
+			DiskBW: *diskBW,
+			NetBW:  *netBW,
+		}}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -87,18 +126,6 @@ func main() {
 		if ids := vm.Reconcile(root, nil, log); len(ids) > 0 {
 			log.WithField("ids", ids).Warn("reaped orphan microVMs at startup")
 		}
-	}
-
-	cfg := server.Config{
-		Templates:  []server.Template{tpl},
-		Tokens:     tokens,
-		GlobalMax:  *globalMax,
-		TokenMax:   *tokenMax,
-		PoolSize:   *poolSize,
-		DefaultTTL: *defaultTTL,
-		MaxTTL:     *maxTTL,
-		NetPool:    *netPool,
-		Uplink:     *uplink,
 	}
 
 	// Egress proxy for networked sandboxes.
@@ -170,6 +197,13 @@ func splitList(s string) []string {
 
 func orDefault(v, def string) string {
 	if v != "" {
+		return v
+	}
+	return def
+}
+
+func orInt(v, def int) int {
+	if v != 0 {
 		return v
 	}
 	return def
