@@ -301,46 +301,6 @@ func (r *Recorder) writeOne(e Event) {
 	r.cfg.Metrics.QueueDepth(len(r.queue))
 }
 
-func (r *Recorder) rotateIfNeededLocked() error {
-	if r.f != nil && r.curSize < int64(r.cfg.MaxFileMB)<<20 &&
-		r.curName == dailyName(time.Now(), 0) {
-		return nil
-	}
-	return r.openCurrent()
-}
-
-func (r *Recorder) openCurrent() error {
-	name := dailyName(time.Now(), 0)
-	for n := 1; ; n++ {
-		p := filepath.Join(r.cfg.Dir, name)
-		info, err := os.Stat(p)
-		if err != nil || info.Size() < int64(r.cfg.MaxFileMB)<<20 {
-			f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-			if err != nil {
-				return fmt.Errorf("open audit file: %w", err)
-			}
-			if r.f != nil {
-				_ = r.f.Close()
-			}
-			r.f, r.curName = f, name
-			if info != nil {
-				r.curSize = info.Size()
-			} else {
-				r.curSize = 0
-			}
-			return nil
-		}
-		name = dailyName(time.Now(), n)
-	}
-}
-
-func dailyName(t time.Time, n int) string {
-	if n == 0 {
-		return fmt.Sprintf("audit-%s.jsonl", t.UTC().Format("2006-01-02"))
-	}
-	return fmt.Sprintf("audit-%s.%d.jsonl", t.UTC().Format("2006-01-02"), n)
-}
-
 // recover scans existing files for the highest seq and the chain tip, and
 // rebuilds the index. Task 5/6 replace the body with the shared scanner.
 func (r *Recorder) recover() error {
