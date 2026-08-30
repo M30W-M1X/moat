@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -624,6 +625,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	if sb == nil {
 		return
 	}
+	start := time.Now()
 	var req execReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad JSON body: "+err.Error())
@@ -700,15 +702,57 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	}, streamWriter{send, "stdout"}, streamWriter{send, "stderr"})
 	if err != nil {
 		s.m.execTotal.WithLabelValues("error").Inc()
+	} else {
+		outcome := "ok"
+		if res.Code != 0 {
+			outcome = "nonzero"
+		}
+		s.m.execTotal.WithLabelValues(outcome).Inc()
+	}
+
+	argv := clampArgv(req.Argv, 4096)
+	envKeys := make([]string, 0, len(req.Env))
+	for k := range req.Env {
+		if k == "HTTP_PROXY" || k == "HTTPS_PROXY" || k == "http_proxy" || k == "https_proxy" || k == "NO_PROXY" {
+			continue // proxy vars are injected, not caller data
+		}
+		envKeys = append(envKeys, k)
+	}
+	sort.Strings(envKeys)
+	execAttrs := map[string]any{
+		"argv": argv, "env_keys": envKeys, "dir": req.Dir, "tty": req.TTY,
+		"dur_ms": time.Since(start).Milliseconds(),
+	}
+	if err != nil {
+		execAttrs["error"] = err.Error()
+	} else {
+		execAttrs["exit"] = res.Code
+		execAttrs["signal"] = res.Signal
+		execAttrs["timed_out"] = res.TimedOut
+	}
+	s.audit.Record(audit.Event{Type: audit.TypeExec, Sandbox: sb.ID, Token: tokenID(r), Attrs: execAttrs})
+
+	if err != nil {
 		send(map[string]any{"stream": "error", "message": err.Error()})
 		return
 	}
-	outcome := "ok"
-	if res.Code != 0 {
-		outcome = "nonzero"
-	}
-	s.m.execTotal.WithLabelValues(outcome).Inc()
 	send(map[string]any{"stream": "exit", "code": res.Code, "signal": res.Signal, "timed_out": res.TimedOut})
+}
+
+// clampArgv returns argv with its total byte size limited to max. It appends a
+// marker when it removes the extra arguments.
+func clampArgv(argv []string, max int) []string {
+	total := 0
+	out := make([]string, 0, len(argv))
+	for _, a := range argv {
+		if total+len(a) > max {
+			out = append(out, "…")
+			break
+		}
+		total += len(a)
+		out = append(out, a)
+	}
+	return out
 }
 
 type streamWriter struct {
@@ -728,6 +772,7 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 	}
 	path := "/" + strings.TrimPrefix(r.PathValue("path"), "/")
 
+	scanAction := "clean"
 	var body io.Reader = r.Body
 	if s.scanner != nil {
 		raw, err := io.ReadAll(io.LimitReader(r.Body, s.maxUp+1))
@@ -742,6 +787,7 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 		}
 		allow := r.URL.Query().Get("allow_secrets") == "true"
 		d := s.screen(tokenID(r), path, raw, allow)
+		scanAction = d.action
 		if d.action == "block" {
 			writeSecretBlock(w, path, d.findings)
 			return
@@ -755,6 +801,8 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.m.fileBytes.WithLabelValues("in").Add(float64(res.BytesWritten))
+	s.audit.Record(audit.Event{Type: audit.TypeFilePut, Sandbox: sb.ID, Token: tokenID(r),
+		Attrs: map[string]any{"path": path, "bytes": res.BytesWritten, "sha256": res.SHA256, "scan": scanAction}})
 	writeJSON(w, http.StatusOK, map[string]any{"bytes_written": res.BytesWritten, "sha256": res.SHA256})
 }
 
@@ -774,6 +822,8 @@ func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.m.fileBytes.WithLabelValues("out").Add(float64(res.Size))
+	s.audit.Record(audit.Event{Type: audit.TypeFileGet, Sandbox: sb.ID, Token: tokenID(r),
+		Attrs: map[string]any{"path": path, "bytes": res.Size, "sha256": res.SHA256}})
 	w.Header().Set("X-Sha256", res.SHA256)
 }
 

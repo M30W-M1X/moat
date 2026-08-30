@@ -284,6 +284,63 @@ func TestAuditLifecycle(t *testing.T) {
 	}
 }
 
+func TestAuditExecAndFiles(t *testing.T) {
+	dir := t.TempDir()
+	ts, token := startServerWithAudit(t, dir)
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":120}`)
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+
+	put := do(t, ts, "PUT", "/v1/sandboxes/"+sb.ID+"/files/work/hello.txt", token, "hi there")
+	put.Body.Close()
+	if put.StatusCode != 200 {
+		t.Fatalf("put = %d", put.StatusCode)
+	}
+	ex := do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", token, `{"argv":["/bin/echo","ok"],"timeout_ms":5000}`)
+	io.Copy(io.Discard, ex.Body)
+	ex.Body.Close()
+	get := do(t, ts, "GET", "/v1/sandboxes/"+sb.ID+"/files/work/hello.txt", token, "")
+	io.Copy(io.Discard, get.Body)
+	get.Body.Close()
+
+	time.Sleep(300 * time.Millisecond)
+	evs, _ := audit.Query(dir, audit.Filter{Sandbox: sb.ID})
+	kinds := map[string]audit.Event{}
+	for _, e := range evs {
+		kinds[e.Type] = e
+	}
+	for _, want := range []string{audit.TypeFilePut, audit.TypeExec, audit.TypeFileGet} {
+		if _, ok := kinds[want]; !ok {
+			t.Fatalf("missing %s; saw %v", want, kinds)
+		}
+	}
+	// exec attrs: argv present, no output.
+	ea := kinds[audit.TypeExec].Attrs
+	if _, ok := ea["argv"]; !ok {
+		t.Fatal("exec event has no argv")
+	}
+	for _, forbidden := range []string{"stdout", "stderr", "output", "content", "value", "stdin"} {
+		if _, bad := ea[forbidden]; bad {
+			t.Fatalf("exec event leaked %q", forbidden)
+		}
+	}
+	if exit, _ := ea["exit"].(float64); exit != 0 {
+		t.Fatalf("exec exit = %v, want 0", ea["exit"])
+	}
+	// file.put attrs: path + bytes + sha256 + scan, no content.
+	pa := kinds[audit.TypeFilePut].Attrs
+	if pa["path"] != "/work/hello.txt" || int(pa["bytes"].(float64)) != 8 {
+		t.Fatalf("file.put attrs wrong: %v", pa)
+	}
+	if _, bad := pa["content"]; bad {
+		t.Fatal("file.put leaked content")
+	}
+}
+
 func TestSecretFirewall(t *testing.T) {
 	ts, token := startServer(t, 0, 4) // secret scanning is on by default
 
