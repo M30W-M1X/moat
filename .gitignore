@@ -1,0 +1,23 @@
+# Build artifacts
+/bin/
+/dist/
+
+# Downloaded / generated VM images (large, reproducible via build/ scripts)
+/build/artifacts/
+*.ext4
+*.img
+vmlinux
+vmlinux-*
+*.id_rsa
+
+# Firecracker runtime state
+/run/
+*.socket
+*.sock
+
+# Go
+/vendor/
+
+# Editor / OS
+.DS_Store
+*.swp
