@@ -65,6 +65,13 @@ When this happens:
 - Never put the user's real credentials into a sandbox. If the task needs a
   credential, use a dummy value, or ask the user how they want to handle it.
 
+## Audit log
+
+Every action you take in a sandbox — the commands you run, the files you move,
+a blocked secret, a denied network destination — is recorded in the host's
+audit log. This does not change how you work; it means the user can review
+exactly what a sandbox did.
+
 ## Defaults to prefer
 
 - `network: "deny"` unless a fetch is required.

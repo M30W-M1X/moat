@@ -135,6 +135,54 @@ permits it. `413` when the body is larger than the scan limit (64 MiB).
 Stream `/{path}` back as `application/octet-stream`; the `X-Sha256` trailer holds
 the digest. `404` when the file does not exist.
 
+## Audit log
+
+### `GET /v1/audit`
+
+Newline-delimited JSON (`application/x-ndjson`), one event per line, in `seq`
+order.
+
+| Query param | Meaning |
+| --- | --- |
+| `sandbox` | exact sandbox id |
+| `token` | exact token id (only for a token with `audit_read: "all"`) |
+| `type` | repeatable; exact event type |
+| `since`, `until` | RFC3339, or a Go duration with a leading `-` (e.g. `-15m`) |
+| `limit` | max events (default 1000, cap 100000) |
+| `order` | `asc` (default) or `desc` |
+
+A normal token sees only events for sandboxes it created, plus events tagged
+with its own token id. A token with `audit_read: "all"` sees every event.
+
+Event shape:
+
+```json
+{"seq":42,"ts":"2026-08-30T18:14:07.913482Z","type":"exec","sandbox":"sb-7f3a19c4",
+ "token":"ci","attrs":{"argv":["python","/work/task.py"],"exit":0,"dur_ms":1180},
+ "prev":"a91c4f…","hash":"7d2e08…"}
+```
+
+Events are metadata only. No payload, environment value, file body, or command
+output is ever recorded. Each `hash` is the sha256 of the event's canonical
+form; `prev` chains to the previous event. Verify the chain with
+`moat audit verify`.
+
+On startup, `moatd` verifies the audit log file and will not start if a
+complete (non-final) line is corrupt or tampered. Run `moat audit verify -dir
+<auditdir>` to find the bad file, then move it aside and restart.
+
+### `GET /v1/sandboxes/{id}/report`
+
+A JSON rollup of one sandbox's activity, built from the audit log. Works after
+the sandbox is destroyed, until its events are pruned. The caller must own the
+sandbox or hold `audit_read: "all"`; otherwise `404`.
+
+## Token policy: `audit_read`
+
+`"audit_read": "all"` in a token's `moatd.json` entry lets it read every
+token's audit events and run `moat audit verify` over the API. Omitted or
+empty means the token sees only its own.
+
 ## Observability
 
 - `GET /metrics` — Prometheus text. Series include

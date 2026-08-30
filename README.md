@@ -46,6 +46,12 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   binaries + images + a starter config + a systemd unit. `make dist` builds the
   release tarball. An installed binary finds its images via `$MOAT_DATA` /
   `/var/lib/moat`. See [`docs/install.md`](docs/install.md).
+- **Audit log (M2)** — `moatd` writes a hash-chained, metadata-only JSONL
+  record of every boundary crossing (create / destroy / exec / file / secret
+  block / egress decision / quota reject). `GET /v1/audit`,
+  `GET /v1/sandboxes/{id}/report`, and `moat audit {tail,query,report,verify}`.
+  Per-token read scope with `audit_read: "all"`. On by default; disable with
+  `-audit-dir off`. `internal/audit`.
 
 ### Phase 1: smoke test
 
@@ -190,6 +196,7 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/moatapi` | Go client for the moatd HTTP API |
 | `internal/secretscan` | ingress credential scanner (vendored Gitleaks rules) |
 | `internal/egress` | CONNECT/HTTP forward proxy with a domain allow/deny policy |
+| `internal/audit` | append-only, hash-chained audit log; writer, reader, per-sandbox report |
 | `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
 | `build/` | `fetch-kernel.sh`, `build-rootfs.sh` |
 | `run/`, `build/artifacts/` | per-VM runtime state and VM images (gitignored) |

@@ -1,4 +1,10 @@
 {
+  "audit": {
+    "dir": "/var/lib/moat/audit",
+    "max_file_mb": 128,
+    "max_total_mb": 2048,
+    "max_age": "720h"
+  },
   "templates": [
     {
       "name": "default",
@@ -38,7 +44,8 @@
     {
       "id": "admin",
       "secret": "replace-me-admin",
-      "allow_secret_override": true
+      "allow_secret_override": true,
+      "audit_read": "all"
     }
   ],
   "defaults": {
