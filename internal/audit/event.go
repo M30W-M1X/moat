@@ -21,6 +21,11 @@ type Event struct {
 	Attrs   map[string]any
 	Prev    string // hash of the previous event
 	Hash    string // hash of this event's canonical form
+
+	// flush marks an internal sentinel event. The async writer closes this
+	// channel when it reads the sentinel from the queue. canonical and
+	// marshalLine build explicit maps, so this field never reaches the log.
+	flush chan struct{}
 }
 
 // The closed set of event types for v1.

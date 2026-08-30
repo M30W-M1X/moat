@@ -231,6 +231,25 @@ func (r *Recorder) Close() error {
 	return err
 }
 
+// Flush blocks until the async writer writes every event queued before this
+// call. A disabled or closed recorder returns at once.
+func (r *Recorder) Flush() {
+	if !r.enabled {
+		return
+	}
+	select {
+	case <-r.closed:
+		return
+	default:
+	}
+	done := make(chan struct{})
+	select {
+	case r.queue <- Event{Type: "_flush", flush: done}:
+		<-done
+	case <-r.closed:
+	}
+}
+
 // Record enqueues e for the async writer. It never blocks. A full queue drops
 // the event and increments the drop metric.
 func (r *Recorder) Record(e Event) {
@@ -259,6 +278,9 @@ func (r *Recorder) writeLoop() {
 		r.mu.Lock()
 		if r.f != nil {
 			if err := r.f.Sync(); err != nil {
+				// A batched fsync failed. Count one drop so an operator sees
+				// the durability problem. A later good sync covers the bytes.
+				r.cfg.Metrics.Dropped()
 				r.cfg.Log.WithError(err).Error("audit batch fsync failed")
 			}
 		}
@@ -269,6 +291,10 @@ func (r *Recorder) writeLoop() {
 		for {
 			select {
 			case e := <-r.queue:
+				if e.flush != nil {
+					close(e.flush)
+					continue
+				}
 				r.writeOne(e)
 				pending++
 			default:
@@ -283,6 +309,10 @@ func (r *Recorder) writeLoop() {
 			flush()
 			return
 		case e := <-r.queue:
+			if e.flush != nil {
+				close(e.flush)
+				continue
+			}
 			r.writeOne(e)
 			pending++
 			if pending >= r.cfg.FsyncBatch {

@@ -229,6 +229,42 @@ func TestSyncAndAsyncInterleaveKeepSeqDense(t *testing.T) {
 	}
 }
 
+func TestFlushOrdersBeforeSync(t *testing.T) {
+	r, dir := testRecorder(t)
+	for i := 0; i < 12; i++ {
+		r.Record(Event{Type: TypeExec, Sandbox: "sb-f", Token: "ci"})
+	}
+	r.Flush()
+	if err := r.RecordSync(context.Background(), Event{Type: TypeSandboxDestroy, Sandbox: "sb-f", Token: "ci"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = r.Close()
+
+	evs := readLines(t, dir)
+	var maxAsync, syncSeq uint64
+	nAsync := 0
+	for _, e := range evs {
+		switch e.Type {
+		case TypeExec:
+			if e.Seq > maxAsync {
+				maxAsync = e.Seq
+			}
+			nAsync++
+		case TypeSandboxDestroy:
+			syncSeq = e.Seq
+		}
+	}
+	if nAsync != 12 {
+		t.Fatalf("wrote %d async events, want 12", nAsync)
+	}
+	if syncSeq == 0 {
+		t.Fatal("the sync event is not on disk")
+	}
+	if syncSeq <= maxAsync {
+		t.Fatalf("sync seq %d is not after every async seq (max %d): Flush did not order the queue", syncSeq, maxAsync)
+	}
+}
+
 func TestSetMetrics(t *testing.T) {
 	r, _ := testRecorder(t)
 	cm := &countMetrics{Metrics: NopMetrics()}

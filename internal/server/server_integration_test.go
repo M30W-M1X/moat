@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -594,4 +595,111 @@ func TestSecretFirewall(t *testing.T) {
 	if er.StatusCode != 409 {
 		t.Fatalf("exec with secret env = %d, want 409: %s", er.StatusCode, eb)
 	}
+}
+
+func TestAuditEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	ts, token := startServerWithAudit(t, dir)
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":120}`)
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+	put := do(t, ts, "PUT", "/v1/sandboxes/"+sb.ID+"/files/work/x", token, "data")
+	put.Body.Close()
+	ex := do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", token, `{"argv":["/bin/true"],"timeout_ms":3000}`)
+	io.Copy(io.Discard, ex.Body)
+	ex.Body.Close()
+	del := do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "")
+	del.Body.Close()
+	time.Sleep(400 * time.Millisecond)
+
+	res, err := audit.Verify(dir)
+	if err != nil || !res.OK {
+		t.Fatalf("chain broken after a normal flow: %+v (%v)", res, err)
+	}
+	got, _ := audit.Query(dir, audit.Filter{Sandbox: sb.ID})
+	var order []string
+	for _, e := range got {
+		order = append(order, e.Type)
+	}
+	// create before file.put before exec before destroy.
+	idx := func(tp string) int {
+		for i, v := range order {
+			if v == tp {
+				return i
+			}
+		}
+		return -1
+	}
+	if !(idx(audit.TypeSandboxCreate) < idx(audit.TypeFilePut) &&
+		idx(audit.TypeFilePut) < idx(audit.TypeExec) &&
+		idx(audit.TypeExec) < idx(audit.TypeSandboxDestroy)) {
+		t.Fatalf("event order wrong: %v", order)
+	}
+
+	m := do(t, ts, "GET", "/metrics", "", "")
+	body, _ := io.ReadAll(m.Body)
+	m.Body.Close()
+	if !bytes.Contains(body, []byte("moat_audit_events_total")) {
+		t.Fatal("/metrics missing moat_audit_events_total")
+	}
+}
+
+func TestAuditFailClosedOnUnwritableDir(t *testing.T) {
+	dir := t.TempDir()
+	ts, token := startServerWithAudit(t, dir)
+
+	// Make the audit dir and its current file read-only so the next append
+	// and fsync fail.
+	fs, _ := filepathGlob(dir)
+	for _, f := range fs {
+		_ = os.Chmod(f, 0o400)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Skip("cannot chmod in this environment")
+	}
+	defer func() {
+		os.Chmod(dir, 0o700)
+		for _, f := range fs {
+			os.Chmod(f, 0o600)
+		}
+	}()
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":60}`)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusCreated {
+		// This kernel and filesystem still honour a write through an
+		// already-open fd after chmod. The audit write cannot be forced to
+		// fail here. Remove the new sandbox and skip.
+		os.Chmod(dir, 0o700)
+		for _, f := range fs {
+			os.Chmod(f, 0o600)
+		}
+		var sb struct {
+			ID string `json:"id"`
+		}
+		json.Unmarshal(body, &sb)
+		if sb.ID != "" {
+			do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close()
+		}
+		t.Skip("audit write still succeeds after chmod on this filesystem")
+	}
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("create with unwritable audit = %d (%s), want 503", resp.StatusCode, body)
+	}
+	// No sandbox leaked.
+	list := do(t, ts, "GET", "/v1/sandboxes", token, "")
+	lb, _ := io.ReadAll(list.Body)
+	list.Body.Close()
+	if bytes.Contains(lb, []byte(`"id"`)) {
+		t.Fatalf("a sandbox leaked past a failed audit write: %s", lb)
+	}
+}
+
+func filepathGlob(dir string) ([]string, error) {
+	return filepath.Glob(filepath.Join(dir, "audit-*.jsonl"))
 }

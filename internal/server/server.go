@@ -264,6 +264,8 @@ func (s *Server) Shutdown(ctx context.Context) {
 	for _, sb := range s.reg.list() {
 		s.reg.remove(sb.ID)
 		s.reg.release(sb.TokenID)
+		// Drain the async writer first so earlier events sort before destroy.
+		s.audit.Flush()
 		s.recordDestroy(ctx, sb, "shutdown")
 		s.asyncDestroy(sb)
 	}
@@ -568,6 +570,8 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	s.reg.remove(sb.ID)
 	s.reg.release(sb.TokenID)
 	s.m.sandboxesActive.WithLabelValues(sb.Template).Dec()
+	// Drain the async writer first so exec and file events sort before destroy.
+	s.audit.Flush()
 	s.recordDestroy(r.Context(), sb, "deleted")
 	s.asyncDestroy(sb)
 	w.WriteHeader(http.StatusNoContent)
@@ -1008,6 +1012,8 @@ func (s *Server) janitor() {
 					s.reg.remove(sb.ID)
 					s.reg.release(sb.TokenID)
 					s.m.sandboxesActive.WithLabelValues(sb.Template).Dec()
+					// Drain the async writer first so earlier events sort before destroy.
+					s.audit.Flush()
 					s.recordDestroy(context.Background(), sb, "ttl")
 					s.asyncDestroy(sb)
 				}
