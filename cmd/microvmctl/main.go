@@ -1,9 +1,9 @@
 // Command microvmctl is the Phase 1 control CLI for microvm_controller.
 //
-//	microvmctl demo    boot a microVM, round-trip a vsock message, tear it down
+//	microvmctl demo    start a microVM, send a vsock message and read the reply, then stop the VM
 //
-// This is the Phase 1 exit criterion: one command boots a (optionally jailed)
-// microVM and proves host<->guest communication over vsock.
+// This is the Phase 1 exit test. One command starts a microVM. The command then
+// confirms host-to-guest communication over vsock. The -jail flag is optional.
 package main
 
 import (
@@ -48,26 +48,26 @@ usage:
 
 demo flags:
   -id string       machine id (default: demo-<pid>)
-  -kernel string   override vmlinux path
-  -rootfs string   override rootfs.ext4 path
+  -kernel string   use this vmlinux path instead of the default
+  -rootfs string   use this rootfs.ext4 path instead of the default
   -vcpus int       guest vCPUs (default 1)
   -mem int         guest memory MiB (default 256)
   -msg string      message to echo through the guest (default "ping")
   -jail            run Firecracker under the jailer (needs root)
-  -keep            leave the VM running after the demo
+  -keep            keep the VM running after the demo
 `)
 }
 
 func runDemo(args []string) int {
 	fs := flag.NewFlagSet("demo", flag.ExitOnError)
 	id := fs.String("id", fmt.Sprintf("demo-%d", os.Getpid()), "machine id")
-	kernel := fs.String("kernel", "", "override vmlinux path")
-	rootfs := fs.String("rootfs", "", "override rootfs.ext4 path")
+	kernel := fs.String("kernel", "", "use this vmlinux path instead of the default")
+	rootfs := fs.String("rootfs", "", "use this rootfs.ext4 path instead of the default")
 	vcpus := fs.Int64("vcpus", 1, "guest vCPUs")
 	mem := fs.Int64("mem", 256, "guest memory MiB")
 	msg := fs.String("msg", "ping", "message to echo through the guest")
 	jail := fs.Bool("jail", false, "run under jailer (needs root)")
-	keep := fs.Bool("keep", false, "leave the VM running after the demo")
+	keep := fs.Bool("keep", false, "keep the VM running after the demo")
 	_ = fs.Parse(args)
 
 	log := logrus.New()
@@ -88,7 +88,7 @@ func runDemo(args []string) int {
 	m.MemMiB = *mem
 	m.Jail = *jail
 	if *jail && os.Geteuid() != 0 {
-		log.Warn("-jail set but not running as root; jailer will likely fail")
+		log.Warn("-jail is set but the process is not root. The jailer will probably fail.")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -97,24 +97,24 @@ func runDemo(args []string) int {
 	log.WithFields(logrus.Fields{
 		"id": m.ID, "kernel": m.KernelImagePath, "rootfs": m.RootFSPath,
 		"vcpus": m.VCPUs, "mem_mib": m.MemMiB, "jail": m.Jail,
-	}).Info("booting microVM")
+	}).Info("starting microVM")
 
 	t0 := time.Now()
 	inst, err := vm.Boot(ctx, m, log)
 	if err != nil {
-		log.WithError(err).Error("boot failed")
+		log.WithError(err).Error("start failed")
 		return 1
 	}
-	log.WithField("elapsed", time.Since(t0).Round(time.Millisecond)).Info("microVM booted")
+	log.WithField("elapsed", time.Since(t0).Round(time.Millisecond)).Info("microVM started")
 
 	rc := 0
 	if err := echoRoundTrip(ctx, m, *msg, log); err != nil {
-		log.WithError(err).Error("vsock round-trip failed")
+		log.WithError(err).Error("vsock echo failed")
 		rc = 1
 	}
 
 	if *keep {
-		log.Info("-keep set; leaving VM running. Ctrl-C to exit (VM keeps running).")
+		log.Info("-keep is set. The VM stays running. Press Ctrl-C to exit. The VM keeps running after exit.")
 		<-ctx.Done()
 	}
 
@@ -128,11 +128,13 @@ func runDemo(args []string) int {
 	return rc
 }
 
+// echoRoundTrip waits for the guest agent, sends msg over vsock, and checks that
+// the guest sends the same text back.
 func echoRoundTrip(ctx context.Context, m config.Machine, msg string, log *logrus.Logger) error {
 	readyCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	if err := vsockconn.WaitReady(readyCtx, m.VsockUDSPath(), config.VsockPort); err != nil {
-		return fmt.Errorf("guest agent never came up: %w", err)
+		return fmt.Errorf("guest agent did not start: %w", err)
 	}
 	log.WithField("port", config.VsockPort).Info("guest vsock agent is ready")
 

@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Fetch a prebuilt uncompressed Linux kernel (vmlinux) for Firecracker from the
-# public Firecracker CI S3 bucket. These kernels use the upstream Firecracker
-# guest config: CONFIG_VIRTIO_VSOCKETS=y, virtio-blk, virtio-mmio, ext4, and
-# devtmpfs auto-mount - everything Phase 1 needs.
+# Download an uncompressed Linux kernel (vmlinux) for Firecracker. The source is
+# the public Firecracker CI S3 bucket. These kernels use the standard Firecracker
+# guest config. That config sets CONFIG_VIRTIO_VSOCKETS=y and includes
+# virtio-blk, virtio-mmio, ext4, and devtmpfs auto-mount. Phase 1 needs all of
+# these.
 #
 # usage: build/fetch-kernel.sh [OUT_PATH]
 #   OUT_PATH  where to write the kernel (default: build/artifacts/vmlinux)
 #
 # env:
-#   KERNEL_VERSION   version prefix to match, e.g. "6.1" (default: 6.1)
-#   CI_SNAPSHOT      pin a CI dir, e.g. "20260826-761f88fbb951-0"
-#                    (default: newest under firecracker-ci/)
+#   KERNEL_VERSION   version prefix to match, for example "6.1" (default: 6.1)
+#   CI_SNAPSHOT      use this CI dir, for example "20260826-761f88fbb951-0"
+#                    (default: the newest dir under firecracker-ci/)
 set -euo pipefail
 
 OUT="${1:-build/artifacts/vmlinux}"
@@ -24,7 +25,8 @@ if [[ -s "$OUT" ]]; then
   exit 0
 fi
 
-# The CI bucket is laid out as firecracker-ci/<YYYYMMDD-<sha>-0>/<arch>/vmlinux-<ver>
+# The CI bucket uses this key layout:
+#   firecracker-ci/<YYYYMMDD-<sha>-0>/<arch>/vmlinux-<ver>
 snapshot="${CI_SNAPSHOT:-}"
 if [[ -z "$snapshot" ]]; then
   echo "resolving newest Firecracker CI snapshot..."
@@ -45,7 +47,7 @@ key="$(curl -fsSL "${BUCKET}?list-type=2&prefix=${prefix}" \
   | tail -1 || true)"
 
 if [[ -z "$key" ]]; then
-  echo "  no vmlinux-${KERNEL_VERSION}.x; falling back to newest available"
+  echo "  no vmlinux-${KERNEL_VERSION}.x found. Using the newest version instead."
   key="$(curl -fsSL "${BUCKET}?list-type=2&prefix=${prefix}" \
     | grep -oE "${prefix}[0-9]+\.[0-9]+\.[0-9]+" \
     | sort -V -u | tail -1)"
@@ -58,5 +60,5 @@ curl -fSL --progress-bar -o "${OUT}.tmp" "$url"
 mv "${OUT}.tmp" "$OUT"
 echo "wrote $OUT ($(du -h "$OUT" | cut -f1))  [${key##*/}]"
 
-# Stash the config next to it for reference (best effort).
+# Also download the matching config file for reference. Ignore errors.
 curl -fsSL -o "${OUT}.config" "${url}.config" 2>/dev/null || true

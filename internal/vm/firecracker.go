@@ -1,5 +1,6 @@
-// Package vm is the Firecracker driver: a thin wrapper over firecracker-go-sdk
-// that boots and stops a single microVM described by a config.Machine.
+// Package vm is the Firecracker driver. It is a small wrapper over
+// firecracker-go-sdk. It starts and stops one microVM that a config.Machine
+// describes.
 package vm
 
 import (
@@ -17,15 +18,15 @@ import (
 	"github.com/M30W-M1X/microvm_controller/internal/config"
 )
 
-// Instance is a running (or stopped) microVM.
+// Instance is a microVM. The microVM can be running or stopped.
 type Instance struct {
 	Machine config.Machine
 	machine *firecracker.Machine
 	log     *logrus.Logger
 }
 
-// Boot starts a Firecracker microVM for m and returns once the guest kernel has
-// been handed control. The caller is responsible for calling Stop.
+// Boot starts a Firecracker microVM for m. It returns after the guest kernel
+// starts. The caller must call Stop.
 func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance, error) {
 	if err := m.Validate(); err != nil {
 		return nil, err
@@ -85,7 +86,8 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 			Stderr:         os.Stderr,
 		}
 	} else {
-		// Unprivileged path: run the firecracker binary directly, no chroot.
+		// Unprivileged path. Run the firecracker binary directly, with no
+		// chroot.
 		cmd := firecracker.VMCommandBuilder{}.
 			WithBin(fcBin).
 			WithSocketPath(cfg.SocketPath).
@@ -106,8 +108,8 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 	return &Instance{Machine: m, machine: machine, log: log}, nil
 }
 
-// Stop asks the guest to shut down, then tears down the VMM. It is safe to call
-// more than once.
+// Stop requests a guest shutdown, then stops the VMM. You can call Stop more
+// than once.
 func (in *Instance) Stop(ctx context.Context) error {
 	if in == nil || in.machine == nil {
 		return nil
@@ -115,8 +117,8 @@ func (in *Instance) Stop(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	// Best-effort graceful shutdown (CtrlAltDel over the API); fall back to
-	// killing the VMM.
+	// Try a clean shutdown first. This sends CtrlAltDel through the API. If it
+	// fails, StopVMM below ends the process.
 	_ = in.machine.Shutdown(shutdownCtx)
 
 	stopCtx, cancel2 := context.WithTimeout(ctx, 5*time.Second)
@@ -136,7 +138,8 @@ func (in *Instance) Stop(ctx context.Context) error {
 	return nil
 }
 
-// resolveBin returns explicit if set, else looks up name on PATH.
+// resolveBin returns the explicit path when the caller sets it. If not,
+// resolveBin finds name on PATH.
 func resolveBin(explicit, name string) (string, error) {
 	if explicit != "" {
 		if _, err := os.Stat(explicit); err != nil {

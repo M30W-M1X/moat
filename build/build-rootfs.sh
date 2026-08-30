@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Build a minimal raw ext4 root filesystem for the microVM, containing just a
-# base userland plus our guest agent installed as PID 1 (/sbin/guest-agent).
+# Build a small raw ext4 root filesystem for the microVM. It holds a base
+# userland and the guest agent. The guest agent is installed at
+# /sbin/guest-agent and runs as PID 1.
 #
-# Runs fully unprivileged: `podman export` streams the container tarball and
-# `mkfs.ext4 -d` populates the image from a directory with no loop mount and no
-# root. This is the Phase 1 stand-in for the real Dockerfile-based template
-# pipeline described in CLAUDE.md.
+# This script needs no root. `podman export` writes the container tarball.
+# `mkfs.ext4 -d` fills the image from a directory. There is no loop mount. This
+# is the Phase 1 substitute for the Dockerfile-based template pipeline in
+# CLAUDE.md.
 #
 # usage: build/build-rootfs.sh [OUT_PATH] [AGENT_BIN]
 #   OUT_PATH   image path            (default: build/artifacts/rootfs.ext4)
 #   AGENT_BIN  static guest agent    (default: bin/guest-agent)
 #
 # env:
-#   BASE_IMAGE    OCI base           (default: docker.io/library/alpine:3.20)
+#   BASE_IMAGE    OCI base image     (default: docker.io/library/alpine:3.20)
 #   ROOTFS_SIZE   ext4 size          (default: 128M)
 set -euo pipefail
 
@@ -23,7 +24,7 @@ ROOTFS_SIZE="${ROOTFS_SIZE:-128M}"
 
 command -v podman   >/dev/null || { echo "ERROR: podman not found" >&2; exit 1; }
 command -v mkfs.ext4 >/dev/null || { echo "ERROR: mkfs.ext4 (e2fsprogs) not found" >&2; exit 1; }
-[[ -x "$AGENT" ]] || { echo "ERROR: agent binary not found/executable: $AGENT (run: make agent)" >&2; exit 1; }
+[[ -x "$AGENT" ]] || { echo "ERROR: agent binary is missing or not executable: $AGENT (run: make agent)" >&2; exit 1; }
 
 mkdir -p "$(dirname "$OUT")"
 work="$(mktemp -d)"
@@ -41,9 +42,11 @@ podman rm -f "$cid" >/dev/null
 
 echo "installing guest agent as /sbin/guest-agent ..."
 install -Dm0755 "$AGENT" "$root/sbin/guest-agent"
-# Firecracker CI kernels auto-mount devtmpfs, but make sure the dirs exist.
+# The Firecracker CI kernels mount devtmpfs on their own. Still, create the
+# mount-point directories.
 mkdir -p "$root/proc" "$root/sys" "$root/dev" "$root/tmp" "$root/run"
-# Handy for interactive debugging (`microvmctl demo -keep` + serial console).
+# This helps manual debugging with `microvmctl demo -keep` and the serial
+# console.
 printf 'root:x:0:0:root:/root:/bin/sh\n' > "$root/etc/passwd" 2>/dev/null || true
 
 echo "building ext4 ($ROOTFS_SIZE) ..."

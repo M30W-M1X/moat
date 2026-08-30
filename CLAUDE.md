@@ -24,11 +24,38 @@ Greenfield as of 2026-08-29.
 - Obsidian watches ClaudeVault live; it sometimes drops 0-byte stray notes at the vault
   root from new wikilinks — clean those up.
 
+**Log every gotcha**
+
+When a footgun costs real debugging time — a wrong kernel arg, an SDK surprise, an
+upstream layout change, an environment limit — add it to
+`~/Documents/ClaudeVault/projects/microvm-controller/Gotchas.md` **before moving on**.
+One entry per gotcha, numbered `G-N`, in this shape:
+
+- **Symptom:** the exact error text or observable behaviour
+- **Cause:** the underlying reason, once known
+- **Fix:** the concrete change, with the file it lives in
+- **Applies to:** which phases / hosts
+
+Also mirror a one-line pointer into an agentcairn `remember` note, and reference the
+`G-N` id from the code comment or the [[Build Log]] entry that came out of it.
+
+## Code style
+
+All code comments and all log / error strings follow **ASD-STE100** (Simplified
+Technical English). Run `/asd-ste100` when writing or reviewing them. Enforce the
+structural rules: active voice, one instruction per sentence, ≤ 20 words for
+instructions and ≤ 25 for descriptions, no semicolons, no phrasal verbs
+("start" not "spin up", "remove" not "take off"), simple tenses, no nominalisation.
+Keep one verb for one action across the codebase (this code uses "start" / "stop"
+for VM lifecycle, never "boot" / "tear down").
+
 ## Canonical docs
 
 - `~/Documents/ClaudeVault/projects/microvm-controller/MicroVM Controller.md` — map of content
 - `~/Documents/ClaudeVault/projects/microvm-controller/Implementation Plan.md` — phased plan, target architecture, engineering decisions
 - `~/Documents/ClaudeVault/projects/microvm-controller/Design Decisions.md` — ADR-style log `DD-01`..`DD-12` (each with alternatives rejected)
+- `~/Documents/ClaudeVault/projects/microvm-controller/Build Log.md` — what got built per phase
+- `~/Documents/ClaudeVault/projects/microvm-controller/Gotchas.md` — footguns, `G-N`, symptom → cause → fix
 - `docs/implementation-plan.html` (this repo) — rendered plan; published artifact:
   https://claude.ai/code/artifact/9ae3fa52-4ebd-4290-b665-8e14dfc9dd84
 
@@ -53,9 +80,13 @@ Greenfield as of 2026-08-29.
 - **GPU:** out of scope for Firecracker (no VFIO). If needed later, a parallel gVisor /
   Cloud Hypervisor backend — keep the VM-driver interface abstract.
 
-**Roadmap:** P1 minimal jailed microVM + vsock echo · P2 exec + file I/O guest agent ·
+**Roadmap:** P1 minimal microVM + vsock echo ✅ · P2 exec + file I/O guest agent ·
 P3 netns/TAP/nftables + cgroups · P4 snapshot/UFFD + warm pool + orphan reaper ·
 P5 public gRPC/REST gateway + Prometheus metrics + egress guardrail proxy.
+
+**Status:** P1 done (branch `phase-1-minimal-microvm`) — `microvmctl demo` starts a
+Firecracker microVM, the static guest agent runs as PID 1, and a host↔guest vsock echo
+round-trips. The jailer path (`-jail`) is coded but not yet exercised (needs root).
 
 ## Tooling notes
 

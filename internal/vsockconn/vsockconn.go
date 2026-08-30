@@ -1,9 +1,13 @@
-// Package vsockconn dials a guest vsock listener from the host through
-// Firecracker's vsock multiplexing Unix socket.
+// Package vsockconn connects to a guest vsock listener from the host. It goes
+// through the Firecracker vsock multiplex Unix socket.
 //
-// Protocol (host -> guest), per Firecracker's vsock docs: connect to the
-// host-side UDS, send "CONNECT <port>\n", read the "OK <assigned_port>\n"
-// reply, then the connection is a raw byte stream to the guest listener.
+// Protocol from host to guest, from the Firecracker vsock documentation:
+//
+//  1. Connect to the host-side Unix socket.
+//  2. Send "CONNECT <port>\n".
+//  3. Read the "OK <assigned_port>\n" reply.
+//
+// After step 3 the connection is a raw byte stream to the guest listener.
 package vsockconn
 
 import (
@@ -15,8 +19,8 @@ import (
 	"time"
 )
 
-// Dial opens a stream to the guest process listening on vsock port.
-// udsPath is config.Machine.VsockUDSPath().
+// Dial opens a byte stream to the guest process that listens on the given vsock
+// port. udsPath is the value from config.Machine.VsockUDSPath.
 func Dial(ctx context.Context, udsPath string, port uint32) (net.Conn, error) {
 	d := net.Dialer{}
 	conn, err := d.DialContext(ctx, "unix", udsPath)
@@ -44,13 +48,14 @@ func Dial(ctx context.Context, udsPath string, port uint32) (net.Conn, error) {
 		return nil, fmt.Errorf("guest refused vsock connect on port %d: %q", port, strings.TrimSpace(line))
 	}
 
-	// Clear the deadline; the caller manages timeouts from here.
+	// Clear the deadline. The caller controls timeouts after this point.
 	_ = conn.SetDeadline(time.Time{})
 	return &bufferedConn{Conn: conn, r: br}, nil
 }
 
-// WaitReady dials the guest port repeatedly until it answers or the context is
-// done. Used right after boot while the guest agent is still coming up.
+// WaitReady connects to the guest port again and again until the guest answers
+// or the context ends. Use it just after start, while the guest agent still
+// starts.
 func WaitReady(ctx context.Context, udsPath string, port uint32) error {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -72,7 +77,8 @@ func WaitReady(ctx context.Context, udsPath string, port uint32) error {
 	}
 }
 
-// bufferedConn preserves bytes that bufio read past the CONNECT reply.
+// bufferedConn keeps the bytes that the bufio.Reader read after the CONNECT
+// reply.
 type bufferedConn struct {
 	net.Conn
 	r *bufio.Reader

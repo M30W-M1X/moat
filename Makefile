@@ -1,6 +1,6 @@
 # microvm_controller - Phase 1
 #
-# make demo    build everything, fetch a kernel, boot a microVM, prove vsock
+# make demo    build all parts, download a kernel, start a microVM, test vsock
 
 SHELL      := /bin/bash
 GO         ?= go
@@ -20,23 +20,23 @@ all: build agent
 build:
 	$(GO) build $(GOFLAGS) -o $(BIN)/microvmctl ./cmd/microvmctl
 
-## build the in-VM guest agent (fully static, runs as PID 1)
+## build the guest agent that runs inside the VM (static, runs as PID 1)
 agent:
 	CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags='-s -w' -o $(BIN)/guest-agent ./guest/agent
 
 images: kernel rootfs
 
-## download a prebuilt vmlinux with virtio-vsock from the Firecracker CI bucket
+## download a vmlinux with virtio-vsock from the Firecracker CI bucket
 kernel: $(KERNEL)
 $(KERNEL):
 	build/fetch-kernel.sh "$(KERNEL)"
 
-## build a minimal ext4 rootfs (Alpine + guest-agent) without root, via mkfs.ext4 -d
+## build a small ext4 rootfs (Alpine + guest-agent) without root, with mkfs.ext4 -d
 rootfs: $(ROOTFS)
 $(ROOTFS): agent build/build-rootfs.sh
 	build/build-rootfs.sh "$(ROOTFS)" "$(BIN)/guest-agent"
 
-## full Phase 1 exit check: boot + vsock round-trip
+## full Phase 1 exit test: start a VM and check the vsock echo
 demo: build agent images
 	$(BIN)/microvmctl demo
 
@@ -54,4 +54,4 @@ tidy:
 
 clean:
 	rm -rf $(BIN) run
-	@echo "kept $(ARTIFACTS) (run 'rm -rf $(ARTIFACTS)' to drop downloaded images)"
+	@echo "kept $(ARTIFACTS). Run 'rm -rf $(ARTIFACTS)' to delete the downloaded images."

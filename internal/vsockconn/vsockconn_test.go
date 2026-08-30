@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// fakeFirecrackerVsock stands in for Firecracker's host-side vsock mux socket:
-// it accepts a Unix connection, expects "CONNECT <port>\n", replies
-// "OK <port>\n", then echoes.
+// fakeFirecrackerVsock is a test double for the Firecracker host-side vsock
+// multiplex socket. It accepts a Unix connection. It expects "CONNECT <port>\n".
+// It replies "OK <port>\n". After that it sends every byte back.
 func fakeFirecrackerVsock(t *testing.T, wantPort string, accept bool) string {
 	t.Helper()
 	uds := filepath.Join(t.TempDir(), "vsock.sock")
@@ -44,7 +44,7 @@ func fakeFirecrackerVsock(t *testing.T, wantPort string, accept bool) string {
 					return
 				}
 				c.Write([]byte("OK " + wantPort + "\n"))
-				// echo the rest
+				// send every following byte back
 				buf := make([]byte, 512)
 				for {
 					n, err := br.Read(buf)

@@ -1,9 +1,9 @@
-// Package config holds the small set of paths and tunables the Phase 1
-// controller needs to boot a single Firecracker microVM.
+// Package config holds the paths and values that the Phase 1 controller needs to
+// start one Firecracker microVM.
 //
-// Phase 1 scope: one command boots a microVM and round-trips a vsock message.
-// Networking, snapshots, warm pools, and the northbound API come in later phases
-// (see CLAUDE.md).
+// Phase 1 scope: one command starts a microVM. The command then sends a vsock
+// message and reads the reply. Later phases add networking, snapshots, warm
+// pools, and the northbound API. See CLAUDE.md.
 package config
 
 import (
@@ -12,60 +12,66 @@ import (
 	"path/filepath"
 )
 
-// VsockPort is the AF_VSOCK port the guest agent listens on and the host dials
-// through the Firecracker vsock multiplexing socket.
+// VsockPort is the AF_VSOCK port. The guest agent listens on this port. The host
+// connects to this port through the Firecracker vsock multiplex socket.
 const VsockPort uint32 = 5252
 
-// GuestCID is the context ID assigned to the guest end of the vsock device.
-// Host is always CID 2; 3 is the conventional first guest.
+// GuestCID is the context ID of the guest end of the vsock device. The host is
+// always CID 2. CID 3 is the standard value for the first guest.
 const GuestCID uint32 = 3
 
-// Machine describes a single microVM to boot.
+// Machine describes one microVM to start.
 type Machine struct {
-	// ID is a short, filesystem-safe identifier. It names the runtime dir and,
-	// under jailer, the chroot.
+	// ID is a short identifier that is safe to use in a file name. It names the
+	// runtime directory. Under the jailer it also names the chroot.
 	ID string
 
-	// KernelImagePath is an uncompressed vmlinux ELF.
+	// KernelImagePath is an uncompressed vmlinux ELF file.
 	KernelImagePath string
-	// RootFSPath is a raw ext4 image used as the root block device.
+	// RootFSPath is a raw ext4 image. Firecracker attaches it as the root block
+	// device.
 	RootFSPath string
 	// KernelArgs is the guest kernel command line.
 	KernelArgs string
 
-	// VCPUs and MemMiB size the guest.
+	// VCPUs and MemMiB set the guest size.
 	VCPUs  int64
 	MemMiB int64
 
-	// RunDir holds per-VM runtime state (API socket, vsock mux socket, logs).
+	// RunDir holds the runtime state for this VM: the API socket, the vsock
+	// multiplex socket, and the log file.
 	RunDir string
 
-	// Jail runs Firecracker under the jailer (chroot + seccomp + cgroups +
-	// dropped privileges). Requires root; leave false for unprivileged local
-	// bring-up.
+	// Jail starts Firecracker under the jailer. The jailer applies a chroot,
+	// seccomp filters, cgroups, and dropped privileges. The jailer needs root.
+	// Leave this false for an unprivileged local test.
 	Jail bool
-	// JailerUID/GID are the unprivileged ids Firecracker drops to under jailer.
+	// JailerUID and JailerGID are the unprivileged IDs that Firecracker changes
+	// to under the jailer.
 	JailerUID int
 	JailerGID int
 
-	// FirecrackerBin and JailerBin locate the binaries; empty means "resolve
-	// from PATH".
+	// FirecrackerBin and JailerBin give the paths to the binaries. An empty
+	// string means "find the binary on PATH".
 	FirecrackerBin string
 	JailerBin      string
 }
 
-// DefaultKernelArgs is a minimal console setup with our guest agent as PID 1.
-// firecracker-go-sdk injects "root=/dev/vda", "rw"/"ro" (from the root drive's
-// IsReadOnly), and "pci=off" itself, so we do not repeat them here.
+// DefaultKernelArgs is a minimal console setup. It runs the guest agent as
+// PID 1.
 //
-// Do NOT add "noapic": Firecracker's virtio-mmio devices need the IO-APIC for
-// interrupt delivery, and disabling it makes the root block device unusable.
+// firecracker-go-sdk adds "root=/dev/vda", "rw" or "ro" (from the root drive's
+// IsReadOnly field), and "pci=off" on its own. Do not repeat those values here.
+//
+// Do not add "noapic". The Firecracker virtio-mmio devices need the IO-APIC for
+// interrupt delivery. Without the IO-APIC the root block device does not work.
 const DefaultKernelArgs = "console=ttyS0 reboot=k panic=1 " +
 	"i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd " +
 	"init=/sbin/guest-agent"
 
-// NewMachine fills a Machine with Phase 1 defaults, resolving image paths
-// against the repo's build/artifacts directory when not given absolute.
+// NewMachine returns a Machine that has the Phase 1 default values. It resolves
+// the image paths against the build/artifacts directory in the repo when the
+// caller does not set absolute paths.
 func NewMachine(id string) (Machine, error) {
 	if id == "" {
 		return Machine{}, fmt.Errorf("machine id must not be empty")
@@ -91,23 +97,28 @@ func NewMachine(id string) (Machine, error) {
 	}, nil
 }
 
-// APISocketPath is where the Firecracker REST API listens for this machine.
+// APISocketPath returns the path where the Firecracker REST API listens for this
+// machine.
 func (m Machine) APISocketPath() string {
 	return filepath.Join(m.RunDir, "firecracker.socket")
 }
 
-// VsockUDSPath is the host-side Unix socket Firecracker uses to multiplex vsock
-// connections. Host->guest: dial this and write "CONNECT <port>\n".
+// VsockUDSPath returns the host-side Unix socket that Firecracker uses to
+// multiplex vsock connections.
+//
+// To reach the guest from the host: connect to this socket. Then write
+// "CONNECT <port>\n".
 func (m Machine) VsockUDSPath() string {
 	return filepath.Join(m.RunDir, "vsock.sock")
 }
 
-// LogPath is the Firecracker log file for this machine.
+// LogPath returns the Firecracker log file for this machine.
 func (m Machine) LogPath() string {
 	return filepath.Join(m.RunDir, "firecracker.log")
 }
 
-// Validate checks that the images exist and required fields are set.
+// Validate makes sure that the images exist and that the required fields are
+// set.
 func (m Machine) Validate() error {
 	if m.ID == "" {
 		return fmt.Errorf("id is empty")
@@ -132,8 +143,8 @@ func (m Machine) Validate() error {
 	return nil
 }
 
-// repoRoot walks up from the executable and the working directory looking for a
-// go.mod, so the demo works from anywhere in the tree.
+// repoRoot searches upward from the working directory and from the executable
+// for a go.mod file. This lets the demo run from any directory in the tree.
 func repoRoot() (string, error) {
 	candidates := []string{}
 	if wd, err := os.Getwd(); err == nil {

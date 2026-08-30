@@ -2,7 +2,7 @@
 /bin/
 /dist/
 
-# Downloaded / generated VM images (large, reproducible via build/ scripts)
+# Downloaded and generated VM images. Large. The build/ scripts recreate them.
 /build/artifacts/
 *.ext4
 *.img

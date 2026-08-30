@@ -1,12 +1,13 @@
-// Command guest-agent is the in-VM agent. In Phase 1 it runs as PID 1
-// (init=/sbin/guest-agent) and provides a vsock echo service so the host
-// controller can prove end-to-end boot + host<->guest communication.
+// Command guest-agent is the agent that runs inside the VM. In Phase 1 it runs
+// as PID 1 (init=/sbin/guest-agent). It runs a vsock echo service. The echo
+// service lets the host controller confirm two things: the VM starts, and the
+// host and guest can communicate.
 //
-// Later phases grow this into the real agent: process exec with PTY and
-// streamed stdout/stderr, chunked file read/write, health heartbeat, and
-// post-snapshot-resume clock resync (see CLAUDE.md).
+// Later phases add the full agent function: process execution with a PTY and
+// streamed stdout and stderr, file read and write in chunks, a health
+// heartbeat, and a clock resync after a snapshot resume. See CLAUDE.md.
 //
-// Build static: CGO_ENABLED=0 go build -o guest-agent ./guest/agent
+// Build a static binary: CGO_ENABLED=0 go build -o guest-agent ./guest/agent
 package main
 
 import (
@@ -31,12 +32,13 @@ func main() {
 
 	if isPID1 {
 		mountPseudoFS()
-		// As PID 1 we must never return: a dead init panics the kernel.
+		// As PID 1 this process must never return. The kernel panics if init
+		// exits.
 		defer haltForever("main returned")
 		go reapChildren()
 	}
 
-	// Bind to VMADDR_CID_ANY; the guest only ever has one relevant CID.
+	// Bind to VMADDR_CID_ANY. The guest has only one relevant CID.
 	l, err := vsock.Listen(vsockPort, nil)
 	if err != nil {
 		logf("FATAL: listen vsock port %d: %v", vsockPort, err)
@@ -58,8 +60,8 @@ func main() {
 	}
 }
 
-// handle echoes each line back verbatim. The line "INFO" gets a one-line status
-// reply instead, which is handy for manual poking.
+// handle sends each input line back without change. For the line "INFO" it sends
+// a one-line status reply instead. The "INFO" line helps with manual tests.
 func handle(conn io.ReadWriteCloser) {
 	defer conn.Close()
 	sc := bufio.NewScanner(conn)
@@ -81,18 +83,19 @@ func mountPseudoFS() {
 	for _, x := range []m{
 		{"proc", "/proc", "proc"},
 		{"sysfs", "/sys", "sysfs"},
-		{"devtmpfs", "/dev", "devtmpfs"}, // usually already mounted (CONFIG_DEVTMPFS_MOUNT)
+		{"devtmpfs", "/dev", "devtmpfs"}, // the kernel usually mounts this already (CONFIG_DEVTMPFS_MOUNT)
 	} {
 		_ = os.MkdirAll(x.dst, 0o755)
 		err := syscall.Mount(x.src, x.dst, x.fs, 0, "")
 		if err == nil || err == syscall.EBUSY {
-			continue // EBUSY => the kernel already mounted it
+			continue // EBUSY means the kernel mounted it already
 		}
 		logf("warn: mount %s on %s: %v", x.fs, x.dst, err)
 	}
 }
 
-// reapChildren keeps PID 1 from accumulating zombies.
+// reapChildren removes zombie child processes so they do not collect under
+// PID 1.
 func reapChildren() {
 	ch := make(chan os.Signal, 8)
 	signal.Notify(ch, syscall.SIGCHLD)
@@ -119,7 +122,7 @@ func uptime() string {
 
 func haltForever(reason string) {
 	logf("halting: %s", reason)
-	// Block this goroutine forever; the host kills the VMM to end the VM.
+	// Block this goroutine forever. The host stops the VMM to end the VM.
 	select {}
 }
 
