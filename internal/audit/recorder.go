@@ -245,7 +245,10 @@ func (r *Recorder) Flush() {
 	done := make(chan struct{})
 	select {
 	case r.queue <- Event{Type: "_flush", flush: done}:
-		<-done
+		select {
+		case <-done:
+		case <-r.closed:
+		}
 	case <-r.closed:
 	}
 }
