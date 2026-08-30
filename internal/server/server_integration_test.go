@@ -18,6 +18,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/M30W-M1X/moat/internal/audit"
 	"github.com/M30W-M1X/moat/internal/config"
 	"github.com/M30W-M1X/moat/internal/server"
 )
@@ -57,6 +58,50 @@ func startServer(t *testing.T, poolSize, tokenMax int) (*httptest.Server, string
 		sc, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		srv.Shutdown(sc)
+	})
+	return ts, "secret1"
+}
+
+func startServerWithAudit(t *testing.T, auditDir string) (*httptest.Server, string) {
+	t.Helper()
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		t.Skip("no /dev/kvm")
+	}
+	m, err := config.NewMachine("srvtest-tpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Validate(); err != nil {
+		t.Skipf("images missing: %v", err)
+	}
+	log := logrus.New()
+	log.SetLevel(logrus.WarnLevel)
+	rec, err := audit.New(audit.Config{Dir: auditDir, Metrics: audit.NopMetrics(), Log: log,
+		FsyncBatch: 4, FsyncInterval: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := server.New(server.Config{
+		Templates: []server.Template{{Name: "default", Kernel: m.KernelImagePath, RootFS: m.RootFSPath, VCPUs: 1, MemMiB: 256}},
+		Tokens:    map[string]string{"t1": "secret1", "secops": "s3"},
+		Policies:  map[string]server.TokenPolicy{"secops": {AuditRead: "all"}},
+		TokenMax:  4,
+		Audit:     rec,
+		Version:   "test",
+	}, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(func() {
+		ts.Close()
+		sc, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		srv.Shutdown(sc)
+		_ = rec.Close()
 	})
 	return ts, "secret1"
 }
@@ -189,6 +234,54 @@ func TestQuota(t *testing.T) {
 	json.NewDecoder(r3.Body).Decode(&sb)
 	r3.Body.Close()
 	do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close()
+}
+
+func TestAuditLifecycle(t *testing.T) {
+	dir := t.TempDir()
+	ts, token := startServerWithAudit(t, dir)
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":120}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create = %d", resp.StatusCode)
+	}
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+
+	del := do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "")
+	del.Body.Close()
+	if del.StatusCode != 204 {
+		t.Fatalf("delete = %d", del.StatusCode)
+	}
+
+	// Give the async writer a beat, then read the files directly.
+	time.Sleep(200 * time.Millisecond)
+	evs, err := audit.Query(dir, audit.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, e := range evs {
+		seen[e.Type] = true
+		if e.Type == audit.TypeSandboxCreate && e.Sandbox != sb.ID {
+			t.Fatalf("create event has sandbox %q, want %q", e.Sandbox, sb.ID)
+		}
+	}
+	for _, want := range []string{audit.TypeDaemonStart, audit.TypeSandboxCreate, audit.TypeSandboxDestroy} {
+		if !seen[want] {
+			t.Fatalf("missing %s in audit log; saw %v", want, seen)
+		}
+	}
+	// The destroy event carries a reason.
+	for _, e := range evs {
+		if e.Type == audit.TypeSandboxDestroy {
+			if r, _ := e.Attrs["reason"].(string); r != "deleted" {
+				t.Fatalf("destroy reason = %q, want deleted", r)
+			}
+		}
+	}
 }
 
 func TestSecretFirewall(t *testing.T) {

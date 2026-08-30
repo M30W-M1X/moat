@@ -118,6 +118,7 @@ type Server struct {
 	audit   *audit.Recorder
 
 	baseCtx     context.Context // sandbox lifetime; set by Start
+	startedAt   time.Time       // set by Start, for the daemon.stop uptime
 	janitorStop chan struct{}
 	destroyWG   sync.WaitGroup // in-flight sb.destroy() goroutines
 }
@@ -223,6 +224,19 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		s.pool = p
 	}
+	s.startedAt = time.Now()
+	_ = s.audit.RecordSync(ctx, audit.Event{
+		Type: audit.TypeDaemonStart,
+		Attrs: map[string]any{
+			"version":       s.cfg.Version,
+			"templates":     templateNames(s.cfg.Templates),
+			"pool_size":     s.cfg.PoolSize,
+			"net_pool":      s.cfg.NetPool,
+			"secret_scan":   !s.cfg.SecretScanOff,
+			"egress":        s.cfg.EgressPort > 0,
+			"config_sha256": s.cfg.ConfigSHA256,
+		},
+	})
 	go s.janitor()
 	return nil
 }
@@ -231,6 +245,15 @@ func (s *Server) Start(ctx context.Context) error {
 // teardowns so no Firecracker process outlives the process, up to the ctx
 // deadline.
 func (s *Server) Shutdown(ctx context.Context) {
+	sctx, scancel := context.WithTimeout(context.Background(), 2*time.Second)
+	up := int64(0)
+	if !s.startedAt.IsZero() {
+		up = int64(time.Since(s.startedAt) / time.Second)
+	}
+	_ = s.audit.RecordSync(sctx, audit.Event{Type: audit.TypeDaemonStop,
+		Attrs: map[string]any{"reason": "signal", "uptime_s": up}})
+	scancel()
+
 	select {
 	case <-s.janitorStop: // already shut down
 	default:
@@ -239,6 +262,7 @@ func (s *Server) Shutdown(ctx context.Context) {
 	for _, sb := range s.reg.list() {
 		s.reg.remove(sb.ID)
 		s.reg.release(sb.TokenID)
+		s.recordDestroy(ctx, sb, "shutdown")
 		s.asyncDestroy(sb)
 	}
 	done := make(chan struct{})
@@ -437,6 +461,14 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.reg.reserve(tid, tokenMax); err != nil {
 		s.m.quotaRejects.Inc()
+		scope := "token"
+		if strings.Contains(err.Error(), "global") {
+			scope = "global"
+		}
+		_ = s.audit.RecordSync(r.Context(), audit.Event{
+			Type: audit.TypeQuotaReject, Token: tid,
+			Attrs: map[string]any{"scope": scope, "template": name},
+		})
 		writeErr(w, http.StatusTooManyRequests, err.Error())
 		return
 	}
@@ -471,6 +503,25 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	s.m.sandboxesActive.WithLabelValues(name).Inc()
 	s.m.sandboxesCreated.WithLabelValues(name, source).Inc()
 	s.m.createSeconds.WithLabelValues(source).Observe(time.Since(start).Seconds())
+
+	if err := s.audit.RecordSync(r.Context(), audit.Event{
+		Type: audit.TypeSandboxCreate, Sandbox: sb.ID, Token: tid,
+		Attrs: map[string]any{
+			"template": name, "source": source, "networked": req.Networked,
+			"ttl_s": int64(ttl / time.Second), "guest_ip": sb.GuestIP,
+		},
+	}); err != nil {
+		// The audit record is a hard requirement for a boundary event.
+		// Roll the sandbox back when the write fails.
+		s.reg.remove(sb.ID)
+		s.reg.release(tid)
+		s.m.sandboxesActive.WithLabelValues(name).Dec()
+		// counter cannot be decremented, a failed create is rare
+		s.asyncDestroy(sb)
+		writeErr(w, http.StatusServiceUnavailable, "audit write failed: "+err.Error())
+		return
+	}
+
 	writeJSON(w, http.StatusCreated, view(sb))
 }
 
@@ -501,6 +552,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	s.reg.remove(sb.ID)
 	s.reg.release(sb.TokenID)
 	s.m.sandboxesActive.WithLabelValues(sb.Template).Dec()
+	s.recordDestroy(r.Context(), sb, "deleted")
 	s.asyncDestroy(sb)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -761,6 +813,7 @@ func (s *Server) janitor() {
 					s.reg.remove(sb.ID)
 					s.reg.release(sb.TokenID)
 					s.m.sandboxesActive.WithLabelValues(sb.Template).Dec()
+					s.recordDestroy(context.Background(), sb, "ttl")
 					s.asyncDestroy(sb)
 				}
 			}
@@ -769,6 +822,25 @@ func (s *Server) janitor() {
 }
 
 // --- helpers ---
+
+// templateNames returns the name of each template, for the daemon.start event.
+func templateNames(ts []Template) []string {
+	out := make([]string, len(ts))
+	for i, t := range ts {
+		out[i] = t.Name
+	}
+	return out
+}
+
+// recordDestroy emits the sandbox.destroy audit event. reason is one of
+// deleted, ttl, idle, shutdown, orphan.
+func (s *Server) recordDestroy(ctx context.Context, sb *Sandbox, reason string) {
+	life := int64(time.Since(sb.CreatedAt) / time.Second)
+	_ = s.audit.RecordSync(ctx, audit.Event{
+		Type: audit.TypeSandboxDestroy, Sandbox: sb.ID, Token: sb.TokenID,
+		Attrs: map[string]any{"reason": reason, "lifetime_s": life},
+	})
+}
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
