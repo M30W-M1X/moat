@@ -123,6 +123,24 @@ func TestVerifyDetectsTamper(t *testing.T) {
 		}
 	})
 
+	t.Run("corrupt complete middle line", func(t *testing.T) {
+		dir := t.TempDir()
+		writeSome(t, dir, 10)
+		edit(dir, func(l []string) []string {
+			l[4] = "{ this is not valid json"
+			return l
+		})
+		res, err := Verify(dir)
+		// A complete but unparseable line before the end is corruption, not a
+		// crash tail. scanFile returns an error and Verify propagates it.
+		if err == nil {
+			t.Fatal("verify passed a log with a corrupt middle line (no error)")
+		}
+		if res.OK {
+			t.Fatal("verify reported OK for a corrupt middle line")
+		}
+	})
+
 	t.Run("truncated last line", func(t *testing.T) {
 		dir := t.TempDir()
 		writeSome(t, dir, 10)
