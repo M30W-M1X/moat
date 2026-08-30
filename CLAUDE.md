@@ -183,9 +183,19 @@ pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus me
   Metric `moat_secret_findings_total{rule,action}`. Config file:
   `allow_secret_override` per token. Tests: `internal/secretscan`,
   `internal/server` (`TestScreen*`, `TestSecretFirewall`).
-- Still todo for M1 (self-serve): `moat-mcp` MCP server + `SKILL.md`, the
-  `curl | sh` installer + templates registry. Still todo for P5: a gRPC
-  surface alongside REST.
+- Agent integration (M1): `internal/moatapi` is a Go client for the moatd HTTP
+  API (`Create`/`List`/`Destroy`/`Exec` [NDJSON assembled] /`PutFile`
+  [`*SecretBlockedError` on 409] /`GetFile`). `cmd/moat-mcp` is a Model Context
+  Protocol server (`github.com/modelcontextprotocol/go-sdk`, stdio) exposing
+  `moat_create` / `moat_list` / `moat_destroy` / `moat_exec` / `moat_write_file`
+  / `moat_read_file`; a secret block comes back as an `IsError` result that
+  tells the agent to ask the user, not override. `MOAT_ADDR` + `MOAT_TOKEN` (or
+  `-addr`/`-token`). `SKILL.md` (repo root) is the agent playbook. `moat
+  doctor` (`cmd/moat/doctor.go`) preflights KVM, firecracker/jailer, cgroup v2
+  delegation, nft, userfaultfd, images. Tests: `cmd/moat-mcp` (in-memory
+  transport + fake moatd).
+- Still todo for M1 (self-serve): the `curl | sh` installer + templates
+  registry. Still todo for P5: a gRPC surface alongside REST.
 - Pool members stay **running**, not paused: on this Firecracker build the guest
   vsock stops answering after `PauseVM`/`ResumeVM` on the same process (Gotcha
   `G-12`). Snapshot restore (a fresh process) is unaffected.

@@ -36,6 +36,11 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   into a sandbox is scanned with the vendored Gitleaks rule set. A hit returns
   `409` (or is redacted with `-secret-redact`); a permitted token may override.
   `moat run` scans `-put` / `-env` client-side. `internal/secretscan`.
+- **Agent integration ✅** — `moat-mcp` is an MCP server (stdio) giving an agent
+  `moat_create` / `moat_write_file` / `moat_exec` / `moat_read_file` /
+  `moat_list` / `moat_destroy`. Point it at a running `moatd` with `MOAT_ADDR` +
+  `MOAT_TOKEN`. `SKILL.md` is the agent playbook. `moat doctor` preflights the
+  host. HTTP client: `internal/moatapi`.
 
 ### Phase 1: smoke test
 
@@ -175,7 +180,10 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/pool` | warm pool of running microVMs; one-shot lease + TTL/idle reaping + refill |
 | `cmd/moat-uffd` | userfaultfd page-fault handler for `restore -uffd` |
 | `cmd/moatd` | northbound HTTP/JSON API daemon |
-| `internal/server` | API handlers, sandbox registry, auth, quotas, TTL janitor, metrics |
+| `cmd/moat-mcp` | MCP server for AI agents (stdio) |
+| `internal/server` | API handlers, sandbox registry, auth, quotas, TTL janitor, metrics, secret firewall |
+| `internal/moatapi` | Go client for the moatd HTTP API |
+| `internal/secretscan` | ingress credential scanner (vendored Gitleaks rules) |
 | `internal/egress` | CONNECT/HTTP forward proxy with a domain allow/deny policy |
 | `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
 | `build/` | `fetch-kernel.sh`, `build-rootfs.sh` |

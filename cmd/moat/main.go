@@ -40,6 +40,8 @@ func main() {
 		os.Exit(runBench(os.Args[2:]))
 	case "reap":
 		os.Exit(runReap(os.Args[2:]))
+	case "doctor":
+		os.Exit(runDoctor(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -60,6 +62,7 @@ usage:
   moat restore  [flags] [-snapshot DIR] [-- CMD ...]
   moat bench    [-pool N] [-iters M] [-reap]
   moat reap     [-run-dir DIR]
+  moat doctor   check that this host can run Moat
 
 demo flags:
   -id string       machine id (default: demo-<pid>)

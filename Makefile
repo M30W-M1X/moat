@@ -15,9 +15,9 @@ export ROOTFS_SIZE
 KERNEL  := $(ARTIFACTS)/vmlinux
 ROOTFS  := $(ARTIFACTS)/rootfs.ext4
 
-.PHONY: all build daemon uffd agent images kernel rootfs proto tools demo run serve clean fmt vet test test-integration tidy
+.PHONY: all build daemon mcp uffd agent images kernel rootfs proto tools demo run serve clean fmt vet test test-integration tidy
 
-all: build daemon uffd agent
+all: build daemon mcp uffd agent
 
 ## build the host control CLI
 build:
@@ -26,6 +26,10 @@ build:
 ## build the northbound API daemon
 daemon:
 	$(GO) build $(GOFLAGS) -o $(BIN)/moatd ./cmd/moatd
+
+## build the MCP server for AI agents
+mcp:
+	$(GO) build $(GOFLAGS) -o $(BIN)/moat-mcp ./cmd/moat-mcp
 
 ## build the userfaultfd page-fault handler (used by `restore -uffd`)
 uffd:
