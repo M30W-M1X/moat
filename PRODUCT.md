@@ -20,13 +20,17 @@ their own machine** — Claude Code, Cursor, Codex, Aider and similar — and ar
 uneasy about what a generated command, a package install, or a prompt injection
 could do to their host.
 
-Secondary: engineers building agent products who need a per-task sandbox on
-their own infrastructure; security-conscious organizations that cannot send
-code or data to a third-party sandbox.
+All three of these audiences are real and matter:
 
-*(Inferred ordering: I asked which audience leads and the question was declined,
-so this reflects the approved product plan — solo devs are the widest funnel and
-the other two install the same way.)*
+1. **Solo developers** running an AI coding agent on their own machine — the
+   lead story and the widest funnel.
+2. **Engineers building agent products** who need a per-task sandbox on their
+   own infrastructure.
+3. **Security-conscious organizations** that cannot send code or data to a
+   third-party sandbox.
+
+They all install the same way, so the marketing leads with the solo-dev case
+and lets the other two follow from it.
 
 ## Product Purpose
 
@@ -69,8 +73,11 @@ agent, with a credential firewall on the way in. Specifically:
 - The agent drives it through `moat-mcp`: `moat_create` → `moat_write_file` →
   `moat_exec` → `moat_read_file` → `moat_destroy`. `SKILL.md` is the agent
   playbook. There is also a plain HTTP API and the CLI.
-- Install: `curl -fsSL https://moat.sh/install | sh` (or the `install.sh` asset
-  from a GitHub release). Config in `moatd.json` — templates, bearer tokens,
+- Install: the `install.sh` asset from a GitHub release, run against the
+  release tarball. `https://moat.sh/install` is a planned alias — `moat.sh` is
+  not registered — so use the GitHub URLs (`github.com/M30W-M1X/moat`) as the
+  canonical source until a domain exists. Config in `moatd.json` — templates,
+  bearer tokens,
   per-token policy (allowed templates, concurrency, TTL, deny-network,
   secret-override).
 - Networked sandboxes get a per-VM network namespace and nftables rules that
@@ -139,7 +146,10 @@ bytes crossing *into* a sandbox; the *egress proxy* filters traffic going *out*.
 
 - **Working software.** Engine phases P1–P5 and milestone M1 are built and on
   `main`. Tagged release `v0.1.0` at `github.com/M30W-M1X/moat/releases/tag/v0.1.0`
-  (binaries + images + `checksums.txt` + `install.sh`).
+  (binaries + images + `checksums.txt` + `install.sh`). **The repo is private
+  right now**, so those URLs are not publicly reachable and the `curl | sh`
+  install does not yet work for anyone outside the account. Making the repo
+  public is a pending decision.
 - **Benchmarks**, measured on one developer machine (Fedora, KVM, x86_64) — not
   guarantees: cold boot to a ready in-VM agent ~24 ms; snapshot restore ~25 ms;
   warm-pool acquire p50 ~1 ms; a 256 MiB guest's diff memory image ~2 MiB on
@@ -149,9 +159,6 @@ bytes crossing *into* a sandbox; the *egress proxy* filters traffic going *out*.
   the fuller plan in `~/Documents/ClaudeVault/projects/microvm-controller/`.
 - **No** customers, testimonials, case studies, press, adoption numbers,
   pricing, or a hosted offering exist yet. Future work must not invent any.
-- `moat.sh` is referenced as the canonical install host; whether the domain is
-  registered is unconfirmed (the question was declined). Until confirmed, treat
-  GitHub release URLs as the fallback of record.
 
 ## Product Principles
 
@@ -170,9 +177,8 @@ bytes crossing *into* a sandbox; the *egress proxy* filters traffic going *out*.
 
 ## Accessibility & Inclusion
 
-No formal standard has been set. *(Inferred: the accessibility question was
-declined.)* The marketing site already carries the good-practice basics —
-visible keyboard focus, `prefers-reduced-motion`, theme-aware contrast in light
-and dark, semantic structure, horizontal-scroll containment — and future web
-work should keep them. Adopt a named target (e.g. WCAG 2.2 AA) only when the
-user sets one.
+No accessibility requirement. The user has explicitly deprioritised it — do not
+spend effort on a compliance target or re-raise it. The good-practice basics
+already in the marketing page (visible focus, `prefers-reduced-motion`,
+theme-aware contrast, semantic structure) can stay, but nothing here is a
+constraint on future work.
