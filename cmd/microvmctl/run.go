@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -12,7 +13,49 @@ import (
 
 	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
 	"github.com/M30W-M1X/microvm_controller/internal/config"
+	"github.com/M30W-M1X/microvm_controller/internal/netconf"
 )
+
+// setupNet allocates an address block, builds the network for m, and applies
+// it. The returned function tears the network down.
+func setupNet(m *config.Machine, pool, uplink string, log *logrus.Logger) (func(), error) {
+	if err := netconf.Preflight(); err != nil {
+		return nil, err
+	}
+	prefix, err := netip.ParsePrefix(pool)
+	if err != nil {
+		return nil, fmt.Errorf("bad -net-pool %q: %w", pool, err)
+	}
+	alloc, err := netconf.NewAllocator(prefix)
+	if err != nil {
+		return nil, err
+	}
+	lease, err := alloc.Allocate(m.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	switch uplink {
+	case "auto":
+		if uplink, err = netconf.DefaultUplink(); err != nil {
+			log.WithError(err).Warn("no default uplink; guest gets an isolated network with no internet")
+			uplink = "none"
+		}
+	case "none", "":
+		uplink = "none"
+	}
+
+	plan := netconf.BuildPlan(lease, uplink)
+	if err := netconf.Apply(plan); err != nil {
+		return nil, err
+	}
+	m.Net = &plan
+	log.WithFields(logrus.Fields{
+		"netns": plan.NetnsName, "guest_ip": plan.GuestIP, "gateway": plan.TapGW, "uplink": uplink,
+	}).Info("network ready")
+
+	return func() { netconf.Destroy(plan) }, nil
+}
 
 // repeatedFlag collects a flag that the caller may pass more than once.
 type repeatedFlag []string
@@ -39,6 +82,9 @@ func runRun(args []string) int {
 	dir := fs.String("dir", "", "working directory in the guest")
 	tty := fs.Bool("tty", false, "run the command attached to a PTY")
 	timeout := fs.Duration("timeout", 0, "kill the command after this long; 0 means no limit")
+	netOn := fs.Bool("net", false, "give the guest an isolated network (needs root or unshare -rmn)")
+	uplink := fs.String("uplink", "auto", "parent interface to NAT onto: auto, none, or a name")
+	netPool := fs.String("net-pool", netconf.DefaultPool, "address pool for guest networks")
 	var env, puts, gets repeatedFlag
 	fs.Var(&env, "env", "set an environment variable KEY=VALUE (repeatable)")
 	fs.Var(&puts, "put", "copy LOCAL:REMOTE into the guest before the command (repeatable)")
@@ -58,6 +104,15 @@ func runRun(args []string) int {
 		return 1
 	}
 	mf.apply(&m, log)
+
+	if *netOn {
+		cleanup, err := setupNet(&m, *netPool, *uplink, log)
+		if err != nil {
+			log.WithError(err).Error("network setup")
+			return 1
+		}
+		defer cleanup()
+	}
 
 	ctx, stop := signalContext()
 	defer stop()

@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/M30W-M1X/microvm_controller/internal/netconf"
 )
 
 // VsockPort is the AF_VSOCK port. The guest agent listens on this port. The host
@@ -55,6 +57,11 @@ type Machine struct {
 	// string means "find the binary on PATH".
 	FirecrackerBin string
 	JailerBin      string
+
+	// Net, when set, runs this VM in a dedicated network namespace with a TAP
+	// and nftables isolation rules. Build it with netconf.BuildPlan and apply
+	// it with netconf.Apply before Boot. Networking needs privilege.
+	Net *netconf.Plan
 }
 
 // DefaultKernelArgs is a minimal console setup. It runs the guest agent as

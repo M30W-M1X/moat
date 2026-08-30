@@ -71,6 +71,12 @@ test:
 test-integration: images
 	$(GO) test -tags integration -v ./internal/agentclient
 
+## build a real per-VM network and check isolation from inside the guest.
+## Runs unprivileged inside a user+net namespace.
+test-net: build agent images
+	unshare --user --map-root-user --mount --net --fork -- \
+		$(GO) test -tags netint -v ./internal/netconf
+
 tidy:
 	$(GO) mod tidy
 

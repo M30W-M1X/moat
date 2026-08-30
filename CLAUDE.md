@@ -81,10 +81,10 @@ for VM lifecycle, never "boot" / "tear down").
   Cloud Hypervisor backend — keep the VM-driver interface abstract.
 
 **Roadmap:** P1 minimal microVM + vsock echo ✅ · P2 exec + file I/O guest agent ✅ ·
-P3 netns/TAP/nftables + cgroups · P4 snapshot/UFFD + warm pool + orphan reaper ·
-P5 public gRPC/REST gateway + Prometheus metrics + egress guardrail proxy.
+P3 netns/TAP/nftables ✅ + cgroups (todo) · P4 snapshot/UFFD + warm pool + orphan
+reaper · P5 public gRPC/REST gateway + Prometheus metrics + egress guardrail proxy.
 
-**Status:** P1 + P2 done.
+**Status:** P1 + P2 done; P3 networking done, P3 cgroups/rate-limiters todo.
 - P1: `microvmctl demo` starts a microVM; the static agent runs as PID 1; host↔guest
   vsock works.
 - P2: `agent.v1.Agent` gRPC service over vsock (`proto/agent/v1/agent.proto`,
@@ -92,7 +92,15 @@ P5 public gRPC/REST gateway + Prometheus metrics + egress guardrail proxy.
   kill group), `WriteFile` / `ReadFile` (sha256, byte-exact), `Info`. Host client:
   `internal/agentclient`. CLI: `microvmctl run [flags] -- CMD` with `-env`, `-tty`,
   `-timeout`, `-put`, `-get`. Integration test: `make test-integration`.
-- The jailer path (`-jail`) is coded but not yet exercised (needs root).
+- P3 networking (`internal/netconf`): per-VM network namespace + veth + TAP + `/30`
+  IPAM + `nftables` isolation rules (drop → host / other VMs / `169.254.0.0/16`,
+  masquerade for egress). `microvmctl run -net [-uplink auto|none|<iface>]
+  [-net-pool CIDR]`. `Apply`/`Destroy` need CAP_NET_ADMIN + CAP_SYS_ADMIN — real
+  root, or `unshare --user --map-root-user --mount --net`. Test: `make test-net`
+  (runs rootless in a user+net namespace).
+- Still todo for P3: cgroups v2 CPU/memory limits, Firecracker per-VM rate limiters.
+- The jailer path (`-jail`) and real-uplink NAT (`-uplink <iface>`) are coded but
+  need a real root host to exercise.
 
 ### Protobuf
 

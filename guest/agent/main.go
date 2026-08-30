@@ -31,6 +31,7 @@ func main() {
 	if isPID1 {
 		mountPseudoFS()
 		ensureBaseEnv()
+		ensureResolvConf()
 		// As PID 1 this process must never return. The kernel panics if init
 		// exits.
 		defer haltForever("main returned")
@@ -73,6 +74,16 @@ func ensureBaseEnv() {
 	if os.Getenv("TERM") == "" {
 		_ = os.Setenv("TERM", "xterm")
 	}
+}
+
+// ensureResolvConf writes a resolver list when the rootfs has none. The kernel
+// ip= parameter sets the guest address but does not create this file.
+func ensureResolvConf() {
+	if _, err := os.Stat("/etc/resolv.conf"); err == nil {
+		return
+	}
+	_ = os.MkdirAll("/etc", 0o755)
+	_ = os.WriteFile("/etc/resolv.conf", []byte("nameserver 1.1.1.1\nnameserver 8.8.8.8\n"), 0o644)
 }
 
 func mountPseudoFS() {

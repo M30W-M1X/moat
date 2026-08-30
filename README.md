@@ -11,6 +11,9 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
 - **Phase 1 ✅** — one command starts a microVM and reaches an in-VM agent over vsock.
 - **Phase 2 ✅** — the agent runs processes and moves files, over a gRPC service
   (`agent.v1.Agent`) on vsock.
+- **Phase 3 (networking) ✅** — each microVM gets its own network namespace, TAP, and
+  `nftables` rules: internet egress, but no path to the host, the other microVMs, or
+  `169.254.169.254`. (`cgroups` + rate limiters still to come.)
 
 ### Phase 1: smoke test
 
@@ -40,6 +43,11 @@ $ microvmctl run -put ./data.csv:/tmp/data.csv -get /tmp/out.json:./out.json \
 
 $ microvmctl run -tty -- top -b -n1        # PTY-attached
 $ microvmctl run -timeout 5s -- sleep 60   # exit 124 on timeout
+
+# isolated networking (needs root, or run the whole command under
+#   unshare --user --map-root-user --mount --net --fork -- ... )
+$ microvmctl run -net -- sh -c 'wget -qO- https://example.com | head -1'
+$ microvmctl run -net -- ping -c1 169.254.169.254   # blocked by the isolation rules
 ```
 
 The host CLI (`cmd/microvmctl`) uses `firecracker-go-sdk` to start Firecracker with a
@@ -79,6 +87,9 @@ make test-integration # boots real microVMs, drives the agent (needs /dev/kvm)
 -timeout DUR       kill the command after DUR (e.g. 30s); 0 means no limit
 -put LOCAL:REMOTE  copy a file into the guest before the command (repeatable)
 -get REMOTE:LOCAL  copy a file out of the guest after the command (repeatable)
+-net               give the guest an isolated network (needs privilege)
+-uplink NAME       parent interface to NAT onto: auto (default), none, or a name
+-net-pool CIDR     address pool for guest networks (default 10.62.0.0/16)
 ```
 
 Exit code: the guest process exit code; `124` on timeout; `128+signal` on a signal.
@@ -94,6 +105,7 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/vm` | Firecracker driver (firecracker-go-sdk wrapper) |
 | `internal/vsockconn` | host→guest vsock dial through Firecracker's mux socket |
 | `internal/agentclient` | host-side gRPC client for the in-VM agent |
+| `internal/netconf` | per-VM netns + veth + TAP + `/30` IPAM + nftables isolation rules |
 | `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
 | `build/` | `fetch-kernel.sh`, `build-rootfs.sh` |
 | `run/`, `build/artifacts/` | per-VM runtime state and VM images (gitignored) |

@@ -40,10 +40,10 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 		return nil, err
 	}
 
+	kernelArgs := m.KernelArgs
 	cfg := firecracker.Config{
 		SocketPath:      m.APISocketPath(),
 		KernelImagePath: m.KernelImagePath,
-		KernelArgs:      m.KernelArgs,
 		LogPath:         m.LogPath(),
 		LogLevel:        "Info",
 		Drives: []models.Drive{{
@@ -63,6 +63,21 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 			Smt:        firecracker.Bool(false),
 		},
 	}
+
+	// Networking: run the VMM in the prepared namespace and give the guest a
+	// static address through the kernel command line. netconf.Apply must have
+	// built the namespace, TAP, and rules already.
+	if m.Net != nil {
+		cfg.NetNS = m.Net.NetnsPath
+		cfg.NetworkInterfaces = []firecracker.NetworkInterface{{
+			StaticConfiguration: &firecracker.StaticNetworkConfiguration{
+				MacAddress:  m.Net.GuestMAC,
+				HostDevName: m.Net.TapName,
+			},
+		}}
+		kernelArgs += " " + m.Net.KernelIPArg()
+	}
+	cfg.KernelArgs = kernelArgs
 
 	opts := []firecracker.Opt{
 		firecracker.WithLogger(logrus.NewEntry(log)),
