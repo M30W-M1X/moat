@@ -111,6 +111,17 @@ func Destroy(p Plan) {
 	deleteNetns(p.NetnsPath)
 }
 
+// DestroyByID tears down the network for a VM id without a Plan. The orphan
+// reaper uses it: every name and path derives from the id.
+func DestroyByID(vmID string) {
+	short := shortHash(vmID)
+	_ = run("nft", "delete", "table", "inet", "mvm-up-"+short)
+	_ = run("ip", "link", "del", "mvh-"+short)
+	for _, dir := range []string{NetnsDir, filepath.Join(os.TempDir(), "microvm-netns")} {
+		deleteNetns(filepath.Join(dir, "mvm-"+short))
+	}
+}
+
 func (p Plan) parentTable() string { return "mvm-up-" + shortHash(p.VMID) }
 
 // createNetns makes a new network namespace and bind-mounts it at path so it

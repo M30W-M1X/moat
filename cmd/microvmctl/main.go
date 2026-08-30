@@ -1,14 +1,15 @@
 // Command microvmctl is the control CLI for microvm_controller.
 //
-//	microvmctl demo               start a microVM and check the agent over vsock
-//	microvmctl run [flags] -- CMD start a microVM, run CMD in it, stream output, stop the VM
-//
-// Phase 2 adds run: it proves process execution and file transfer through the
-// in-VM agent (agent.v1.Agent over vsock).
+//	microvmctl demo                  start a microVM and check the agent over vsock
+//	microvmctl run [flags] -- CMD    start a microVM, run CMD in it, stream output, stop
+//	microvmctl snapshot / restore    write and load a full VM snapshot
+//	microvmctl bench                 measure warm-pool acquire latency
+//	microvmctl reap                  remove microVMs left behind by a crash
 package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -31,6 +32,14 @@ func main() {
 		os.Exit(runDemo(os.Args[2:]))
 	case "run":
 		os.Exit(runRun(os.Args[2:]))
+	case "snapshot":
+		os.Exit(runSnapshot(os.Args[2:]))
+	case "restore":
+		os.Exit(runRestore(os.Args[2:]))
+	case "bench":
+		os.Exit(runBench(os.Args[2:]))
+	case "reap":
+		os.Exit(runReap(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -45,8 +54,12 @@ func usage() {
 	fmt.Fprint(os.Stderr, `microvmctl - Firecracker microVM control
 
 usage:
-  microvmctl demo [flags]
-  microvmctl run  [flags] -- CMD [ARG...]
+  microvmctl demo     [flags]
+  microvmctl run      [flags] -- CMD [ARG...]
+  microvmctl snapshot [flags] [-out DIR] [-exec 'CMD']
+  microvmctl restore  [flags] [-snapshot DIR] [-- CMD ...]
+  microvmctl bench    [-pool N] [-iters M] [-reap]
+  microvmctl reap     [-run-dir DIR]
 
 demo flags:
   -id string       machine id (default: demo-<pid>)
@@ -83,6 +96,20 @@ type machineFlags struct {
 	mem    *int64
 	jail   *bool
 	keep   *bool
+}
+
+// commonMachineFlags registers the machine flags shared by every subcommand on
+// fs and returns the bound values. idPrefix names the default machine id.
+func commonMachineFlags(fs *flag.FlagSet, idPrefix string) machineFlags {
+	return machineFlags{
+		id:     fs.String("id", fmt.Sprintf("%s-%d", idPrefix, os.Getpid()), "machine id"),
+		kernel: fs.String("kernel", "", "use this vmlinux path instead of the default"),
+		rootfs: fs.String("rootfs", "", "use this rootfs.ext4 path instead of the default"),
+		vcpus:  fs.Int64("vcpus", 1, "guest vCPUs"),
+		mem:    fs.Int64("mem", 256, "guest memory MiB"),
+		jail:   fs.Bool("jail", false, "run under jailer (needs root)"),
+		keep:   fs.Bool("keep", false, "keep the VM running after the command"),
+	}
 }
 
 func (mf machineFlags) apply(m *config.Machine, log *logrus.Logger) {

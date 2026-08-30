@@ -14,6 +14,9 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
 - **Phase 3 (networking) ✅** — each microVM gets its own network namespace, TAP, and
   `nftables` rules: internet egress, but no path to the host, the other microVMs, or
   `169.254.169.254`. (`cgroups` + rate limiters still to come.)
+- **Phase 4 ✅** — full snapshot/restore (`~25 ms` to a ready agent vs `~1.1 s` cold),
+  a warm pool of microVMs (`p50` acquire `~1 ms`), and an orphan reaper that cleans up
+  Firecracker processes a crash left behind. (UFFD memory backend still to come.)
 
 ### Phase 1: smoke test
 
@@ -48,6 +51,22 @@ $ microvmctl run -timeout 5s -- sleep 60   # exit 124 on timeout
 #   unshare --user --map-root-user --mount --net --fork -- ... )
 $ microvmctl run -net -- sh -c 'wget -qO- https://example.com | head -1'
 $ microvmctl run -net -- ping -c1 169.254.169.254   # blocked by the isolation rules
+```
+
+### Phase 4: snapshot, restore, warm pool
+
+```
+$ microvmctl snapshot -id tpl -exec 'apk add --no-cache python3'   # boot, prep, snapshot
+$ microvmctl restore  -id tpl -- python3 --version                 # ~25 ms to a ready agent
+... restored, agent ready   elapsed=24ms
+
+$ microvmctl bench -pool 4 -iters 25
+pool warm   elapsed=1.2s   size=4
+acquire over 25 cycles:  min 0.5ms  p50 1ms  p90 2ms  p99 2ms  max 2ms
+PASS: p50 acquire < 50ms
+
+$ microvmctl reap        # kill Firecracker processes a crash left behind
+reaped 1: [orphan1]
 ```
 
 The host CLI (`cmd/microvmctl`) uses `firecracker-go-sdk` to start Firecracker with a
@@ -106,11 +125,12 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/vsockconn` | host→guest vsock dial through Firecracker's mux socket |
 | `internal/agentclient` | host-side gRPC client for the in-VM agent |
 | `internal/netconf` | per-VM netns + veth + TAP + `/30` IPAM + nftables isolation rules |
+| `internal/pool` | warm pool of running microVMs; one-shot lease + background refill |
 | `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
 | `build/` | `fetch-kernel.sh`, `build-rootfs.sh` |
 | `run/`, `build/artifacts/` | per-VM runtime state and VM images (gitignored) |
 
 ## Not yet (see roadmap in `CLAUDE.md`)
 
-Networking + cgroups (P3), snapshot/restore + warm pool + orphan reaper (P4), the
-public northbound API + metrics (P5).
+cgroups + rate limiters (P3), the UFFD memory backend for restore (P4), the public
+northbound API + metrics (P5).

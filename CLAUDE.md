@@ -81,8 +81,9 @@ for VM lifecycle, never "boot" / "tear down").
   Cloud Hypervisor backend — keep the VM-driver interface abstract.
 
 **Roadmap:** P1 minimal microVM + vsock echo ✅ · P2 exec + file I/O guest agent ✅ ·
-P3 netns/TAP/nftables ✅ + cgroups (todo) · P4 snapshot/UFFD + warm pool + orphan
-reaper · P5 public gRPC/REST gateway + Prometheus metrics + egress guardrail proxy.
+P3 netns/TAP/nftables ✅ + cgroups (todo) · P4 snapshot + warm pool + orphan reaper
+✅ (UFFD todo) · P5 public gRPC/REST gateway + Prometheus metrics + egress guardrail
+proxy.
 
 **Status:** P1 + P2 done; P3 networking done, P3 cgroups/rate-limiters todo.
 - P1: `microvmctl demo` starts a microVM; the static agent runs as PID 1; host↔guest
@@ -99,6 +100,17 @@ reaper · P5 public gRPC/REST gateway + Prometheus metrics + egress guardrail pr
   root, or `unshare --user --map-root-user --mount --net`. Test: `make test-net`
   (runs rootless in a user+net namespace).
 - Still todo for P3: cgroups v2 CPU/memory limits, Firecracker per-VM rate limiters.
+- P4 (`internal/vm` snapshot + `internal/pool`): full snapshot/restore
+  (`microvmctl snapshot` / `restore`) — restore reaches a ready agent in ~25 ms vs
+  ~1.1 s cold. Warm pool of running microVMs (`internal/pool`, `microvmctl bench`)
+  — p50 acquire ~1 ms. Orphan reaper (`vm.Reconcile`, `microvmctl reap`) kills
+  Firecracker processes a crash left behind and cleans their run dirs + networks.
+  Tests: `make test-integration`.
+- Still todo for P4: the UFFD memory backend for restore (needs a raw
+  `snapshot/load` with `mem_backend` — the SDK model lacks it) and diff snapshots.
+- Pool members stay **running**, not paused: on this Firecracker build the guest
+  vsock stops answering after `PauseVM`/`ResumeVM` on the same process (Gotcha
+  `G-12`). Snapshot restore (a fresh process) is unaffected.
 - The jailer path (`-jail`) and real-uplink NAT (`-uplink <iface>`) are coded but
   need a real root host to exercise.
 

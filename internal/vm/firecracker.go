@@ -1,6 +1,6 @@
 // Package vm is the Firecracker driver. It is a small wrapper over
-// firecracker-go-sdk. It starts and stops one microVM that a config.Machine
-// describes.
+// firecracker-go-sdk. It starts, snapshots, restores, and stops one microVM
+// that a config.Machine describes.
 package vm
 
 import (
@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	firecracker "github.com/firecracker-microvm/firecracker-go-sdk"
@@ -18,55 +19,105 @@ import (
 	"github.com/M30W-M1X/microvm_controller/internal/config"
 )
 
-// Instance is a microVM. The microVM can be running or stopped.
+// Instance is a microVM. The microVM can be running, paused, or stopped.
 type Instance struct {
 	Machine config.Machine
 	machine *firecracker.Machine
 	log     *logrus.Logger
+	pid     int
 }
 
-// Boot starts a Firecracker microVM for m. It returns after the guest kernel
-// starts. The caller must call Stop.
+// PID returns the Firecracker process id, or 0 when it is not known.
+func (in *Instance) PID() int { return in.pid }
+
+// Boot starts a Firecracker microVM for m from a cold kernel and rootfs. It
+// returns after the guest kernel starts. The caller must call Stop.
 func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance, error) {
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create run dir: %w", err)
-	}
-
-	fcBin, err := resolveBin(m.FirecrackerBin, "firecracker")
+	cfg, fcBin, err := baseConfig(m)
 	if err != nil {
 		return nil, err
 	}
+	cfg.KernelImagePath = m.KernelImagePath
+	cfg.Drives = []models.Drive{{
+		DriveID:      firecracker.String("rootfs"),
+		PathOnHost:   firecracker.String(m.RootFSPath),
+		IsRootDevice: firecracker.Bool(true),
+		IsReadOnly:   firecracker.Bool(false),
+	}}
+	cfg.MachineCfg = models.MachineConfiguration{
+		VcpuCount:  firecracker.Int64(m.VCPUs),
+		MemSizeMib: firecracker.Int64(m.MemMiB),
+		Smt:        firecracker.Bool(false),
+	}
 
 	kernelArgs := m.KernelArgs
+	if m.Net != nil {
+		kernelArgs += " " + m.Net.KernelIPArg()
+	}
+	cfg.KernelArgs = kernelArgs
+
+	return startMachine(ctx, m, cfg, fcBin, log)
+}
+
+// startMachine applies the jailer or the unprivileged process runner, starts
+// the VMM, and records the pid. extra opts run after the built-in ones.
+
+// Restore starts a Firecracker microVM from a snapshot in snapDir (made by
+// CreateSnapshot) and resumes it. It uses the file memory backend. The restore
+// keeps the vsock socket path from the snapshot, so use the same machine id.
+func Restore(ctx context.Context, m config.Machine, snapDir string, log *logrus.Logger) (*Instance, error) {
+	snapPath := filepath.Join(snapDir, "snapshot.bin")
+	memPath := filepath.Join(snapDir, "mem.bin")
+	for _, p := range []string{snapPath, memPath} {
+		if _, err := os.Stat(p); err != nil {
+			return nil, fmt.Errorf("snapshot file %q: %w", p, err)
+		}
+	}
+	cfg, fcBin, err := baseConfig(m)
+	if err != nil {
+		return nil, err
+	}
+	// The snapshot already holds the vsock and network devices. Re-adding them
+	// fails: the SDK's load-snapshot handler tries `PUT /vsock` after the VM has
+	// already resumed. Keep only NetNS so the VMM process joins the namespace.
+	cfg.VsockDevices = nil
+	cfg.NetworkInterfaces = nil
+
+	// WithSnapshot also swaps the SDK handler chain to the load-snapshot path,
+	// which skips the cold-boot kernel and drive checks.
+	resume := firecracker.WithSnapshot(memPath, snapPath, func(sc *firecracker.SnapshotConfig) {
+		sc.ResumeVM = true
+	})
+	return startMachine(ctx, m, cfg, fcBin, log, resume)
+}
+
+// baseConfig fills the parts of the Firecracker config that boot and restore
+// share: the API socket, logging, the vsock device, and the network namespace.
+func baseConfig(m config.Machine) (firecracker.Config, string, error) {
+	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
+		return firecracker.Config{}, "", fmt.Errorf("create run dir: %w", err)
+	}
+	// Clear sockets left by a previous crashed run. A live VM's sockets are
+	// under a different run dir per id, and orphans are handled by Reconcile.
+	_ = os.Remove(m.APISocketPath())
+	_ = os.Remove(m.VsockUDSPath())
+	fcBin, err := resolveBin(m.FirecrackerBin, "firecracker")
+	if err != nil {
+		return firecracker.Config{}, "", err
+	}
 	cfg := firecracker.Config{
-		SocketPath:      m.APISocketPath(),
-		KernelImagePath: m.KernelImagePath,
-		LogPath:         m.LogPath(),
-		LogLevel:        "Info",
-		Drives: []models.Drive{{
-			DriveID:      firecracker.String("rootfs"),
-			PathOnHost:   firecracker.String(m.RootFSPath),
-			IsRootDevice: firecracker.Bool(true),
-			IsReadOnly:   firecracker.Bool(false),
-		}},
+		SocketPath: m.APISocketPath(),
+		LogPath:    m.LogPath(),
+		LogLevel:   "Info",
 		VsockDevices: []firecracker.VsockDevice{{
 			ID:   "vsock0",
 			Path: m.VsockUDSPath(),
 			CID:  config.GuestCID,
 		}},
-		MachineCfg: models.MachineConfiguration{
-			VcpuCount:  firecracker.Int64(m.VCPUs),
-			MemSizeMib: firecracker.Int64(m.MemMiB),
-			Smt:        firecracker.Bool(false),
-		},
 	}
-
-	// Networking: run the VMM in the prepared namespace and give the guest a
-	// static address through the kernel command line. netconf.Apply must have
-	// built the namespace, TAP, and rules already.
 	if m.Net != nil {
 		cfg.NetNS = m.Net.NetnsPath
 		cfg.NetworkInterfaces = []firecracker.NetworkInterface{{
@@ -75,13 +126,12 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 				HostDevName: m.Net.TapName,
 			},
 		}}
-		kernelArgs += " " + m.Net.KernelIPArg()
 	}
-	cfg.KernelArgs = kernelArgs
+	return cfg, fcBin, nil
+}
 
-	opts := []firecracker.Opt{
-		firecracker.WithLogger(logrus.NewEntry(log)),
-	}
+func startMachine(ctx context.Context, m config.Machine, cfg firecracker.Config, fcBin string, log *logrus.Logger, extra ...firecracker.Opt) (*Instance, error) {
+	opts := []firecracker.Opt{firecracker.WithLogger(logrus.NewEntry(log))}
 
 	if m.Jail {
 		jailerBin, err := resolveBin(m.JailerBin, "jailer")
@@ -101,8 +151,6 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 			Stderr:         os.Stderr,
 		}
 	} else {
-		// Unprivileged path. Run the firecracker binary directly, with no
-		// chroot.
 		cmd := firecracker.VMCommandBuilder{}.
 			WithBin(fcBin).
 			WithSocketPath(cfg.SocketPath).
@@ -111,16 +159,49 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 			Build(ctx)
 		opts = append(opts, firecracker.WithProcessRunner(cmd))
 	}
+	opts = append(opts, extra...)
 
 	machine, err := firecracker.NewMachine(ctx, cfg, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("new machine: %w", err)
 	}
 	if err := machine.Start(ctx); err != nil {
+		// Start can leave the VMM process running when a later configuration
+		// step fails. Kill it so the run directory is reusable.
+		_ = machine.StopVMM()
 		return nil, fmt.Errorf("start machine: %w", err)
 	}
 
-	return &Instance{Machine: m, machine: machine, log: log}, nil
+	in := &Instance{Machine: m, machine: machine, log: log}
+	if pid, err := machine.PID(); err == nil {
+		in.pid = pid
+		_ = os.WriteFile(m.PIDPath(), []byte(strconv.Itoa(pid)), 0o644)
+	}
+	return in, nil
+}
+
+// Pause freezes the guest vCPUs.
+func (in *Instance) Pause(ctx context.Context) error { return in.machine.PauseVM(ctx) }
+
+// Resume unfreezes the guest vCPUs.
+func (in *Instance) Resume(ctx context.Context) error { return in.machine.ResumeVM(ctx) }
+
+// CreateSnapshot pauses the guest and writes a full snapshot into snapDir as
+// snapshot.bin (device and CPU state) and mem.bin (guest memory). The guest
+// stays paused; the caller resumes it or stops it.
+func (in *Instance) CreateSnapshot(ctx context.Context, snapDir string) error {
+	if err := os.MkdirAll(snapDir, 0o755); err != nil {
+		return err
+	}
+	if err := in.machine.PauseVM(ctx); err != nil {
+		return fmt.Errorf("pause: %w", err)
+	}
+	snapPath := filepath.Join(snapDir, "snapshot.bin")
+	memPath := filepath.Join(snapDir, "mem.bin")
+	if err := in.machine.CreateSnapshot(ctx, memPath, snapPath); err != nil {
+		return fmt.Errorf("create snapshot: %w", err)
+	}
+	return nil
 }
 
 // Stop requests a guest shutdown, then stops the VMM. You can call Stop more
@@ -146,10 +227,12 @@ func (in *Instance) Stop(ctx context.Context) error {
 	case <-stopCtx.Done():
 	}
 
-	if err := in.machine.StopVMM(); err != nil {
+	err := in.machine.StopVMM()
+	_ = os.Remove(in.Machine.PIDPath())
+	in.machine = nil
+	if err != nil {
 		return fmt.Errorf("stop vmm: %w", err)
 	}
-	in.machine = nil
 	return nil
 }
 

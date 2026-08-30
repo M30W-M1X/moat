@@ -67,9 +67,11 @@ vet:
 test:
 	$(GO) test ./...
 
-## boot real microVMs and drive the agent (needs /dev/kvm and `make images`)
+## boot real microVMs: agent RPCs, snapshot/restore, warm pool, reaper
+## (needs /dev/kvm and `make images`)
 test-integration: images
-	$(GO) test -tags integration -v ./internal/agentclient
+	$(GO) test -tags integration -v -timeout 15m \
+		./internal/agentclient ./internal/vm ./internal/pool
 
 ## build a real per-VM network and check isolation from inside the guest.
 ## Runs unprivileged inside a user+net namespace.

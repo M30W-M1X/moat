@@ -124,6 +124,17 @@ func (m Machine) LogPath() string {
 	return filepath.Join(m.RunDir, "firecracker.log")
 }
 
+// PIDPath returns the file that holds the Firecracker process id while the VM
+// runs. The orphan reaper reads it.
+func (m Machine) PIDPath() string {
+	return filepath.Join(m.RunDir, "firecracker.pid")
+}
+
+// SnapshotDir returns the default directory for this machine's snapshot files.
+func (m Machine) SnapshotDir() string {
+	return filepath.Join(m.RunDir, "snap")
+}
+
 // Validate makes sure that the images exist and that the required fields are
 // set.
 func (m Machine) Validate() error {
@@ -148,6 +159,15 @@ func (m Machine) Validate() error {
 		return fmt.Errorf("mem must be >= 64 MiB")
 	}
 	return nil
+}
+
+// RunRoot returns the directory that holds every machine's run directory.
+func RunRoot() (string, error) {
+	root, err := repoRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "run"), nil
 }
 
 // repoRoot searches upward from the working directory and from the executable
