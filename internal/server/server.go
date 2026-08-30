@@ -319,6 +319,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sandboxes", s.auth(s.handleCreate))
 	mux.HandleFunc("GET /v1/sandboxes", s.auth(s.handleList))
 	mux.HandleFunc("GET /v1/sandboxes/{id}", s.auth(s.handleGet))
+	mux.HandleFunc("GET /v1/sandboxes/{id}/report", s.auth(s.handleReport))
 	mux.HandleFunc("DELETE /v1/sandboxes/{id}", s.auth(s.handleDelete))
 	mux.HandleFunc("POST /v1/sandboxes/{id}/exec", s.auth(s.handleExec))
 	mux.HandleFunc("PUT /v1/sandboxes/{id}/files/{path...}", s.auth(s.handlePutFile))
@@ -908,6 +909,35 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = enc.Encode(auditWire(e))
 	}
+}
+
+// handleReport returns the rollup for one sandbox. The owner or an "all"
+// token may read it. The report is built from the audit files, so it works
+// after the sandbox stops.
+func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
+	if !s.audit.Enabled() {
+		writeErr(w, http.StatusNotFound, "audit log is disabled on this server")
+		return
+	}
+	id := r.PathValue("id")
+	tid := tokenID(r)
+	if !s.cfg.Policies[tid].auditAll() {
+		owner, ok := s.audit.SandboxToken(id)
+		if !ok || owner != tid {
+			writeErr(w, http.StatusNotFound, "no such sandbox")
+			return
+		}
+	}
+	rep, err := s.audit.LiveReport(id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "build report: "+err.Error())
+		return
+	}
+	if rep.Sandbox == "" {
+		writeErr(w, http.StatusNotFound, "no such sandbox")
+		return
+	}
+	writeJSON(w, http.StatusOK, rep)
 }
 
 // auditVisible reports whether tid may see event e without the "all" scope.

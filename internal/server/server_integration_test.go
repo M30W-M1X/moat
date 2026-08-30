@@ -341,6 +341,64 @@ func TestAuditExecAndFiles(t *testing.T) {
 	}
 }
 
+func TestAuditReport(t *testing.T) {
+	dir := t.TempDir()
+	ts, ciToken := startServerWithAudit(t, dir)
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", ciToken, `{"ttl_seconds":120}`)
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+
+	put := do(t, ts, "PUT", "/v1/sandboxes/"+sb.ID+"/files/work/a.txt", ciToken, "hello")
+	put.Body.Close()
+	ex := do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", ciToken, `{"argv":["/bin/false"],"timeout_ms":3000}`)
+	io.Copy(io.Discard, ex.Body)
+	ex.Body.Close()
+	del := do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, ciToken, "")
+	del.Body.Close()
+	time.Sleep(300 * time.Millisecond)
+
+	// The report works after destroy for the owner.
+	rep := do(t, ts, "GET", "/v1/sandboxes/"+sb.ID+"/report", ciToken, "")
+	defer rep.Body.Close()
+	if rep.StatusCode != 200 {
+		t.Fatalf("report = %d", rep.StatusCode)
+	}
+	var r struct {
+		Sandbox string `json:"sandbox"`
+		Exec    struct {
+			N       int `json:"n"`
+			Nonzero int `json:"nonzero"`
+		} `json:"exec"`
+		Bytes struct {
+			In int64 `json:"in"`
+		} `json:"bytes"`
+		DestroyReason string `json:"destroy_reason"`
+	}
+	json.NewDecoder(rep.Body).Decode(&r)
+	// "hello" is 5 bytes. bytes.in arrives as a JSON number.
+	if r.Sandbox != sb.ID || r.Exec.N != 1 || r.Exec.Nonzero != 1 || r.Bytes.In != int64(len("hello")) || r.DestroyReason != "deleted" {
+		t.Fatalf("report body wrong: %+v", r)
+	}
+
+	// A bad token fails auth first.
+	bad := do(t, ts, "GET", "/v1/sandboxes/"+sb.ID+"/report", "wrongsecret", "")
+	bad.Body.Close()
+	if bad.StatusCode != 401 {
+		t.Fatalf("bad-token report = %d", bad.StatusCode)
+	}
+
+	// A valid non-owner without "all" gets 404.
+	stranger := do(t, ts, "GET", "/v1/sandboxes/"+sb.ID+"/report", "s4", "")
+	stranger.Body.Close()
+	if stranger.StatusCode != 404 {
+		t.Fatalf("stranger report = %d, want 404", stranger.StatusCode)
+	}
+}
+
 func TestAuditReadScoping(t *testing.T) {
 	dir := t.TempDir()
 	ts, ciToken := startServerWithAudit(t, dir) // "secret1" for t1/ci
