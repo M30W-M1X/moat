@@ -97,6 +97,19 @@ func TestNoopRecorder(t *testing.T) {
 	}
 }
 
+func TestCloseIsIdempotent(t *testing.T) {
+	r, _ := testRecorder(t)
+	if err := r.RecordSync(context.Background(), Event{Type: TypeDaemonStart}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("first Close returned %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("second Close returned %v", err)
+	}
+}
+
 func TestRecordSyncSurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, MaxFileMB: 8, MaxTotalMB: 64, MaxAge: time.Hour,

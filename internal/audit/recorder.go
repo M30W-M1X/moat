@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -168,6 +169,11 @@ func (r *Recorder) appendLocked(e *Event, sync bool) error {
 	}
 	if sync {
 		if err := r.f.Sync(); err != nil {
+			// The line is on disk but not durable. Roll back the in-memory
+			// state and remove the un-synced bytes so the chain does not fork.
+			r.seq--
+			_ = r.f.Truncate(r.curSize)
+			_, _ = r.f.Seek(r.curSize, io.SeekStart)
 			return fmt.Errorf("fsync audit log: %w", err)
 		}
 	}
@@ -210,7 +216,9 @@ func (r *Recorder) Close() error {
 	if err := r.f.Sync(); err != nil {
 		return err
 	}
-	return r.f.Close()
+	err := r.f.Close()
+	r.f = nil
+	return err
 }
 
 // writeLoop drains the async queue. Task 3 implements it.
