@@ -582,8 +582,8 @@ moat uninstall                    # binaries, images, unit, config &mdash; all o
   <section id="roadmap">
     <div class="wrap">
       <p class="eyebrow">Roadmap &amp; dev plan</p>
-      <h2>The engine is built. Two milestones make it a product.</h2>
-      <p class="lede">v0 &mdash; the isolation control plane &mdash; runs today. Milestone&nbsp;1 gets it into a stranger's hands in five minutes. Milestone&nbsp;2 makes it safe to run a team's whole agent fleet on.</p>
+      <h2>The engine and the self-serve product are built. Fleet is next.</h2>
+      <p class="lede">v0 &mdash; the isolation control plane &mdash; and Milestone&nbsp;1 &mdash; install it and point an agent at it in five minutes &mdash; both ship today. Milestone&nbsp;2 makes it safe to run a team's whole agent fleet on.</p>
 
       <div class="timeline">
         <div class="phase done reveal">
@@ -598,18 +598,18 @@ moat uninstall                    # binaries, images, unit, config &mdash; all o
           </ul>
         </div>
 
-        <div class="phase next reveal">
-          <div class="top"><span class="id">M1</span><h3>Self-serve v1.0 &mdash; anyone can install it</h3><span class="pill s-next">Next</span><span class="est">~6&ndash;8 wk</span></div>
+        <div class="phase done reveal">
+          <div class="top"><span class="id">M1</span><h3>Self-serve v1.0 &mdash; anyone can install it</h3><span class="pill s-done">Shipped</span></div>
           <p>Everything a solo developer or a small team needs to <span class="mono">curl | sh</span> and point an agent at Moat safely.</p>
           <ul>
-            <li><strong>Ingress secret firewall</strong> &mdash; scan every file, env var, and stdin crossing in (regex + entropy + known formats: AWS / GCP keys, GitHub / GitLab tokens, private keys, JWTs, <span class="mono">.env</span>). Block by default; an audited <span class="mono">allow_secret</span> override; optional redaction.</li>
-            <li><strong>Agent integration</strong> &mdash; the <span class="mono">moat-mcp</span> server (stdio + SSE), a <span class="mono">SKILL.md</span> playbook, and a <span class="mono">moat doctor</span> preflight.</li>
-            <li><strong>One-command install</strong> &mdash; the <span class="mono">curl | sh</span> installer with arch / KVM checks and a cosign-verified kernel and rootfs, plus a templates registry (<span class="mono">python</span>, <span class="mono">node</span>, <span class="mono">go</span>, minimal).</li>
+            <li><strong>Ingress secret firewall</strong> &mdash; every file, env var, and stdin crossing in is scanned with the Gitleaks rule set. Block by default; an audited override; optional redaction.</li>
+            <li><strong>Agent integration</strong> &mdash; the <span class="mono">moat-mcp</span> server (stdio), a <span class="mono">SKILL.md</span> playbook, and a <span class="mono">moat doctor</span> preflight.</li>
+            <li><strong>One-command install</strong> &mdash; the <span class="mono">curl | sh</span> installer with arch / KVM checks and sha256 + cosign verification, and a systemd unit.</li>
           </ul>
         </div>
 
-        <div class="phase reveal">
-          <div class="top"><span class="id">M2</span><h3>Production &amp; fleet &mdash; teams run it for real</h3><span class="pill s-plan">Planned</span><span class="est">~1 quarter</span></div>
+        <div class="phase next reveal">
+          <div class="top"><span class="id">M2</span><h3>Production &amp; fleet &mdash; teams run it for real</h3><span class="pill s-next">Next</span><span class="est">~1 quarter</span></div>
           <p>The audit trail, multi-node operation, and reach to run a whole team's agent traffic through Moat.</p>
           <ul>
             <li><strong>Observability &amp; trust</strong> &mdash; a structured audit log of every boundary crossing, <span class="mono">moat logs</span>, a per-session &ldquo;what did this sandbox do&rdquo; report, and an SBOM with reproducible image builds.</li>

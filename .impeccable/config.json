@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "docs/index.html"
+        ],
+        "createdAt": "2026-08-30T17:09:17.322Z",
+        "reason": "model design decision: the ember 'containment glow' on the single .blast box in the isolation diagram (and its crit-red counterpart on .blast--leak) is the product's core metaphor made visual — a box that is already on fire. Deliberate, on one element, with a matching contrast state. Not a blanket cool-glow look."
+      }
+    ]
+  }
+}
