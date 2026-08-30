@@ -44,6 +44,8 @@ func main() {
 		os.Exit(runDoctor(os.Args[2:]))
 	case "template":
 		os.Exit(runTemplate(os.Args[2:]))
+	case "audit":
+		os.Exit(runAudit(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -66,6 +68,7 @@ usage:
   moat reap     [-run-dir DIR]
   moat doctor   check that this host can run Moat
   moat template list   show the rootfs templates a sandbox can use
+  moat audit    {tail|query|report|verify}  read the daemon audit log
 
 demo flags:
   -id string       machine id (default: demo-<pid>)

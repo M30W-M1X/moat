@@ -108,43 +108,52 @@ func Verify(dir string) (VerifyResult, error) {
 	if err != nil {
 		return VerifyResult{}, err
 	}
+	var all []Event
+	for _, file := range files {
+		evs, _, err := scanFile(file)
+		if err != nil {
+			return VerifyResult{}, err
+		}
+		all = append(all, evs...)
+	}
+	return VerifyEvents(all), nil
+}
+
+// VerifyEvents recomputes every hash and checks every prev link and seq step
+// across evs in order. The caller gives the events in seq order. A pruned
+// prefix keeps OK true. The first event with a non-zero Prev marks the prune.
+func VerifyEvents(evs []Event) VerifyResult {
 	var res VerifyResult
 	var prevHash string
 	var prevSeq uint64
 	first := true
-	for _, file := range files {
-		evs, _, err := scanFile(file)
-		if err != nil {
-			return res, err
+	for _, e := range evs {
+		want, herr := hashEvent(e)
+		if herr != nil {
+			res.Problems = append(res.Problems, fmt.Sprintf("hash error at seq %d: %v", e.Seq, herr))
+			continue
 		}
-		for _, e := range evs {
-			want, herr := hashEvent(e)
-			if herr != nil {
-				res.Problems = append(res.Problems, fmt.Sprintf("hash error at seq %d: %v", e.Seq, herr))
-				continue
-			}
-			if e.Hash != want {
-				res.Problems = append(res.Problems, fmt.Sprintf("hash mismatch at seq %d", e.Seq))
-			}
-			if first {
-				res.FirstSeq, res.FirstTS = e.Seq, e.TS
-				if e.Prev != zeroHash {
-					res.PrunedPrefix = true
-				}
-				first = false
-			} else {
-				if e.Seq != prevSeq+1 {
-					res.Problems = append(res.Problems, fmt.Sprintf("seq gap: %d then %d", prevSeq, e.Seq))
-				}
-				if e.Prev != prevHash {
-					res.Problems = append(res.Problems, fmt.Sprintf("prev break at seq %d", e.Seq))
-				}
-			}
-			prevHash, prevSeq = e.Hash, e.Seq
-			res.LastSeq, res.LastTS = e.Seq, e.TS
-			res.Events++
+		if e.Hash != want {
+			res.Problems = append(res.Problems, fmt.Sprintf("hash mismatch at seq %d", e.Seq))
 		}
+		if first {
+			res.FirstSeq, res.FirstTS = e.Seq, e.TS
+			if e.Prev != zeroHash {
+				res.PrunedPrefix = true
+			}
+			first = false
+		} else {
+			if e.Seq != prevSeq+1 {
+				res.Problems = append(res.Problems, fmt.Sprintf("seq gap: %d then %d", prevSeq, e.Seq))
+			}
+			if e.Prev != prevHash {
+				res.Problems = append(res.Problems, fmt.Sprintf("prev break at seq %d", e.Seq))
+			}
+		}
+		prevHash, prevSeq = e.Hash, e.Seq
+		res.LastSeq, res.LastTS = e.Seq, e.TS
+		res.Events++
 	}
 	res.OK = len(res.Problems) == 0
-	return res, nil
+	return res
 }
