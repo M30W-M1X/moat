@@ -16,6 +16,7 @@ import (
 	models "github.com/firecracker-microvm/firecracker-go-sdk/client/models"
 	"github.com/sirupsen/logrus"
 
+	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
 	"github.com/M30W-M1X/microvm_controller/internal/config"
 )
 
@@ -33,6 +34,9 @@ type Instance struct {
 	// Raw (non-SDK) process handles, used only by RestoreUFFD.
 	rawFC   *exec.Cmd
 	rawUFFD *exec.Cmd
+
+	// cgroupRemove tears down the per-VM cgroup once the VMM has exited.
+	cgroupRemove func()
 }
 
 // PID returns the Firecracker process id, or 0 when it is not known.
@@ -54,7 +58,12 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 		PathOnHost:   firecracker.String(m.RootFSPath),
 		IsRootDevice: firecracker.Bool(true),
 		IsReadOnly:   firecracker.Bool(false),
+		RateLimiter:  bandwidthLimiter(m.DiskBWBytesPerSec),
 	}}
+	if m.Net != nil && m.NetBWBytesPerSec > 0 {
+		cfg.NetworkInterfaces[0].InRateLimiter = bandwidthLimiter(m.NetBWBytesPerSec)
+		cfg.NetworkInterfaces[0].OutRateLimiter = bandwidthLimiter(m.NetBWBytesPerSec)
+	}
 	cfg.MachineCfg = models.MachineConfiguration{
 		VcpuCount:  firecracker.Int64(m.VCPUs),
 		MemSizeMib: firecracker.Int64(m.MemMiB),
@@ -185,7 +194,29 @@ func startMachine(ctx context.Context, m config.Machine, cfg firecracker.Config,
 		in.pid = pid
 		_ = os.WriteFile(m.PIDPath(), []byte(strconv.Itoa(pid)), 0o644)
 	}
+
+	if !m.Limits.Zero() && in.pid > 0 {
+		remove, err := cgroup.Apply("mvm-"+m.ID, in.pid, m.Limits)
+		if err != nil {
+			_ = machine.StopVMM()
+			return nil, fmt.Errorf("apply cgroup limits: %w", err)
+		}
+		in.cgroupRemove = remove
+	}
 	return in, nil
+}
+
+// bandwidthLimiter returns a Firecracker rate limiter that allows bytesPerSec
+// sustained, with a one-second burst. It returns nil for a non-positive rate.
+func bandwidthLimiter(bytesPerSec int64) *models.RateLimiter {
+	if bytesPerSec <= 0 {
+		return nil
+	}
+	return &models.RateLimiter{Bandwidth: &models.TokenBucket{
+		Size:         firecracker.Int64(bytesPerSec),
+		RefillTime:   firecracker.Int64(1000),
+		OneTimeBurst: firecracker.Int64(bytesPerSec),
+	}}
 }
 
 // Pause freezes the guest vCPUs.
@@ -241,6 +272,10 @@ func (in *Instance) Stop(ctx context.Context) error {
 	err := in.machine.StopVMM()
 	_ = os.Remove(in.Machine.PIDPath())
 	in.machine = nil
+	if in.cgroupRemove != nil {
+		in.cgroupRemove()
+		in.cgroupRemove = nil
+	}
 	if err != nil {
 		return fmt.Errorf("stop vmm: %w", err)
 	}

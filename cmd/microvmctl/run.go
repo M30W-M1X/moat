@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
+	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
 	"github.com/M30W-M1X/microvm_controller/internal/config"
 	"github.com/M30W-M1X/microvm_controller/internal/netconf"
 )
@@ -85,6 +86,11 @@ func runRun(args []string) int {
 	netOn := fs.Bool("net", false, "give the guest an isolated network (needs root or unshare -rmn)")
 	uplink := fs.String("uplink", "auto", "parent interface to NAT onto: auto, none, or a name")
 	netPool := fs.String("net-pool", netconf.DefaultPool, "address pool for guest networks")
+	cpu := fs.Float64("cpu", 0, "cap the VMM at this many CPU cores via cgroup v2 (0 = no cap)")
+	memMax := fs.Int64("mem-max", 0, "cgroup memory.max in MiB (0 = no cap)")
+	pidsMax := fs.Int64("pids", 0, "cgroup pids.max (0 = no cap)")
+	diskBW := fs.Int64("disk-bw", 0, "rootfs bandwidth limit in bytes/sec (0 = no limit)")
+	netBW := fs.Int64("net-bw", 0, "network bandwidth limit in bytes/sec (0 = no limit)")
 	var env, puts, gets repeatedFlag
 	fs.Var(&env, "env", "set an environment variable KEY=VALUE (repeatable)")
 	fs.Var(&puts, "put", "copy LOCAL:REMOTE into the guest before the command (repeatable)")
@@ -104,6 +110,9 @@ func runRun(args []string) int {
 		return 1
 	}
 	mf.apply(&m, log)
+	m.Limits = cgroup.Limits{CPUCores: *cpu, MemBytes: *memMax << 20, PIDs: *pidsMax}
+	m.DiskBWBytesPerSec = *diskBW
+	m.NetBWBytesPerSec = *netBW
 
 	if *netOn {
 		cleanup, err := setupNet(&m, *netPool, *uplink, log)

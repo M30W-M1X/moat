@@ -9,19 +9,24 @@ import (
 	"time"
 
 	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
+	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
 	"github.com/M30W-M1X/microvm_controller/internal/config"
 	"github.com/M30W-M1X/microvm_controller/internal/netconf"
 	"github.com/M30W-M1X/microvm_controller/internal/pool"
 	"github.com/M30W-M1X/microvm_controller/internal/vm"
 )
 
-// Template names a kernel and rootfs a sandbox can start from.
+// Template names a kernel and rootfs a sandbox can start from, plus the
+// per-sandbox resource caps.
 type Template struct {
 	Name   string
 	Kernel string
 	RootFS string
 	VCPUs  int64
 	MemMiB int64
+	Limits cgroup.Limits
+	DiskBW int64 // rootfs bytes/sec, 0 = no limit
+	NetBW  int64 // network bytes/sec, 0 = no limit
 }
 
 // Sandbox is one running microVM handed to an API caller.
@@ -155,6 +160,9 @@ func coldBoot(ctx context.Context, s *Server, tpl Template, id string, networked
 	m.RootFSPath = tpl.RootFS
 	m.VCPUs = tpl.VCPUs
 	m.MemMiB = tpl.MemMiB
+	m.Limits = tpl.Limits
+	m.DiskBWBytesPerSec = tpl.DiskBW
+	m.NetBWBytesPerSec = tpl.NetBW
 
 	var plan *netconf.Plan
 	if networked {

@@ -72,6 +72,9 @@ for VM lifecycle, never "boot" / "tear down").
 - **Networking:** one netns per VM + TAP + `/30` IPAM; `nftables` drops inter-VM traffic,
   `169.254.169.254`/link-local, loopback, RFC-1918 host LAN; egress through a host
   forward proxy (domain allow/blocklist, rate limits).
+- **Limits:** cgroup v2 `cpu.max` / `memory.max` / `pids.max` on the VMM process
+  (delegated systemd subtree, no root); Firecracker per-VM token-bucket rate
+  limiters on the rootfs and the network interface.
 - **Storage:** shared read-only `rootfs.ext4` + per-VM ephemeral CoW scratch disk;
   files move over vsock only (no virtio-fs / NFS).
 - **Image pipeline:** `Dockerfile` → `docker export` → mounted `mkfs.ext4` → inject agent.
@@ -81,10 +84,11 @@ for VM lifecycle, never "boot" / "tear down").
   Cloud Hypervisor backend — keep the VM-driver interface abstract.
 
 **Roadmap:** P1 minimal microVM + vsock echo ✅ · P2 exec + file I/O guest agent ✅ ·
-P3 netns/TAP/nftables ✅ + cgroups (todo) · P4 snapshot + UFFD + warm pool + orphan
-reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus metrics + egress proxy ✅.
+P3 netns/TAP/nftables + cgroups v2 + rate limiters ✅ · P4 snapshot + UFFD + warm
+pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus metrics
++ egress proxy ✅.
 
-**Status:** P1 + P2 done; P3 networking done, P3 cgroups/rate-limiters todo.
+**Status:** P1 + P2 + P3 done.
 - P1: `microvmctl demo` starts a microVM; the static agent runs as PID 1; host↔guest
   vsock works.
 - P2: `agent.v1.Agent` gRPC service over vsock (`proto/agent/v1/agent.proto`,
@@ -98,7 +102,16 @@ reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus metrics + egress
   [-net-pool CIDR]`. `Apply`/`Destroy` need CAP_NET_ADMIN + CAP_SYS_ADMIN — real
   root, or `unshare --user --map-root-user --mount --net`. Test: `make test-net`
   (runs rootless in a user+net namespace).
-- Still todo for P3: cgroups v2 CPU/memory limits, Firecracker per-VM rate limiters.
+- P3 limits (`internal/cgroup`): cgroup v2 `cpu.max` / `memory.max` / `pids.max` on
+  the Firecracker process. Writes into this process's delegated systemd subtree
+  (`…/user@<uid>.service/microvm/mvm-<id>`), so it needs no root when systemd
+  delegation is in effect. `cgroup.Available()` preflights; `Instance.Stop` removes
+  the cgroup after the VMM exits. Firecracker per-VM rate limiters cap rootfs and
+  network bandwidth (`models.RateLimiter`, one-second token bucket). CLI:
+  `microvmctl run -cpu 0.5 -mem-max 256 -pids 128 -disk-bw BYTES -net-bw BYTES`.
+  Daemon: `microvmd -cpu-max -mem-max -pids-max -disk-bw -net-bw` per template.
+  Test: `make test-integration` (`internal/vm` `TestBootWithCgroupLimits`,
+  `internal/cgroup` unit tests).
 - P4 (`internal/vm` snapshot + `internal/pool`): full snapshot/restore
   (`microvmctl snapshot` / `restore`) — restore reaches a ready agent in ~25 ms vs
   ~1.1 s cold. Warm pool of running microVMs (`internal/pool`, `microvmctl bench`)

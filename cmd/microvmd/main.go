@@ -22,6 +22,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
 	"github.com/M30W-M1X/microvm_controller/internal/config"
 	"github.com/M30W-M1X/microvm_controller/internal/egress"
 	"github.com/M30W-M1X/microvm_controller/internal/server"
@@ -40,6 +41,11 @@ func main() {
 	rootfs := flag.String("rootfs", "", "default template rootfs.ext4 (default: build/artifacts/rootfs.ext4)")
 	vcpus := flag.Int64("vcpus", 1, "default template vCPUs")
 	mem := flag.Int64("mem", 256, "default template memory MiB")
+	cpuMax := flag.Float64("cpu-max", 0, "cgroup CPU cap in cores per sandbox (0 = none)")
+	memMax := flag.Int64("mem-max", 0, "cgroup memory.max per sandbox in MiB (0 = none)")
+	pidsMax := flag.Int64("pids-max", 0, "cgroup pids.max per sandbox (0 = none)")
+	diskBW := flag.Int64("disk-bw", 0, "rootfs bandwidth per sandbox in bytes/sec (0 = none)")
+	netBW := flag.Int64("net-bw", 0, "network bandwidth per sandbox in bytes/sec (0 = none)")
 	netPool := flag.String("net-pool", "", "CIDR for networked sandbox addresses")
 	uplink := flag.String("uplink", "none", "parent interface for networked sandbox NAT (or none/auto)")
 	egressAddr := flag.String("egress-addr", "127.0.0.1:0", "listen address for the egress proxy")
@@ -68,6 +74,9 @@ func main() {
 		RootFS: orDefault(*rootfs, dm.RootFSPath),
 		VCPUs:  *vcpus,
 		MemMiB: *mem,
+		Limits: cgroup.Limits{CPUCores: *cpuMax, MemBytes: *memMax << 20, PIDs: *pidsMax},
+		DiskBW: *diskBW,
+		NetBW:  *netBW,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

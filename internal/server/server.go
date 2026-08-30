@@ -175,6 +175,9 @@ func (t Template) machine() (config.Machine, error) {
 	m.RootFSPath = t.RootFS
 	m.VCPUs = t.VCPUs
 	m.MemMiB = t.MemMiB
+	m.Limits = t.Limits
+	m.DiskBWBytesPerSec = t.DiskBW
+	m.NetBWBytesPerSec = t.NetBW
 	return m, nil
 }
 

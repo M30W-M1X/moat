@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
 	"github.com/M30W-M1X/microvm_controller/internal/netconf"
 )
 
@@ -62,6 +63,15 @@ type Machine struct {
 	// and nftables isolation rules. Build it with netconf.BuildPlan and apply
 	// it with netconf.Apply before Boot. Networking needs privilege.
 	Net *netconf.Plan
+
+	// Limits caps the VMM process with cgroup v2. A zero value means no caps.
+	Limits cgroup.Limits
+
+	// DiskBWBytesPerSec and NetBWBytesPerSec rate-limit the rootfs drive and
+	// the network interface through Firecracker's own token buckets. 0 = no
+	// limit.
+	DiskBWBytesPerSec int64
+	NetBWBytesPerSec  int64
 }
 
 // DefaultKernelArgs is a minimal console setup. It runs the guest agent as

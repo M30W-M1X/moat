@@ -137,6 +137,10 @@ func (in *Instance) stopRaw() error {
 	_ = os.Remove(filepath.Join(in.Machine.RunDir, "uffd.sock"))
 	_ = os.Remove(in.Machine.PIDPath())
 	in.rawFC, in.rawUFFD = nil, nil
+	if in.cgroupRemove != nil {
+		in.cgroupRemove()
+		in.cgroupRemove = nil
+	}
 	return nil
 }
 

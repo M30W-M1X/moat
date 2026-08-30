@@ -13,7 +13,11 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   (`agent.v1.Agent`) on vsock.
 - **Phase 3 (networking) ✅** — each microVM gets its own network namespace, TAP, and
   `nftables` rules: internet egress, but no path to the host, the other microVMs, or
-  `169.254.169.254`. (`cgroups` + rate limiters still to come.)
+  `169.254.169.254`.
+- **Phase 3 (limits) ✅** — cgroup v2 `cpu.max` / `memory.max` / `pids.max` on the
+  Firecracker process (via this process's delegated systemd subtree, no root
+  needed), plus Firecracker per-VM token-bucket rate limiters on the rootfs and the
+  network interface.
 - **Phase 4 ✅** — full snapshot/restore (`~25 ms` to a ready agent vs `~1.1 s` cold),
   a warm pool of microVMs (`p50` acquire `~1 ms`, with lease TTL / idle reaping), an
   orphan reaper for Firecracker processes a crash left behind, and a userfaultfd
@@ -130,6 +134,11 @@ make test-integration # boots real microVMs, drives the agent (needs /dev/kvm)
 -net               give the guest an isolated network (needs privilege)
 -uplink NAME       parent interface to NAT onto: auto (default), none, or a name
 -net-pool CIDR     address pool for guest networks (default 10.62.0.0/16)
+-cpu N             cgroup CPU cap in cores (e.g. 0.5); 0 means no limit
+-mem-max MiB       cgroup memory.max for the VMM process; 0 means no limit
+-pids N            cgroup pids.max for the VMM process; 0 means no limit
+-disk-bw BYTES     rootfs bandwidth limit in bytes/sec; 0 means no limit
+-net-bw BYTES      network bandwidth limit in bytes/sec; 0 means no limit
 ```
 
 Exit code: the guest process exit code; `124` on timeout; `128+signal` on a signal.
@@ -146,6 +155,7 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/vsockconn` | host→guest vsock dial through Firecracker's mux socket |
 | `internal/agentclient` | host-side gRPC client for the in-VM agent |
 | `internal/netconf` | per-VM netns + veth + TAP + `/30` IPAM + nftables isolation rules |
+| `internal/cgroup` | cgroup v2 CPU / memory / PID caps on the VMM (delegated subtree, no root) |
 | `internal/pool` | warm pool of running microVMs; one-shot lease + TTL/idle reaping + refill |
 | `cmd/microvm-uffd` | userfaultfd page-fault handler for `restore -uffd` |
 | `cmd/microvmd` | northbound HTTP/JSON API daemon |
@@ -157,4 +167,5 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 
 ## Not yet (see roadmap in `CLAUDE.md`)
 
-cgroups + rate limiters (P3), diff snapshots + a snapshot-templated pool (P4).
+diff snapshots + a snapshot-templated pool (P4), a gRPC surface and transparent
+egress redirect (P5).
