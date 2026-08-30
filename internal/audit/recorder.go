@@ -221,11 +221,85 @@ func (r *Recorder) Close() error {
 	return err
 }
 
-// writeLoop drains the async queue. Task 3 implements it.
-func (r *Recorder) writeLoop() { defer r.writerWG.Done(); <-r.closed }
+// Record enqueues e for the async writer. It never blocks. A full queue drops
+// the event and increments the drop metric.
+func (r *Recorder) Record(e Event) {
+	if !r.enabled {
+		return
+	}
+	select {
+	case r.queue <- e:
+		r.cfg.Metrics.QueueDepth(len(r.queue))
+	default:
+		r.cfg.Metrics.Dropped()
+		r.cfg.Log.WithField("type", e.Type).Error("audit event dropped: async queue full")
+	}
+}
 
-// Record enqueues e without blocking. Task 3 implements it.
-func (r *Recorder) Record(e Event) {}
+// writeLoop drains the async queue, batching fsyncs.
+func (r *Recorder) writeLoop() {
+	defer r.writerWG.Done()
+	ticker := time.NewTicker(r.cfg.FsyncInterval)
+	defer ticker.Stop()
+	pending := 0
+	flush := func() {
+		if pending == 0 {
+			return
+		}
+		r.mu.Lock()
+		if r.f != nil {
+			if err := r.f.Sync(); err != nil {
+				r.cfg.Log.WithError(err).Error("audit batch fsync failed")
+			}
+		}
+		r.mu.Unlock()
+		pending = 0
+	}
+	drain := func() {
+		for {
+			select {
+			case e := <-r.queue:
+				r.writeOne(e)
+				pending++
+			default:
+				return
+			}
+		}
+	}
+	for {
+		select {
+		case <-r.closed:
+			drain()
+			flush()
+			return
+		case e := <-r.queue:
+			r.writeOne(e)
+			pending++
+			if pending >= r.cfg.FsyncBatch {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
+}
+
+// writeOne appends one async event without a per-event fsync.
+func (r *Recorder) writeOne(e Event) {
+	start := time.Now()
+	r.mu.Lock()
+	err := r.appendLocked(&e, false)
+	r.mu.Unlock()
+	r.cfg.Metrics.WriteObserved("async", time.Since(start).Seconds())
+	if err != nil {
+		r.cfg.Metrics.Dropped()
+		r.cfg.Metrics.Recorded(e.Type, "error")
+		r.cfg.Log.WithError(err).WithField("type", e.Type).Error("audit async write failed")
+		return
+	}
+	r.cfg.Metrics.Recorded(e.Type, "ok")
+	r.cfg.Metrics.QueueDepth(len(r.queue))
+}
 
 func (r *Recorder) rotateIfNeededLocked() error {
 	if r.f != nil && r.curSize < int64(r.cfg.MaxFileMB)<<20 &&
