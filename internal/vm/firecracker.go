@@ -20,11 +20,19 @@ import (
 )
 
 // Instance is a microVM. The microVM can be running, paused, or stopped.
+//
+// Most instances are driven through firecracker-go-sdk (machine != nil). The
+// UFFD restore path starts the VMM and the page-fault handler directly and
+// fills the raw* fields instead.
 type Instance struct {
 	Machine config.Machine
 	machine *firecracker.Machine
 	log     *logrus.Logger
 	pid     int
+
+	// Raw (non-SDK) process handles, used only by RestoreUFFD.
+	rawFC   *exec.Cmd
+	rawUFFD *exec.Cmd
 }
 
 // PID returns the Firecracker process id, or 0 when it is not known.
@@ -207,8 +215,11 @@ func (in *Instance) CreateSnapshot(ctx context.Context, snapDir string) error {
 // Stop requests a guest shutdown, then stops the VMM. You can call Stop more
 // than once.
 func (in *Instance) Stop(ctx context.Context) error {
-	if in == nil || in.machine == nil {
+	if in == nil {
 		return nil
+	}
+	if in.machine == nil {
+		return in.stopRaw()
 	}
 	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

@@ -26,57 +26,83 @@ import (
 	"github.com/M30W-M1X/microvm_controller/internal/vm"
 )
 
-// Pool holds warm, paused microVMs.
+// Options configures a Pool.
+type Options struct {
+	Size int
+	// LeaseTTL force-releases a lease this long after Acquire, whatever the
+	// caller is doing. 0 means no limit.
+	LeaseTTL time.Duration
+	// IdleTimeout force-releases a lease when the caller has not called
+	// Lease.Touch for this long. 0 means no limit.
+	IdleTimeout time.Duration
+}
+
+// Pool holds warm, running microVMs and reaps leases that outlive their limits.
 type Pool struct {
-	size  int
+	opt   Options
 	base  config.Machine
 	log   *logrus.Logger
 	runID string
 
 	mu     sync.Mutex
 	ready  []*warm
+	leases map[*Lease]struct{}
 	waitCh chan *warm // hand-off to a blocked Acquire
 	closed bool
 	seq    atomic.Int64
 	nboot  atomic.Int64 // members currently booting
+	stopSw chan struct{}
 }
 
 type warm struct {
 	inst *vm.Instance
 	m    config.Machine
-	cli  *agentclient.Client // kept open across pause/resume
+	cli  *agentclient.Client
 }
 
-// Lease is one acquired, running microVM.
+// Lease is one acquired, running microVM. Call Touch to show it is still in
+// use; call Release when done.
 type Lease struct {
 	Inst   *vm.Instance
 	Client *agentclient.Client
 	m      config.Machine
 	pool   *Pool
+
+	acquiredAt time.Time
+	lastTouch  atomic.Int64 // unix nanoseconds
+	released   atomic.Bool
 }
 
-// New boots size microVMs from base, waits for each agent, and returns once
+// Touch records activity so the idle timeout does not reap this lease.
+func (l *Lease) Touch() { l.lastTouch.Store(time.Now().UnixNano()) }
+
+// New boots opts.Size microVMs from base, waits for each agent, and returns once
 // every member is warm.
-func New(ctx context.Context, size int, base config.Machine, log *logrus.Logger) (*Pool, error) {
-	if size < 1 {
+func New(ctx context.Context, opts Options, base config.Machine, log *logrus.Logger) (*Pool, error) {
+	if opts.Size < 1 {
 		return nil, fmt.Errorf("pool size must be >= 1")
 	}
 	p := &Pool{
-		size:   size,
+		opt:    opts,
 		base:   base,
 		log:    log,
 		runID:  fmt.Sprintf("pool-%d", os.Getpid()),
+		leases: make(map[*Lease]struct{}),
 		waitCh: make(chan *warm),
+		stopSw: make(chan struct{}),
 	}
-	errs := make(chan error, size)
-	for i := 0; i < size; i++ {
+	errs := make(chan error, opts.Size)
+	for i := 0; i < opts.Size; i++ {
 		go func() { errs <- p.grow(ctx) }()
 	}
-	for i := 0; i < size; i++ {
+	for i := 0; i < opts.Size; i++ {
 		if err := <-errs; err != nil {
 			p.Close()
 			return nil, fmt.Errorf("warm pool member: %w", err)
 		}
+	}
+	if opts.LeaseTTL > 0 || opts.IdleTimeout > 0 {
+		go p.sweep()
 	}
 	return p, nil
 }
@@ -113,7 +139,41 @@ func (p *Pool) Acquire(ctx context.Context) (*Lease, error) {
 		w.discard()
 		return nil, fmt.Errorf("warm member is unhealthy: %w", err)
 	}
-	return &Lease{Inst: w.inst, Client: w.cli, m: w.m, pool: p}, nil
+
+	l := &Lease{Inst: w.inst, Client: w.cli, m: w.m, pool: p, acquiredAt: time.Now()}
+	l.Touch()
+	p.mu.Lock()
+	p.leases[l] = struct{}{}
+	p.mu.Unlock()
+	return l, nil
+}
+
+// sweep force-releases leases that pass their TTL or idle timeout.
+func (p *Pool) sweep() {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-p.stopSw:
+			return
+		case now := <-t.C:
+			p.mu.Lock()
+			var expired []*Lease
+			for l := range p.leases {
+				ttlHit := p.opt.LeaseTTL > 0 && now.Sub(l.acquiredAt) > p.opt.LeaseTTL
+				idleHit := p.opt.IdleTimeout > 0 &&
+					now.Sub(time.Unix(0, l.lastTouch.Load())) > p.opt.IdleTimeout
+				if ttlHit || idleHit {
+					expired = append(expired, l)
+				}
+			}
+			p.mu.Unlock()
+			for _, l := range expired {
+				p.log.WithField("id", l.m.ID).Warn("reaping expired lease")
+				l.Release()
+			}
+		}
+	}
 }
 
 // discard stops a warm member and removes its files.
@@ -128,8 +188,15 @@ func (w *warm) discard() {
 }
 
 // Release stops the leased microVM and removes its files. The pool refills in
-// the background.
+// the background. Release is safe to call more than once.
 func (l *Lease) Release() {
+	if !l.released.CompareAndSwap(false, true) {
+		return
+	}
+	l.pool.mu.Lock()
+	delete(l.pool.leases, l)
+	l.pool.mu.Unlock()
+
 	if l.Client != nil {
 		l.Client.Close()
 	}
@@ -147,7 +214,8 @@ func (p *Pool) Ready() int {
 	return len(p.ready)
 }
 
-// Close stops every warm member. In-flight leases are unaffected.
+// Close stops every warm member and the sweeper. In-flight leases are
+// unaffected.
 func (p *Pool) Close() {
 	p.mu.Lock()
 	if p.closed {
@@ -155,6 +223,7 @@ func (p *Pool) Close() {
 		return
 	}
 	p.closed = true
+	close(p.stopSw)
 	members := p.ready
 	p.ready = nil
 	p.mu.Unlock()
@@ -167,7 +236,7 @@ func (p *Pool) Close() {
 // refill boots one member when the pool is below target and not closed.
 func (p *Pool) refill(ctx context.Context) {
 	p.mu.Lock()
-	need := !p.closed && len(p.ready)+int(p.nboot.Load()) < p.size
+	need := !p.closed && len(p.ready)+int(p.nboot.Load()) < p.opt.Size
 	p.mu.Unlock()
 	if !need {
 		return
@@ -177,8 +246,8 @@ func (p *Pool) refill(ctx context.Context) {
 	}
 }
 
-// grow boots one microVM, waits for its agent, pauses it, and adds it to the
-// pool (or hands it straight to a waiting Acquire).
+// grow boots one microVM, waits for its agent, and adds it to the pool (or
+// hands it straight to a waiting Acquire).
 func (p *Pool) grow(ctx context.Context) error {
 	p.nboot.Add(1)
 	defer p.nboot.Add(-1)

@@ -100,6 +100,83 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRestoreUFFD(t *testing.T) {
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		t.Skip("no /dev/kvm")
+	}
+	if err := vm.UFFDAvailable(); err != nil {
+		t.Skipf("userfaultfd not available: %v", err)
+	}
+	uffdBin := filepath.Join("..", "..", "bin", "microvm-uffd")
+	if _, err := os.Stat(uffdBin); err != nil {
+		t.Skipf("microvm-uffd not built (run: make uffd): %v", err)
+	}
+
+	m, err := config.NewMachine("it-uffd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Validate(); err != nil {
+		t.Skipf("images missing (run: make images): %v", err)
+	}
+	_ = os.RemoveAll(m.RunDir)
+	log := quietLog()
+	ctx := context.Background()
+
+	inst, err := vm.Boot(ctx, m, log)
+	if err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	cli, _ := agentclient.Dial(m.VsockUDSPath(), config.VsockPort)
+	rc, cancel := context.WithTimeout(ctx, 20*time.Second)
+	if err := cli.WaitReady(rc); err != nil {
+		t.Fatalf("WaitReady: %v", err)
+	}
+	cancel()
+	if _, err := cli.Exec(ctx, agentclient.ExecOptions{
+		Argv: []string{"sh", "-c", "echo uffd-ok > /root/u && sync"},
+	}, nil, nil); err != nil {
+		t.Fatalf("prep exec: %v", err)
+	}
+	snapDir := filepath.Join(m.RunDir, "snap")
+	if err := inst.CreateSnapshot(ctx, snapDir); err != nil {
+		t.Fatalf("CreateSnapshot: %v", err)
+	}
+	cli.Close()
+	sc, c := context.WithTimeout(ctx, 15*time.Second)
+	_ = inst.Stop(sc)
+	c()
+
+	t0 := time.Now()
+	r, err := vm.RestoreUFFD(ctx, m, snapDir, uffdBin, log)
+	if err != nil {
+		t.Fatalf("RestoreUFFD: %v", err)
+	}
+	t.Cleanup(func() {
+		sc, c := context.WithTimeout(context.Background(), 15*time.Second)
+		_ = r.Stop(sc)
+		c()
+	})
+	rcli, _ := agentclient.Dial(m.VsockUDSPath(), config.VsockPort)
+	t.Cleanup(func() { rcli.Close() })
+	rc2, cancel2 := context.WithTimeout(ctx, 15*time.Second)
+	if err := rcli.WaitReady(rc2); err != nil {
+		t.Fatalf("agent not ready after UFFD restore: %v", err)
+	}
+	cancel2()
+	t.Logf("UFFD restore -> agent ready in %s", time.Since(t0).Round(time.Millisecond))
+
+	var out []byte
+	res, err := rcli.Exec(ctx, agentclient.ExecOptions{Argv: []string{"cat", "/root/u"}},
+		writerFunc(func(b []byte) { out = append(out, b...) }), nil)
+	if err != nil || res.Code != 0 {
+		t.Fatalf("read marker: err=%v code=%d", err, res.Code)
+	}
+	if string(out) != "uffd-ok\n" {
+		t.Errorf("marker after UFFD restore = %q, want %q", out, "uffd-ok\n")
+	}
+}
+
 func TestReconcileKillsOrphan(t *testing.T) {
 	root := t.TempDir()
 	// A long-lived helper process stands in for an orphaned Firecracker. It is

@@ -72,6 +72,8 @@ func runRestore(args []string) int {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
 	mf := commonMachineFlags(fs, "snap")
 	snap := fs.String("snapshot", "", "snapshot directory (default: run/<id>/snap)")
+	uffd := fs.Bool("uffd", false, "restore with the userfaultfd memory backend (pages stream on demand)")
+	uffdBin := fs.String("uffd-bin", "", "path to microvm-uffd (default: next to microvmctl)")
 	_ = fs.Parse(args)
 	argv := fs.Args()
 
@@ -91,7 +93,12 @@ func runRestore(args []string) int {
 	defer stop()
 
 	t0 := time.Now()
-	inst, err := vm.Restore(ctx, m, dir, log)
+	var inst *vm.Instance
+	if *uffd {
+		inst, err = vm.RestoreUFFD(ctx, m, dir, resolveUffdBin(*uffdBin), log)
+	} else {
+		inst, err = vm.Restore(ctx, m, dir, log)
+	}
 	if err != nil {
 		log.WithError(err).Error("restore")
 		return 1
@@ -129,4 +136,19 @@ func fileSize(path string) int64 {
 		return -1
 	}
 	return fi.Size()
+}
+
+// resolveUffdBin returns explicit if set, else microvm-uffd next to this binary,
+// else the bare name for a PATH lookup.
+func resolveUffdBin(explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if self, err := os.Executable(); err == nil {
+		cand := filepath.Join(filepath.Dir(self), "microvm-uffd")
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
+	}
+	return ""
 }

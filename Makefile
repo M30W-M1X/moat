@@ -15,13 +15,17 @@ export ROOTFS_SIZE
 KERNEL  := $(ARTIFACTS)/vmlinux
 ROOTFS  := $(ARTIFACTS)/rootfs.ext4
 
-.PHONY: all build agent images kernel rootfs proto tools demo run clean fmt vet test test-integration tidy
+.PHONY: all build uffd agent images kernel rootfs proto tools demo run clean fmt vet test test-integration tidy
 
-all: build agent
+all: build uffd agent
 
 ## build the host control CLI
 build:
 	$(GO) build $(GOFLAGS) -o $(BIN)/microvmctl ./cmd/microvmctl
+
+## build the userfaultfd page-fault handler (used by `restore -uffd`)
+uffd:
+	$(GO) build $(GOFLAGS) -o $(BIN)/microvm-uffd ./cmd/microvm-uffd
 
 ## build the guest agent that runs inside the VM (static, runs as PID 1)
 agent:

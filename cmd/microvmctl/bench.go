@@ -22,6 +22,8 @@ func runBench(args []string) int {
 	mem := fs.Int64("mem", 256, "guest memory MiB")
 	vcpus := fs.Int64("vcpus", 1, "guest vCPUs")
 	reap := fs.Bool("reap", true, "reap orphan microVMs before starting")
+	ttl := fs.Duration("lease-ttl", 0, "force-release a lease after this long (0 = no limit)")
+	idle := fs.Duration("lease-idle", 0, "force-release a lease idle this long (0 = no limit)")
 	_ = fs.Parse(args)
 
 	log := newLog()
@@ -49,7 +51,7 @@ func runBench(args []string) int {
 	defer stop()
 
 	warmStart := time.Now()
-	p, err := pool.New(ctx, *size, base, log)
+	p, err := pool.New(ctx, pool.Options{Size: *size, LeaseTTL: *ttl, IdleTimeout: *idle}, base, log)
 	if err != nil {
 		log.WithError(err).Error("warm the pool")
 		return 1

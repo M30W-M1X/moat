@@ -103,11 +103,17 @@ proxy.
 - P4 (`internal/vm` snapshot + `internal/pool`): full snapshot/restore
   (`microvmctl snapshot` / `restore`) — restore reaches a ready agent in ~25 ms vs
   ~1.1 s cold. Warm pool of running microVMs (`internal/pool`, `microvmctl bench`)
-  — p50 acquire ~1 ms. Orphan reaper (`vm.Reconcile`, `microvmctl reap`) kills
-  Firecracker processes a crash left behind and cleans their run dirs + networks.
-  Tests: `make test-integration`.
-- Still todo for P4: the UFFD memory backend for restore (needs a raw
-  `snapshot/load` with `mem_backend` — the SDK model lacks it) and diff snapshots.
+  — p50 acquire ~1 ms; leases carry a TTL and idle timeout and a sweeper
+  force-releases stragglers (`bench -lease-ttl` / `-lease-idle`, `Lease.Touch`).
+  Orphan reaper (`vm.Reconcile`, `microvmctl reap`) kills Firecracker processes a
+  crash left behind. `cmd/microvm-uffd` is a working userfaultfd page-fault
+  handler; `microvmctl restore -uffd` streams guest pages from `mem.bin` on
+  demand via a raw `snapshot/load` with `mem_backend`. Tests: `make test-integration`.
+- UFFD restore needs read access to `/dev/userfaultfd` or
+  `vm.unprivileged_userfaultfd=1` — real root on this box (Gotcha `G-14`). The
+  handler's wire protocol is unit-tested rootless; the end-to-end restore test
+  skips without the privilege.
+- Still todo for P4: diff snapshots, a snapshot-templated pool.
 - Pool members stay **running**, not paused: on this Firecracker build the guest
   vsock stops answering after `PauseVM`/`ResumeVM` on the same process (Gotcha
   `G-12`). Snapshot restore (a fresh process) is unaffected.

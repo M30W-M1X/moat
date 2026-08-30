@@ -15,8 +15,9 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   `nftables` rules: internet egress, but no path to the host, the other microVMs, or
   `169.254.169.254`. (`cgroups` + rate limiters still to come.)
 - **Phase 4 ✅** — full snapshot/restore (`~25 ms` to a ready agent vs `~1.1 s` cold),
-  a warm pool of microVMs (`p50` acquire `~1 ms`), and an orphan reaper that cleans up
-  Firecracker processes a crash left behind. (UFFD memory backend still to come.)
+  a warm pool of microVMs (`p50` acquire `~1 ms`, with lease TTL / idle reaping), an
+  orphan reaper for Firecracker processes a crash left behind, and a userfaultfd
+  page-fault handler (`restore -uffd`) that streams guest pages on demand.
 
 ### Phase 1: smoke test
 
@@ -59,6 +60,9 @@ $ microvmctl run -net -- ping -c1 169.254.169.254   # blocked by the isolation r
 $ microvmctl snapshot -id tpl -exec 'apk add --no-cache python3'   # boot, prep, snapshot
 $ microvmctl restore  -id tpl -- python3 --version                 # ~25 ms to a ready agent
 ... restored, agent ready   elapsed=24ms
+
+$ microvmctl restore -id tpl -uffd -- free -m    # pages stream from mem.bin on demand
+                                                 # (needs root / vm.unprivileged_userfaultfd=1)
 
 $ microvmctl bench -pool 4 -iters 25
 pool warm   elapsed=1.2s   size=4
@@ -125,12 +129,13 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/vsockconn` | host→guest vsock dial through Firecracker's mux socket |
 | `internal/agentclient` | host-side gRPC client for the in-VM agent |
 | `internal/netconf` | per-VM netns + veth + TAP + `/30` IPAM + nftables isolation rules |
-| `internal/pool` | warm pool of running microVMs; one-shot lease + background refill |
+| `internal/pool` | warm pool of running microVMs; one-shot lease + TTL/idle reaping + refill |
+| `cmd/microvm-uffd` | userfaultfd page-fault handler for `restore -uffd` |
 | `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
 | `build/` | `fetch-kernel.sh`, `build-rootfs.sh` |
 | `run/`, `build/artifacts/` | per-VM runtime state and VM images (gitignored) |
 
 ## Not yet (see roadmap in `CLAUDE.md`)
 
-cgroups + rate limiters (P3), the UFFD memory backend for restore (P4), the public
-northbound API + metrics (P5).
+cgroups + rate limiters (P3), diff snapshots + a snapshot-templated pool (P4), the
+public northbound API + metrics (P5).

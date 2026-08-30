@@ -31,7 +31,7 @@ func TestPoolAcquireIsFast(t *testing.T) {
 	log.SetLevel(logrus.WarnLevel)
 	ctx := context.Background()
 
-	p, err := pool.New(ctx, 3, base, log)
+	p, err := pool.New(ctx, pool.Options{Size: 3}, base, log)
 	if err != nil {
 		t.Fatalf("pool.New: %v", err)
 	}
@@ -67,4 +67,48 @@ func TestPoolAcquireIsFast(t *testing.T) {
 	if p.Ready() < 3 {
 		t.Errorf("pool did not refill: Ready=%d, want 3", p.Ready())
 	}
+}
+
+func TestPoolReapsIdleLease(t *testing.T) {
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		t.Skip("no /dev/kvm")
+	}
+	base, err := config.NewMachine("it-pool-idle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := base.Validate(); err != nil {
+		t.Skipf("images missing: %v", err)
+	}
+	log := logrus.New()
+	log.SetLevel(logrus.WarnLevel)
+	ctx := context.Background()
+
+	p, err := pool.New(ctx, pool.Options{Size: 1, IdleTimeout: 2 * time.Second}, base, log)
+	if err != nil {
+		t.Fatalf("pool.New: %v", err)
+	}
+	defer p.Close()
+
+	lease, err := p.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	// Do not Touch. The sweeper should force-release it.
+	deadline := time.Now().Add(15 * time.Second)
+	reaped := false
+	for time.Now().Before(deadline) {
+		hcCtx, cancel := context.WithTimeout(ctx, time.Second)
+		_, err := lease.Client.Info(hcCtx)
+		cancel()
+		if err != nil {
+			reaped = true
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if !reaped {
+		t.Error("idle lease was not reaped within 15s")
+	}
+	lease.Release() // no-op after reap; must not panic
 }
