@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Moat runs every command an AI agent executes inside a throwaway, KVM-isolated Firecracker microVM with no host filesystem, network, or credentials — then destroys it. Open source, self-hosted.">
+<meta name="color-scheme" content="light dark">
+<meta property="og:title" content="Moat — hardware-isolated sandboxes for AI agents">
+<meta property="og:description" content="Give your agent root. Burn the VM. Open-source, self-hosted microVM isolation for untrusted agent commands.">
+<meta property="og:type" content="website">
+<title>Moat — hardware-isolated sandboxes for AI agents</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+  /* standalone-document reset (Artifact host normally supplies this) */
+  html,body{margin:0}
+  img{max-width:100%}
+  [hidden]{display:none!important}
+
+  /* ---------- tokens: light (bare :root) ---------- */
+  :root{
+    color-scheme: light dark;
+    --ground:#eaf0ee;
+    --surface:#ffffff;
+    --surface-2:#f4f8f7;
+    --line:#d2ddda;
+    --line-strong:#b6c6c2;
+    --ink:#0d1a1c;
+    --ink-dim:#485b58;
+    --ink-faint:#6d817d;
+    --ember:#cf4f1c;
+    --ember-2:#a83f16;
+    --ember-wash:#f9e6db;
+    --moat:#0c8794;
+    --moat-wash:#dceff0;
+    --ok:#2c8a58;
+    --warn:#8f6410;
+    --crit:#bd3931;
+    --shadow:0 1px 2px rgba(13,26,28,.06), 0 18px 40px -18px rgba(13,26,28,.20);
+    --radius:14px;
+    --maxw:1120px;
+    --gutter:clamp(20px, 5vw, 64px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#091214;
+      --surface:#0f1d20;
+      --surface-2:#14282c;
+      --line:#213a3f;
+      --line-strong:#2d4b51;
+      --ink:#e1ebe9;
+      --ink-dim:#9cb0ad;
+      --ink-faint:#7c918e;
+      --ember:#ff7d3f;
+      --ember-2:#ff9866;
+      --ember-wash:#2a1912;
+      --moat:#44c1d0;
+      --moat-wash:#0e2b2f;
+      --ok:#4fb477;
+      --warn:#e8b04b;
+      --crit:#e5544b;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 26px 60px -24px rgba(0,0,0,.65);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#091214;
+    --surface:#0f1d20;
+    --surface-2:#14282c;
+    --line:#213a3f;
+    --line-strong:#2d4b51;
+    --ink:#e1ebe9;
+    --ink-dim:#9cb0ad;
+    --ink-faint:#7c918e;
+    --ember:#ff7d3f;
+    --ember-2:#ff9866;
+    --ember-wash:#2a1912;
+    --moat:#44c1d0;
+    --moat-wash:#0e2b2f;
+    --ok:#4fb477;
+    --warn:#e8b04b;
+    --crit:#e5544b;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 26px 60px -24px rgba(0,0,0,.65);
+  }
+
+  *,*::before,*::after{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:"IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-size:16px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  h1,h2,h3,h4{font-family:"Zilla Slab", Georgia, "Times New Roman", serif; font-weight:600; line-height:1.12; letter-spacing:-.012em; text-wrap:balance; margin:0}
+  p{margin:0}
+  a{color:inherit}
+  code,kbd,samp,pre{font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+  ::selection{background:var(--ember); color:#fff}
+  :focus-visible{outline:2px solid var(--moat); outline-offset:2px; border-radius:4px}
+
+  .wrap{max-width:var(--maxw); margin-inline:auto; padding-inline:var(--gutter)}
+  .eyebrow{
+    font-family:"IBM Plex Mono", monospace; font-size:12px; font-weight:500;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--moat);
+    display:flex; align-items:center; gap:10px; margin:0 0 18px;
+  }
+  .eyebrow::before{content:""; width:26px; height:1px; background:var(--moat); opacity:.7}
+  .eyebrow--num::before{content:attr(data-n); width:auto; height:auto; background:none;
+    color:var(--ink-faint); font-size:12px; letter-spacing:.1em}
+
+  section{padding-block:clamp(64px, 9vw, 128px); border-top:1px solid var(--line)}
+  section > .wrap > h2{font-size:clamp(26px, 4vw, 40px); max-width:20ch}
+  section > .wrap > .lede{color:var(--ink-dim); font-size:clamp(16px,2.1vw,19px); max-width:60ch; margin-top:18px}
+
+  /* ---------- nav ---------- */
+  .nav{position:sticky; top:0; z-index:50; background:color-mix(in srgb, var(--ground) 86%, transparent);
+    backdrop-filter:blur(10px); border-bottom:1px solid var(--line)}
+  .nav .wrap{display:flex; align-items:center; gap:20px; height:60px}
+  .brand{display:flex; align-items:center; gap:10px; font-family:"IBM Plex Mono", monospace;
+    font-weight:600; letter-spacing:.02em; text-decoration:none; font-size:15px}
+  .brand .ring{width:16px; height:16px; border-radius:50%; border:2px solid var(--moat);
+    box-shadow:inset 0 0 0 2px var(--ground), 0 0 0 3px color-mix(in srgb, var(--moat) 22%, transparent);
+    background:radial-gradient(circle at 50% 50%, var(--ember) 0 34%, transparent 36%)}
+  .nav nav{display:flex; gap:22px; margin-left:auto; align-items:center}
+  .nav nav a{font-size:13.5px; text-decoration:none; color:var(--ink-dim); font-weight:500}
+  .nav nav a:hover{color:var(--ink)}
+  .nav .navcta{font-family:"IBM Plex Mono",monospace; font-size:12.5px; border:1px solid var(--line-strong);
+    padding:7px 12px; border-radius:9px; color:var(--ink)}
+  .nav .navcta:hover{border-color:var(--moat); color:var(--moat)}
+  .themebtn{background:none; border:1px solid var(--line-strong); color:var(--ink-dim); width:34px; height:32px;
+    border-radius:9px; cursor:pointer; font-size:14px; display:grid; place-items:center}
+  .themebtn:hover{color:var(--ink); border-color:var(--moat)}
+  @media (max-width:760px){ .nav nav a:not(.navcta){display:none} }
+
+  /* ---------- hero ---------- */
+  .hero{position:relative; overflow:hidden; border-top:none; padding-block:clamp(56px,10vw,120px)}
+  .hero::before{content:""; position:absolute; inset:-40% -20% auto -20%; height:120%;
+    background:
+      radial-gradient(60% 50% at 22% 18%, color-mix(in srgb, var(--moat) 20%, transparent), transparent 70%),
+      radial-gradient(45% 40% at 82% 8%, color-mix(in srgb, var(--ember) 16%, transparent), transparent 70%);
+    filter:blur(20px); z-index:0; animation:drift 22s ease-in-out infinite alternate}
+  @keyframes drift{ to{ transform:translate3d(0,26px,0) scale(1.06) } }
+  .hero .wrap{position:relative; z-index:1; display:grid; grid-template-columns:1.05fr .95fr; gap:clamp(28px,5vw,64px); align-items:center}
+  .hero h1{font-size:clamp(34px, 6.4vw, 62px); font-weight:700}
+  .hero h1 .hl{color:var(--ember)}
+  .hero .sub{margin-top:22px; font-size:clamp(16px,2.3vw,20px); color:var(--ink-dim); max-width:52ch}
+  .hero .actions{display:flex; flex-wrap:wrap; gap:12px; margin-top:30px}
+  .btn{display:inline-flex; align-items:center; gap:9px; font-weight:600; font-size:14.5px;
+    padding:12px 18px; border-radius:11px; text-decoration:none; border:1px solid transparent; cursor:pointer}
+  .btn--primary{background:var(--ember); color:#fff}
+  .btn--primary:hover{background:var(--ember-2)}
+  .btn--ghost{border-color:var(--line-strong); color:var(--ink)}
+  .btn--ghost:hover{border-color:var(--moat); color:var(--moat)}
+  .install{margin-top:24px; display:flex; align-items:center; gap:12px; background:var(--surface);
+    border:1px solid var(--line); border-radius:12px; padding:12px 14px; max-width:520px; box-shadow:var(--shadow)}
+  .install code{font-size:13.5px; color:var(--ink); white-space:nowrap; overflow-x:auto; flex:1}
+  .install .prompt{color:var(--moat); user-select:none}
+  .copy{background:none; border:1px solid var(--line-strong); color:var(--ink-dim); border-radius:8px;
+    font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    padding:6px 9px; cursor:pointer; flex-shrink:0}
+  .copy:hover{color:var(--moat); border-color:var(--moat)}
+  .copy.ok{color:var(--ok); border-color:var(--ok)}
+
+  /* ---------- terminal ---------- */
+  .term{background:#07100f; color:#d6e4e1; border:1px solid var(--line-strong); border-radius:14px;
+    box-shadow:var(--shadow); font-family:"IBM Plex Mono",monospace; font-size:12.5px; line-height:1.75; overflow:hidden}
+  :root[data-theme="light"] .term, :root:not([data-theme="dark"]) .term{background:#0a1513}
+  .term .bar{display:flex; align-items:center; gap:7px; padding:10px 14px; border-bottom:1px solid #1c2c2a; background:#0b1615}
+  .term .bar i{width:10px; height:10px; border-radius:50%; background:#2a3d3a; display:block}
+  .term .bar i:first-child{background:var(--ember)}
+  .term .bar span{margin-left:8px; color:#6f8480; font-size:11px; letter-spacing:.06em}
+  .term .body{padding:16px 16px 20px; white-space:pre-wrap; word-break:break-word; min-height:252px}
+  .term .u{color:#5fd0dc}
+  .term .m{color:#7f948f}
+  .term .tag{color:var(--ember-2)}
+  .term .ok{color:#63c58a}
+  .term .b{color:#e9efed}
+  .term .cursor{display:inline-block; width:8px; height:1.05em; translate:0 2px; background:#5fd0dc; animation:blink 1.05s step-end infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  @media (max-width:900px){
+    .hero .wrap{grid-template-columns:1fr}
+    .hero .term{order:2}
+  }
+
+  /* ---------- generic cards / grids ---------- */
+  .grid{display:grid; gap:18px; margin-top:44px}
+  .g-3{grid-template-columns:repeat(3,1fr)}
+  .g-2{grid-template-columns:repeat(2,1fr)}
+  .autofit{grid-template-columns:repeat(auto-fit, minmax(248px,1fr))}
+  @media (max-width:820px){ .g-3,.g-2{grid-template-columns:1fr} }
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:24px}
+  .card h3{font-size:19px; margin-bottom:8px}
+  .card p{color:var(--ink-dim); font-size:14.5px}
+  .card .k{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-faint); display:block; margin-bottom:14px}
+  .card--risk{border-color:color-mix(in srgb, var(--crit) 40%, var(--line))}
+  .card--risk .k{color:var(--crit)}
+  .card--safe{border-color:color-mix(in srgb, var(--moat) 45%, var(--line))}
+  .card--safe .k{color:var(--moat)}
+
+  .pillar{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:22px}
+  .pillar .n{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ember); font-weight:600}
+  .pillar h3{font-size:17px; margin:10px 0 6px}
+  .pillar p{color:var(--ink-dim); font-size:14px}
+
+  /* ---------- isolation diagram ---------- */
+  .isowrap{display:grid; grid-template-columns:1.4fr .9fr; gap:26px; margin-top:44px; align-items:start}
+  @media (max-width:860px){ .isowrap{grid-template-columns:1fr} }
+  .iso{border:1px dashed var(--line-strong); border-radius:16px; padding:18px; background:var(--surface)}
+  .iso .cap{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:14px}
+  .layer{border:1px solid var(--line-strong); border-radius:12px; padding:14px 14px 16px; font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-dim)}
+  .layer + .layer{margin-top:0}
+  .layer .lbl{display:block; margin-bottom:12px; color:var(--ink); font-weight:500}
+  .l-host{background:var(--surface-2)}
+  .l-kvm{border-color:color-mix(in srgb,var(--moat) 40%,var(--line-strong)); background:var(--moat-wash)}
+  .l-vmm{border-color:color-mix(in srgb,var(--moat) 55%,var(--line-strong))}
+  .l-guest{border-color:color-mix(in srgb,var(--moat) 70%,var(--line-strong))}
+  .blast{margin-top:10px; border:1px solid var(--ember); background:var(--ember-wash); color:var(--ember-2);
+    border-radius:9px; padding:12px; text-align:center; font-weight:600;
+    box-shadow:0 0 0 1px color-mix(in srgb,var(--ember) 25%,transparent), 0 0 34px -6px color-mix(in srgb,var(--ember) 55%,transparent)}
+  .blast small{display:block; font-weight:400; color:var(--ember-2); opacity:.8; letter-spacing:.04em; margin-top:3px}
+  .iso--bad .layer{border-style:solid}
+  .iso--bad .l-guest{border-color:color-mix(in srgb,var(--crit) 45%,var(--line-strong))}
+  .blast--leak{border-color:var(--crit); background:color-mix(in srgb,var(--crit) 14%, var(--surface)); color:var(--crit);
+    box-shadow:0 0 30px -6px color-mix(in srgb,var(--crit) 50%,transparent)}
+  .leaknote{color:var(--crit); font-size:11px; letter-spacing:.05em; margin-top:12px; font-family:"IBM Plex Mono",monospace}
+
+  /* ---------- workflow ---------- */
+  .steps{margin-top:44px; display:grid; gap:14px}
+  .step{display:grid; grid-template-columns:44px 1fr; gap:18px; background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:20px 22px}
+  .step .no{font-family:"Zilla Slab",serif; font-size:24px; font-weight:700; color:var(--ember); line-height:1}
+  .step h3{font-size:16px; margin-bottom:8px}
+  .step pre{margin:8px 0 0; background:var(--surface-2); border:1px solid var(--line); border-radius:9px;
+    padding:12px 13px; font-size:12.5px; overflow-x:auto; color:var(--ink)}
+  .step .rtn{color:var(--ink-faint)}
+
+  /* ---------- code block ---------- */
+  .codeblock{margin-top:26px; background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden}
+  .codeblock .h{display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--line);
+    font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint)}
+  .codeblock pre{margin:0; padding:16px; font-size:12.5px; overflow-x:auto; color:var(--ink); line-height:1.7}
+
+  /* ---------- table ---------- */
+  .scroll{overflow-x:auto; margin-top:36px; border:1px solid var(--line); border-radius:12px}
+  table{border-collapse:collapse; width:100%; min-width:560px; font-size:14px}
+  th,td{text-align:left; padding:14px 16px; border-bottom:1px solid var(--line); vertical-align:top}
+  thead th{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); background:var(--surface-2)}
+  tbody tr:last-child td{border-bottom:none}
+  td.thr{font-weight:600; color:var(--ink); width:38%}
+  td .mono, .mono{font-family:"IBM Plex Mono",monospace}
+
+  /* ---------- metrics ---------- */
+  .metrics{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:44px}
+  @media (max-width:820px){ .metrics{grid-template-columns:repeat(2,1fr)} }
+  .metric{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:22px}
+  .metric .v{font-family:"Zilla Slab",serif; font-weight:700; font-size:clamp(26px,4vw,34px); color:var(--ink); letter-spacing:-.02em}
+  .metric .v .u{font-size:15px; color:var(--ink-faint); font-family:"IBM Plex Mono",monospace; margin-left:2px}
+  .metric .l{margin-top:6px; font-size:13px; color:var(--ink-dim)}
+  .fineprint{margin-top:18px; font-size:12.5px; color:var(--ink-faint); font-family:"IBM Plex Mono",monospace}
+
+  /* ---------- roadmap ---------- */
+  .timeline{margin-top:44px; display:grid; gap:0; border-left:2px solid var(--line-strong); padding-left:26px}
+  .phase{position:relative; padding:20px 0 26px}
+  .phase::before{content:""; position:absolute; left:-33px; top:24px; width:12px; height:12px; border-radius:50%;
+    background:var(--ground); border:2px solid var(--line-strong)}
+  .phase.done::before{background:var(--moat); border-color:var(--moat)}
+  .phase.next::before{background:var(--ember); border-color:var(--ember); box-shadow:0 0 0 5px color-mix(in srgb,var(--ember) 22%,transparent)}
+  .phase .top{display:flex; flex-wrap:wrap; align-items:baseline; gap:12px}
+  .phase h3{font-size:18px}
+  .phase .id{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-faint)}
+  .phase .est{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-faint); margin-left:auto}
+  .pill{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+    padding:3px 8px; border-radius:999px; border:1px solid currentColor}
+  .pill.s-done{color:var(--moat)}
+  .pill.s-next{color:var(--ember)}
+  .pill.s-plan{color:var(--ink-faint)}
+  .phase p{color:var(--ink-dim); font-size:14px; margin-top:8px; max-width:64ch}
+  .phase ul{margin:10px 0 0; padding-left:18px; color:var(--ink-dim); font-size:13.5px}
+  .phase ul li{margin:6px 0}
+  .phase ul li strong{color:var(--ink); font-weight:600}
+
+  /* ---------- faq ---------- */
+  .faq{margin-top:36px; border-top:1px solid var(--line)}
+  .faq details{border-bottom:1px solid var(--line)}
+  .faq summary{cursor:pointer; padding:18px 0; font-family:"Zilla Slab",serif; font-weight:600; font-size:17px; list-style:none; display:flex; justify-content:space-between; gap:16px}
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary::after{content:"+"; color:var(--moat); font-family:"IBM Plex Mono",monospace; font-weight:400}
+  .faq details[open] summary::after{content:"\2212"}
+  .faq details p{color:var(--ink-dim); font-size:14.5px; padding:0 0 20px; max-width:70ch}
+
+  /* ---------- cta band + footer ---------- */
+  .cta{background:var(--surface); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+  .cta .wrap{text-align:center; padding-block:clamp(56px,8vw,96px)}
+  .cta h2{font-size:clamp(26px,4vw,40px)}
+  .cta p{color:var(--ink-dim); margin:16px auto 28px; max-width:52ch}
+  .cta .actions{display:flex; gap:12px; justify-content:center; flex-wrap:wrap}
+  footer{padding-block:48px; color:var(--ink-faint); font-size:13px}
+  footer .wrap{display:flex; flex-wrap:wrap; gap:18px 40px; align-items:flex-start}
+  footer a{color:var(--ink-dim); text-decoration:none; margin-right:18px}
+  footer a:hover{color:var(--ink)}
+  footer .disc{max-width:52ch; font-size:12px; line-height:1.6}
+
+  /* ---------- reveal ---------- */
+  .reveal{opacity:0; transform:translateY(10px); transition:opacity .6s ease, transform .6s ease}
+  .reveal.in{opacity:1; transform:none}
+  @media (prefers-reduced-motion:reduce){
+    .reveal{opacity:1; transform:none; transition:none}
+    .hero::before{animation:none}
+    .term .cursor{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><span class="ring" aria-hidden="true"></span>moat</a>
+    <nav>
+      <a href="#different">How it works</a>
+      <a href="#security">Security</a>
+      <a href="#agent">For agents</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#install" class="navcta">Install</a>
+      <button class="themebtn" id="theme" type="button" aria-label="Toggle colour theme">◐</button>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">Hardware-isolated sandboxes for AI agents</p>
+        <h1>Give your agent root.<br><span class="hl">Burn the VM.</span></h1>
+        <p class="sub">Moat runs every command your AI agent executes inside a throwaway Firecracker microVM &mdash; its own kernel, no host files, no host network, no host secrets &mdash; and destroys it the moment the task ends. Open source. Runs on your Linux box. One command to install.</p>
+        <div class="install">
+          <span class="prompt">$</span>
+          <code id="installcmd">curl -fsSL https://moat.sh/install | sh</code>
+          <button class="copy" data-copy="#installcmd" type="button">Copy</button>
+        </div>
+        <div class="actions">
+          <a class="btn btn--primary" href="#install">Get started</a>
+          <a class="btn btn--ghost" href="#different">See the isolation model</a>
+        </div>
+      </div>
+
+      <div class="term reveal" aria-hidden="true">
+        <div class="bar"><i></i><i></i><i></i><span>agent shell &mdash; contained</span></div>
+        <div class="body" id="termbody"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROBLEM -->
+  <section id="problem">
+    <div class="wrap">
+      <p class="eyebrow">The problem</p>
+      <h2>Three places an agent can run code. Two of them can hurt you.</h2>
+      <p class="lede">Coding agents now install packages, execute generated scripts, and call tools on their own. Where that runs decides what a bad command &mdash; or a prompt injection &mdash; can reach.</p>
+      <div class="grid g-3">
+        <div class="card card--risk reveal">
+          <span class="k">On the host</span>
+          <h3>Full blast radius</h3>
+          <p>The command runs as you. It can read <span class="mono">~/.aws</span>, your SSH keys, your browser cookies, and everything you can <span class="mono">rm</span>. One bad tool call is a bad day.</p>
+        </div>
+        <div class="card card--risk reveal">
+          <span class="k">In a container</span>
+          <h3>One shared kernel</h3>
+          <p>Namespaces are a packaging boundary, not a security one for hostile code. Container escapes are a recurring class of CVE, and a leaked host mount or socket undoes the rest.</p>
+        </div>
+        <div class="card card--risk reveal">
+          <span class="k">In someone's cloud</span>
+          <h3>Your code leaves the building</h3>
+          <p>Third-party sandboxes mean your source, your data, and your prompts travel to infrastructure you don't control &mdash; plus latency, plus a bill, plus a new place to be breached.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DIFFERENT -->
+  <section id="different">
+    <div class="wrap">
+      <p class="eyebrow">How Moat is different</p>
+      <h2>One shared kernel is one too many.</h2>
+      <p class="lede">Moat runs each task in a real virtual machine on KVM &mdash; the same isolation model AWS uses to keep Lambda and Fargate tenants apart &mdash; started by a seccomp-jailed Firecracker process. The guest gets its own kernel and a disposable disk. Nothing of yours is inside it.</p>
+
+      <div class="isowrap">
+        <div class="iso reveal">
+          <div class="cap">moat &mdash; a command inside a microVM</div>
+          <div class="layer l-host"><span class="lbl">your machine &middot; host kernel</span>
+            <div class="layer l-kvm"><span class="lbl">KVM &middot; hardware virtualization</span>
+              <div class="layer l-vmm"><span class="lbl">Firecracker VMM &middot; seccomp jail, dropped privileges</span>
+                <div class="layer l-guest"><span class="lbl">guest kernel &middot; ephemeral CoW disk &middot; own netns</span>
+                  <div class="blast">the agent's command<small>blast stays here &mdash; then the VM is destroyed</small></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="iso iso--bad reveal">
+          <div class="cap">for contrast &mdash; a container</div>
+          <div class="layer l-host"><span class="lbl">your machine &middot; host kernel &nbsp;&larr; shared</span>
+            <div class="layer l-guest"><span class="lbl">namespace + cgroup</span>
+              <div class="blast blast--leak">the agent's command<small>escape or misconfig &rarr; host</small></div>
+            </div>
+          </div>
+          <div class="leaknote">same kernel = same attack surface</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PILLARS -->
+  <section id="pillars">
+    <div class="wrap">
+      <p class="eyebrow">What "isolated" actually means here</p>
+      <h2>Seven guarantees, enforced by the platform.</h2>
+      <div class="grid autofit">
+        <div class="pillar reveal"><div class="n">01</div><h3>Hardware isolation</h3><p>Firecracker + KVM, a separate guest kernel per task. Not namespaces.</p></div>
+        <div class="pillar reveal"><div class="n">02</div><h3>Ephemeral by default</h3><p>One microVM per task, never reused, destroyed on exit, TTL, or idle.</p></div>
+        <div class="pillar reveal"><div class="n">03</div><h3>Nothing leaks in</h3><p>Host environment is deny-by-default. Every file, env var, and stdin is scanned for secrets and blocked.</p></div>
+        <div class="pillar reveal"><div class="n">04</div><h3>Nothing leaks out</h3><p>Per-VM network namespace with no route to the host, cloud metadata, or your LAN.</p></div>
+        <div class="pillar reveal"><div class="n">05</div><h3>Filtered egress</h3><p>Outbound traffic goes only through a domain-allowlisted proxy, transparently redirected so the guest can't opt out.</p></div>
+        <div class="pillar reveal"><div class="n">06</div><h3>Contained blast</h3><p>cgroup v2 CPU, memory, and PID caps plus Firecracker I/O rate limiters on the VMM process.</p></div>
+        <div class="pillar reveal"><div class="n">07</div><h3>Runs on your metal</h3><p>Your workstation or your server. Nothing is ever sent anywhere. Install with one command.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WORKFLOW -->
+  <section id="workflow">
+    <div class="wrap">
+      <p class="eyebrow eyebrow--num" data-n="//">The loop</p>
+      <h2>Create, use, destroy. Then do it again from scratch.</h2>
+      <p class="lede">The agent never accumulates state. Every task starts in a clean box and ends with the box gone. From a warm pool, a fresh sandbox is ready in about a millisecond.</p>
+      <div class="steps">
+        <div class="step reveal">
+          <span class="no">1</span>
+          <div><h3>Ask for a sandbox</h3>
+            <pre>moat_create { "template": "python", "ttl": "10m", "network": "deny" }
+<span class="rtn">&rarr; { "id": "mb-7f3a19c4", "expires_at": "2026-08-30T18:40Z" }</span></pre></div>
+        </div>
+        <div class="step reveal">
+          <span class="no">2</span>
+          <div><h3>Put files in &mdash; they get scanned</h3>
+            <pre>moat_write_file { "id": "mb-7f3a19c4", "path": "/work/task.py", "content": "..." }
+<span class="rtn">&rarr; { "bytes": 412, "sha256": "9f2c..." }</span>
+<span class="rtn">&rarr; 409 secret_detected: "AWS_SECRET_ACCESS_KEY" at line 4 &mdash; blocked</span></pre></div>
+        </div>
+        <div class="step reveal">
+          <span class="no">3</span>
+          <div><h3>Run commands, stream the output</h3>
+            <pre>moat_exec { "id": "mb-7f3a19c4", "argv": ["python","/work/task.py"], "timeout": "60s" }
+<span class="rtn">&rarr; stdout/stderr streamed &hellip; { "exit": 0, "timed_out": false }</span></pre></div>
+        </div>
+        <div class="step reveal">
+          <span class="no">4</span>
+          <div><h3>Pull results out</h3>
+            <pre>moat_read_file { "id": "mb-7f3a19c4", "path": "/work/out.json" }
+<span class="rtn">&rarr; raw bytes + sha256</span></pre></div>
+        </div>
+        <div class="step reveal">
+          <span class="no">5</span>
+          <div><h3>Destroy it</h3>
+            <pre>moat_destroy { "id": "mb-7f3a19c4" }
+<span class="rtn">&rarr; VM stopped, disk discarded, 0 bytes persisted  (also automatic on TTL / idle)</span></pre></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AGENT -->
+  <section id="agent">
+    <div class="wrap">
+      <p class="eyebrow">Built for agents, not humans</p>
+      <h2>Point your agent at Moat with one config block.</h2>
+      <p class="lede">Moat ships an MCP server and a <span class="mono">SKILL.md</span> that teaches an agent the whole ephemeral workflow &mdash; when to sandbox, how to read results, and never to hand over the user's real credentials.</p>
+
+      <div class="codeblock reveal">
+        <div class="h"><span>~/.config/agent/mcp.json</span><button class="copy" data-copy="#mcpcfg" type="button">Copy</button></div>
+        <pre id="mcpcfg">{
+  "mcpServers": {
+    "moat": {
+      "command": "moat-mcp",
+      "args": ["--socket", "/run/moat/moatd.sock"]
+    }
+  }
+}</pre>
+      </div>
+
+      <div class="grid g-2" style="margin-top:22px">
+        <div class="card reveal">
+          <span class="k">MCP tools</span>
+          <h3>Seven verbs</h3>
+          <p><span class="mono">moat_create</span>, <span class="mono">moat_exec</span>, <span class="mono">moat_write_file</span>, <span class="mono">moat_read_file</span>, <span class="mono">moat_get</span>, <span class="mono">moat_list</span>, <span class="mono">moat_destroy</span>. Streamed exec output, exit codes, timeouts, and secret-block errors are all first-class results.</p>
+        </div>
+        <div class="card reveal">
+          <span class="k">SKILL.md</span>
+          <h3>The playbook, in the repo</h3>
+          <p>Describes the create&rarr;put&rarr;exec&rarr;get&rarr;destroy loop, when a command belongs in a sandbox, how to surface a blocked secret to the user instead of overriding it, and defaulting to <span class="mono">network: deny</span>.</p>
+        </div>
+      </div>
+      <p class="fineprint">Works with any MCP client &mdash; Claude Code, Claude Desktop, Cursor, Continue &mdash; plus a plain HTTP/JSON API and the <span class="mono">moat</span> CLI.</p>
+    </div>
+  </section>
+
+  <!-- SECURITY -->
+  <section id="security">
+    <div class="wrap">
+      <p class="eyebrow">Threat model</p>
+      <h2>Every way a command tries to reach you &mdash; and what stops it.</h2>
+      <div class="scroll reveal">
+        <table>
+          <thead><tr><th>If the command tries to&hellip;</th><th>Moat's control</th></tr></thead>
+          <tbody>
+            <tr><td class="thr">Read or write host files</td><td>No host filesystem is mounted. The guest sees only a shared read-only rootfs and its own ephemeral copy-on-write scratch disk.</td></tr>
+            <tr><td class="thr">Steal host credentials</td><td>The host environment is deny-by-default. Every variable, file, and stdin crossing into a sandbox is scanned for keys, tokens, and private material, and blocked unless explicitly allowed and audited.</td></tr>
+            <tr><td class="thr">Pivot to your LAN or cloud metadata</td><td>Each VM gets its own network namespace. nftables drops traffic to the host, to <span class="mono">169.254.169.254</span>, and to RFC&#8209;1918 ranges.</td></tr>
+            <tr><td class="thr">Exfiltrate data over the network</td><td>Egress is allowed only through a domain-filtered forward proxy, transparently redirected at the firewall so a client that ignores <span class="mono">HTTP_PROXY</span> still cannot bypass the policy.</td></tr>
+            <tr><td class="thr">Fork-bomb, exhaust memory, or thrash disk</td><td>cgroup v2 <span class="mono">cpu.max</span> / <span class="mono">memory.max</span> / <span class="mono">pids.max</span> on the VMM, plus Firecracker token-bucket rate limiters on the disk and NIC.</td></tr>
+            <tr><td class="thr">Exploit a container-escape-class kernel bug</td><td>There is no shared kernel. The guest runs its own kernel under KVM, launched by a Firecracker process under a seccomp filter with dropped privileges.</td></tr>
+            <tr><td class="thr">Leave state behind for the next task</td><td>One microVM per task, never reused. Stopped and discarded on exit, TTL, or idle timeout. An orphan reaper cleans up anything a crash leaves running.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- BENCHMARKS -->
+  <section id="benchmarks">
+    <div class="wrap">
+      <p class="eyebrow">Fast enough to use every time</p>
+      <h2>The cost of a sandbox should be a rounding error.</h2>
+      <div class="metrics">
+        <div class="metric reveal"><div class="v">~24<span class="u">ms</span></div><div class="l">Cold boot to a ready in-VM agent</div></div>
+        <div class="metric reveal"><div class="v">~25<span class="u">ms</span></div><div class="l">Snapshot restore to a ready agent</div></div>
+        <div class="metric reveal"><div class="v">~1<span class="u">ms</span></div><div class="l">Warm-pool acquire, p50</div></div>
+        <div class="metric reveal"><div class="v">~2<span class="u">MiB</span></div><div class="l">Diff-snapshot memory image, 256&nbsp;MiB guest</div></div>
+      </div>
+      <p class="fineprint">Measured on the reference dev box (Fedora, KVM, x86_64). Your numbers move with hardware and template size.</p>
+    </div>
+  </section>
+
+  <!-- INSTALL -->
+  <section id="install">
+    <div class="wrap">
+      <p class="eyebrow">Install on your own Linux box</p>
+      <h2>One command. No account. Nothing phones home.</h2>
+      <div class="install" style="max-width:600px">
+        <span class="prompt">$</span>
+        <code id="installcmd2">curl -fsSL https://moat.sh/install | sh</code>
+        <button class="copy" data-copy="#installcmd2" type="button">Copy</button>
+      </div>
+      <div class="grid g-2" style="margin-top:26px">
+        <div class="card reveal">
+          <span class="k">Prerequisites</span>
+          <h3>A Linux host with KVM</h3>
+          <p>x86_64, <span class="mono">/dev/kvm</span> present, and systemd (or run with <span class="mono">--rootless</span> using a delegated cgroup slice). Bare metal, or a VM with nested virtualization.</p>
+        </div>
+        <div class="card reveal">
+          <span class="k">What the installer does</span>
+          <h3>Checks, fetches, verifies</h3>
+          <p>Confirms virtualization support, installs <span class="mono">moatd</span>, <span class="mono">moat</span>, and <span class="mono">moat-mcp</span>, downloads a cosign-verified kernel and base rootfs, writes <span class="mono">/etc/moat/moat.toml</span>, and installs a systemd unit.</p>
+        </div>
+      </div>
+      <div class="codeblock reveal">
+        <div class="h"><span>verify</span><button class="copy" data-copy="#verifycmd" type="button">Copy</button></div>
+        <pre id="verifycmd">moat doctor                       # KVM, cgroup delegation, image signatures
+moat run -- echo hello from a microVM
+moat uninstall                    # binaries, images, unit, config &mdash; all of it</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section id="roadmap">
+    <div class="wrap">
+      <p class="eyebrow">Roadmap &amp; dev plan</p>
+      <h2>The engine is built. Two milestones make it a product.</h2>
+      <p class="lede">v0 &mdash; the isolation control plane &mdash; runs today. Milestone&nbsp;1 gets it into a stranger's hands in five minutes. Milestone&nbsp;2 makes it safe to run a team's whole agent fleet on.</p>
+
+      <div class="timeline">
+        <div class="phase done reveal">
+          <div class="top"><span class="id">v0</span><h3>The isolation engine</h3><span class="pill s-done">Shipped</span></div>
+          <p>The Firecracker control plane, proven on real microVMs.</p>
+          <ul>
+            <li>microVM lifecycle: jailer, per-VM netns, snapshot / restore, diff snapshots, warm pool, orphan reaper</li>
+            <li>Guest agent as PID&nbsp;1: streamed exec with PTY and timeouts, file in / out over vsock</li>
+            <li>Isolation: nftables rules, cgroup v2 limits, Firecracker rate limiters</li>
+            <li>Northbound HTTP/JSON API, bearer-token auth, per-token template &amp; quota policy</li>
+            <li>Egress domain-filter proxy with transparent, unbypassable redirect</li>
+          </ul>
+        </div>
+
+        <div class="phase next reveal">
+          <div class="top"><span class="id">M1</span><h3>Self-serve v1.0 &mdash; anyone can install it</h3><span class="pill s-next">Next</span><span class="est">~6&ndash;8 wk</span></div>
+          <p>Everything a solo developer or a small team needs to <span class="mono">curl | sh</span> and point an agent at Moat safely.</p>
+          <ul>
+            <li><strong>Ingress secret firewall</strong> &mdash; scan every file, env var, and stdin crossing in (regex + entropy + known formats: AWS / GCP keys, GitHub / GitLab tokens, private keys, JWTs, <span class="mono">.env</span>). Block by default; an audited <span class="mono">allow_secret</span> override; optional redaction.</li>
+            <li><strong>Agent integration</strong> &mdash; the <span class="mono">moat-mcp</span> server (stdio + SSE), a <span class="mono">SKILL.md</span> playbook, and a <span class="mono">moat doctor</span> preflight.</li>
+            <li><strong>One-command install</strong> &mdash; the <span class="mono">curl | sh</span> installer with arch / KVM checks and a cosign-verified kernel and rootfs, plus a templates registry (<span class="mono">python</span>, <span class="mono">node</span>, <span class="mono">go</span>, minimal).</li>
+          </ul>
+        </div>
+
+        <div class="phase reveal">
+          <div class="top"><span class="id">M2</span><h3>Production &amp; fleet &mdash; teams run it for real</h3><span class="pill s-plan">Planned</span><span class="est">~1 quarter</span></div>
+          <p>The audit trail, multi-node operation, and reach to run a whole team's agent traffic through Moat.</p>
+          <ul>
+            <li><strong>Observability &amp; trust</strong> &mdash; a structured audit log of every boundary crossing, <span class="mono">moat logs</span>, a per-session &ldquo;what did this sandbox do&rdquo; report, and an SBOM with reproducible image builds.</li>
+            <li><strong>Fleet</strong> (open-core paid) &mdash; a multi-node control plane: scheduling across hosts, per-team policy, SSO / RBAC, a web console, and managed hosting. The security boundary is never in the paid tier.</li>
+            <li><strong>Reach</strong> &mdash; GPU passthrough via an alternative VMM backend, macOS through a Linux helper VM, a WSL2 guide, and Python / TypeScript / Go SDKs.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OPEN SOURCE -->
+  <section id="opensource">
+    <div class="wrap">
+      <p class="eyebrow">Licensing</p>
+      <h2>Apache-2.0. The boundary is never paywalled.</h2>
+      <div class="grid g-2">
+        <div class="card card--safe reveal">
+          <span class="k">Free forever</span>
+          <h3>Everything that isolates</h3>
+          <p>The daemon, CLI, guest agent, MCP server, <span class="mono">SKILL.md</span>, single-node operation, and every isolation feature on this page. Apache-2.0, self-hosted, no telemetry.</p>
+        </div>
+        <div class="card reveal">
+          <span class="k">Open-core, later</span>
+          <h3>Operating a fleet</h3>
+          <p>Multi-node scheduling, the web console, SSO / RBAC, and managed hosting. Convenience for teams running Moat at scale &mdash; never the security guarantee.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq-sec">
+    <div class="wrap">
+      <p class="eyebrow">FAQ</p>
+      <h2>The questions everyone asks first.</h2>
+      <div class="faq">
+        <details class="reveal" open><summary>Isn't this just Docker?</summary><p>Containers share the host kernel, so a container escape &mdash; a real, recurring class of CVE &mdash; puts the attacker on your box. Moat gives each task its own kernel under KVM: the same isolation model AWS uses to keep Lambda tenants apart.</p></details>
+        <details class="reveal"><summary>Do I need root?</summary><p>The daemon needs access to <span class="mono">/dev/kvm</span> and can run inside a delegated systemd cgroup slice without full root. The installer sets this up. A rootless mode using user namespaces is supported for the network-isolated path.</p></details>
+        <details class="reveal"><summary>Does my code or data leave my machine?</summary><p>No. Moat runs entirely on your host. Nothing is sent anywhere. The filtered egress proxy is the only outbound path, and you set its allowlist.</p></details>
+        <details class="reveal"><summary>Which agents work with it?</summary><p>Anything that speaks MCP &mdash; Claude Code, Claude Desktop, Cursor, Continue, and others &mdash; plus a plain HTTP/JSON API and the <span class="mono">moat</span> CLI for everything else.</p></details>
+        <details class="reveal"><summary>What's the overhead?</summary><p>A microVM adds a few MiB of memory and single-digit-millisecond start latency from a warm pool. Cold boot to a ready agent is about 24&nbsp;ms.</p></details>
+        <details class="reveal"><summary>GPU workloads?</summary><p>Not yet. Firecracker has no device passthrough. GPU support is on the roadmap via an alternative VMM backend.</p></details>
+        <details class="reveal"><summary>macOS or Windows?</summary><p>The host must be Linux with KVM. On macOS, run Moat inside a Linux VM. On Windows, WSL2 with nested virtualization works.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <div class="cta">
+    <div class="wrap">
+      <h2>Let the agent run wild.</h2>
+      <p>In a box that's disposable, disconnected, and empty.</p>
+      <div class="actions">
+        <a class="btn btn--primary" href="#install">Install Moat</a>
+        <a class="btn btn--ghost" href="#roadmap">Read the roadmap</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a href="#top">Docs</a><a href="#install">Install</a><a href="#roadmap">Roadmap</a><a href="#top">GitHub</a>
+    </div>
+    <p class="disc">Moat is an independent open-source project. Not affiliated with, or endorsed by, Amazon Web Services. &ldquo;Firecracker&rdquo; is a trademark of Amazon.com, Inc. Benchmarks are indicative measurements on one machine, not guarantees. Product plan &mdash; drafted 2026-08-30.</p>
+  </div>
+</footer>
+
+<script>
+  // theme toggle
+  (function(){
+    var root=document.documentElement, btn=document.getElementById('theme');
+    var saved; try{ saved=localStorage.getItem('moat-theme'); }catch(e){}
+    if(saved==='dark'||saved==='light') root.setAttribute('data-theme',saved);
+    function cur(){
+      var a=root.getAttribute('data-theme');
+      if(a) return a;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+    }
+    btn.addEventListener('click',function(){
+      var next=cur()==='dark'?'light':'dark';
+      root.setAttribute('data-theme',next);
+      try{ localStorage.setItem('moat-theme',next); }catch(e){}
+    });
+  })();
+
+  // copy buttons
+  document.querySelectorAll('.copy').forEach(function(b){
+    b.addEventListener('click',function(){
+      var el=document.querySelector(b.getAttribute('data-copy'));
+      if(!el) return;
+      var t=el.innerText;
+      navigator.clipboard && navigator.clipboard.writeText(t).then(function(){
+        var old=b.textContent; b.textContent='Copied'; b.classList.add('ok');
+        setTimeout(function(){ b.textContent=old; b.classList.remove('ok'); },1400);
+      }).catch(function(){});
+    });
+  });
+
+  // scroll reveal
+  (function(){
+    var els=document.querySelectorAll('.reveal');
+    if(!('IntersectionObserver' in window)){ els.forEach(function(e){e.classList.add('in');}); return; }
+    var io=new IntersectionObserver(function(rows){
+      rows.forEach(function(r){ if(r.isIntersecting){ r.target.classList.add('in'); io.unobserve(r.target); } });
+    },{rootMargin:'0px 0px -8% 0px', threshold:0.08});
+    els.forEach(function(e){ io.observe(e); });
+  })();
+
+  // hero terminal type-on
+  (function(){
+    var host=document.getElementById('termbody');
+    if(!host) return;
+    var lines=[
+      {c:'u', t:'$ moat run --net=deny --put .:/work -- python summarize.py report.pdf'},
+      {c:'tag',t:'moat: sandbox sb-2f9c41 ready in 7ms   python · net=deny · cpu 1.0 · mem 512M · ttl 15m'},
+      {c:'tag',t:'moat: copied ./ → /work   (2 files, 214 KB, scanned — no secrets)'},
+      {c:'b',  t:'summarize.py: extracted 9 pages from report.pdf'},
+      {c:'b',  t:'summarize.py: GET http://169.254.169.254/latest/meta-data/iam/'},
+      {c:'m',  t:'Traceback (most recent call last):'},
+      {c:'m',  t:'  File "summarize.py", line 31, in <module>'},
+      {c:'b',  t:'urllib.error.URLError: <urlopen error [Errno 101] Network is unreachable>'},
+      {c:'ok', t:'moat: exit 1 · 1.2s · sandbox destroyed · scratch discarded (0 B kept)'}
+    ];
+    var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduce){
+      host.innerHTML=lines.map(function(l){return '<span class="'+l.c+'">'+esc(l.t)+'</span>';}).join('\n');
+      return;
+    }
+    var li=0;
+    function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function nextLine(){
+      if(li>=lines.length){ return; }
+      var l=lines[li++], span=document.createElement('span');
+      span.className=l.c; host.appendChild(span);
+      var i=0, txt=l.t;
+      var speed=l.c==='u'?24:6;
+      (function tick(){
+        span.textContent=txt.slice(0,i++);
+        if(i<=txt.length){ setTimeout(tick,speed); }
+        else{
+          host.appendChild(document.createTextNode('\n'));
+          setTimeout(nextLine, l.c==='u'?260:130);
+        }
+      })();
+    }
+    var started=false;
+    var io=new IntersectionObserver(function(r){
+      if(r[0].isIntersecting && !started){ started=true; nextLine(); io.disconnect(); }
+    },{threshold:0.3});
+    io.observe(host.closest('.term'));
+  })();
+</script>
+
+</body>
+</html>

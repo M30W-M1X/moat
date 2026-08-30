@@ -56,8 +56,20 @@ for VM lifecycle, never "boot" / "tear down").
 - `~/Documents/ClaudeVault/projects/microvm-controller/Design Decisions.md` — ADR-style log `DD-01`..`DD-12` (each with alternatives rejected)
 - `~/Documents/ClaudeVault/projects/microvm-controller/Build Log.md` — what got built per phase
 - `~/Documents/ClaudeVault/projects/microvm-controller/Gotchas.md` — footguns, `G-N`, symptom → cause → fix
+- `~/Documents/ClaudeVault/projects/microvm-controller/Product Plan.md` — "Moat" product plan: name, GTM, roadmap (M1 self-serve / M2 fleet)
 - `docs/implementation-plan.html` (this repo) — rendered plan; published artifact:
   https://claude.ai/code/artifact/9ae3fa52-4ebd-4290-b665-8e14dfc9dd84
+- `docs/index.html` (this repo) — the **Moat** marketing landing page + roadmap.
+  Standalone document, future GitHub Pages site (Pages → deploy from branch,
+  `/docs`). Working artifact: https://claude.ai/code/artifact/ae391a8e-05cb-4351-8fb6-9249a10ed085
+
+> **Note (2026-08-30):** the project is now productized as **Moat** — an
+> open-source, self-hosted sandbox that runs untrusted AI-agent commands in a
+> throwaway Firecracker microVM. Engine phases P1–P5 are done; the product
+> roadmap (secret-scanning ingress, MCP server + SKILL.md, `curl | sh`
+> installer, then fleet) lives in `Product Plan.md`. `ClaudeVault` is not a git
+> repo — its `.md` files are saved to disk and watched by Obsidian, not
+> committed.
 
 ## Architecture at a glance (see Design Decisions for rationale)
 
