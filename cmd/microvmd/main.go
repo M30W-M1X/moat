@@ -52,6 +52,7 @@ func main() {
 	egressAddr := flag.String("egress-addr", "127.0.0.1:0", "listen address for the egress proxy")
 	egressAllow := flag.String("egress-allow", "", "comma list of allowed egress domains (empty = all)")
 	egressDeny := flag.String("egress-deny", "", "comma list of denied egress domains")
+	egressTransparent := flag.String("egress-transparent", "", "listen address for the transparent egress proxy; forces guest 80/443 through it")
 	jsonLog := flag.Bool("json-log", true, "emit structured JSON logs")
 	flag.Parse()
 
@@ -141,6 +142,17 @@ func main() {
 		cfg.EgressPort, _ = strconv.Atoi(port)
 	}
 	log.WithField("addr", egAddr).Info("egress proxy listening")
+
+	if *egressTransparent != "" {
+		trAddr, err := egress.ServeTransparent(ctx, *egressTransparent, proxy)
+		if err != nil {
+			log.WithError(err).Fatal("start transparent egress proxy")
+		}
+		if _, port, err := net.SplitHostPort(trAddr); err == nil {
+			cfg.EgressRedirectPort, _ = strconv.Atoi(port)
+		}
+		log.WithField("addr", trAddr).Info("transparent egress proxy listening")
+	}
 
 	srv, err := server.New(cfg, log)
 	if err != nil {

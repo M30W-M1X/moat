@@ -41,6 +41,11 @@ type Config struct {
 	NetPool    string // CIDR for networked sandboxes
 	Uplink     string // parent interface for networked sandboxes ("none" to skip NAT)
 	EgressPort int    // if set, networked sandboxes get HTTP(S)_PROXY on this port
+
+	// EgressRedirectPort, when > 0, adds an nftables rule to each sandbox
+	// namespace that forces guest TCP port 80 and 443 through the transparent
+	// egress proxy on that port. The guest cannot opt out.
+	EgressRedirectPort int
 }
 
 // TokenPolicy narrows what one token may do. A zero field falls back to the

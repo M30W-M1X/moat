@@ -170,6 +170,7 @@ func coldBoot(ctx context.Context, s *Server, tpl Template, id string, networked
 			return nil, nil, nil, fmt.Errorf("address allocation: %w", err)
 		}
 		p := netconf.BuildPlan(lease, s.uplink)
+		p.RedirectPort = s.cfg.EgressRedirectPort
 		if err := netconf.Apply(p); err != nil {
 			s.ipam.Release(id)
 			return nil, nil, nil, fmt.Errorf("network setup: %w", err)

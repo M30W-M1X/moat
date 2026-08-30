@@ -150,8 +150,16 @@ pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus me
   `deny_network`. Enforced in `handleCreate` before any boot — a blocked
   request gets `403`. `server.Config.Policies map[string]TokenPolicy`. Sample:
   `docs/microvmd.example.json`. Loader + validation: `cmd/microvmd/config.go`.
-- Still todo for P5: a gRPC surface alongside REST, transparent egress
-  enforcement via an nftables redirect.
+- Transparent egress (`internal/egress/transparent.go`): `microvmd
+  -egress-transparent ADDR` starts a second listener that takes raw
+  connections. An nftables `prerouting` DNAT in each sandbox namespace
+  (`Plan.RedirectPort`) forces guest TCP 80/443 to it, so the guest cannot
+  bypass the proxy by ignoring `HTTP(S)_PROXY`. The proxy recovers the pre-DNAT
+  address with `SO_ORIGINAL_DST`, reads the host from the HTTP request line or
+  the TLS SNI (no TLS termination), applies the same `Policy`, and splices. SNI
+  and Host parsing are unit-tested; the DNAT rule needs a real root host (same
+  as the rest of `netconf`, Gotcha `G-11`).
+- Still todo for P5: a gRPC surface alongside REST.
 - Pool members stay **running**, not paused: on this Firecracker build the guest
   vsock stops answering after `PauseVM`/`ResumeVM` on the same process (Gotcha
   `G-12`). Snapshot restore (a fresh process) is unaffected.

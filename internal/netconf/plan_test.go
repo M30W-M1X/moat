@@ -82,6 +82,25 @@ func TestNFTScriptBlocksTheRightTargets(t *testing.T) {
 	}
 }
 
+func TestNFTScriptRedirect(t *testing.T) {
+	p := planForTest(t, "none")
+
+	if s := p.nftScript(); strings.Contains(s, "chain prerouting") {
+		t.Error("no redirect requested, but the script has a prerouting chain")
+	}
+
+	p.RedirectPort = 3128
+	s := p.nftScript()
+	want := "iifname \"" + p.TapName + "\" tcp dport { 80, 443 } dnat to " +
+		p.VethHostIP.String() + ":3128"
+	if !strings.Contains(s, want) {
+		t.Errorf("redirect script missing %q\n---\n%s", want, s)
+	}
+	if !strings.Contains(s, "type nat hook prerouting priority -100") {
+		t.Errorf("redirect script missing the prerouting hook\n---\n%s", s)
+	}
+}
+
 func TestPrefixNetmask(t *testing.T) {
 	cases := map[int]string{30: "255.255.255.252", 24: "255.255.255.0", 16: "255.255.0.0", 8: "255.0.0.0"}
 	for bits, want := range cases {

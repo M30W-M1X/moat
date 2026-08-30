@@ -44,6 +44,11 @@ type Plan struct {
 	// forward further (isolation only, no internet).
 	Uplink string
 
+	// RedirectPort, when > 0, sends guest TCP port 80 and 443 to the transparent
+	// egress proxy that listens on VethHostIP:RedirectPort in the parent
+	// namespace. The guest cannot bypass the proxy by ignoring HTTP(S)_PROXY.
+	RedirectPort int
+
 	// DNS servers written into the guest /etc/resolv.conf by the agent.
 	DNS []string
 }
@@ -110,6 +115,16 @@ func (p Plan) nftScript() string {
 	fmt.Fprintf(&b, "    type nat hook postrouting priority 100; policy accept;\n")
 	fmt.Fprintf(&b, "    oifname \"%s\" masquerade\n", p.VethNS)
 	fmt.Fprintf(&b, "  }\n")
+	if p.RedirectPort > 0 {
+		// Send guest web traffic to the transparent proxy on the parent side.
+		// The dnat runs before the forward chain, so the rewritten packet
+		// (daddr now in veth30) is accepted by the link rule above.
+		fmt.Fprintf(&b, "  chain prerouting {\n")
+		fmt.Fprintf(&b, "    type nat hook prerouting priority -100; policy accept;\n")
+		fmt.Fprintf(&b, "    iifname \"%s\" tcp dport { 80, 443 } dnat to %s:%d\n",
+			p.TapName, p.VethHostIP, p.RedirectPort)
+		fmt.Fprintf(&b, "  }\n")
+	}
 	fmt.Fprintf(&b, "}\n")
 	return b.String()
 }

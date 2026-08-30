@@ -13,7 +13,7 @@ Flags: `-addr`, `-config FILE`, `-tokens id:secret,...` (or `$MICROVMD_TOKENS`),
 `-pool N`, `-global-max`, `-token-max`, `-default-ttl`, `-max-ttl`, `-kernel`,
 `-rootfs`, `-vcpus`, `-mem`, `-cpu-max`, `-mem-max`, `-pids-max`, `-disk-bw`,
 `-net-bw`, `-net-pool`, `-uplink`, `-egress-addr`, `-egress-allow`,
-`-egress-deny`, `-json-log`.
+`-egress-deny`, `-egress-transparent`, `-json-log`.
 
 ## Config file
 
@@ -92,7 +92,11 @@ Response is `application/x-ndjson`, one JSON object per line:
 
 For a networked sandbox the server sets `HTTP_PROXY` / `HTTPS_PROXY` in the
 process environment, pointing at the egress proxy, and a caller cannot override
-them.
+them. With `-egress-transparent ADDR` the daemon also adds an nftables redirect
+in the sandbox namespace that forces guest TCP 80 and 443 through the proxy, so
+a client that ignores the proxy variables still cannot bypass the domain policy.
+The transparent path filters on the HTTP Host header and the TLS SNI and does
+not terminate TLS.
 
 ### `PUT /v1/sandboxes/{id}/files/{path}`
 

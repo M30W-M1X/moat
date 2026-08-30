@@ -26,10 +26,12 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   the changed pages (`~2 MiB` on disk for a `256 MiB` guest).
 - **Phase 5 ✅** — `microvmd`, the northbound HTTP/JSON API: create/exec/files/delete
   sandboxes with bearer-token auth, concurrency quotas, templates, TTLs, a warm pool,
-  Prometheus metrics, structured logs, and an egress domain-filter proxy. A
-  `-config FILE` (JSON) defines templates, tokens, and a per-token policy
-  (template allowlist, max concurrent, max TTL, deny networking). See
-  [`docs/api.md`](docs/api.md) and [`docs/microvmd.example.json`](docs/microvmd.example.json).
+  Prometheus metrics, structured logs, and an egress domain-filter proxy (also a
+  transparent mode, `-egress-transparent`, that an nftables redirect forces
+  guest 80/443 through — SNI/Host filtered, no TLS termination). A `-config FILE`
+  (JSON) defines templates, tokens, and a per-token policy (template allowlist,
+  max concurrent, max TTL, deny networking). See [`docs/api.md`](docs/api.md) and
+  [`docs/microvmd.example.json`](docs/microvmd.example.json).
 
 ### Phase 1: smoke test
 
@@ -177,5 +179,4 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 
 ## Not yet (see roadmap in `CLAUDE.md`)
 
-a snapshot-templated pool (P4), a gRPC surface and transparent egress redirect
-(P5).
+a snapshot-templated pool (P4), a gRPC surface (P5).
