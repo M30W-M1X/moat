@@ -81,9 +81,8 @@ for VM lifecycle, never "boot" / "tear down").
   Cloud Hypervisor backend — keep the VM-driver interface abstract.
 
 **Roadmap:** P1 minimal microVM + vsock echo ✅ · P2 exec + file I/O guest agent ✅ ·
-P3 netns/TAP/nftables ✅ + cgroups (todo) · P4 snapshot + warm pool + orphan reaper
-✅ (UFFD todo) · P5 public gRPC/REST gateway + Prometheus metrics + egress guardrail
-proxy.
+P3 netns/TAP/nftables ✅ + cgroups (todo) · P4 snapshot + UFFD + warm pool + orphan
+reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus metrics + egress proxy ✅.
 
 **Status:** P1 + P2 done; P3 networking done, P3 cgroups/rate-limiters todo.
 - P1: `microvmctl demo` starts a microVM; the static agent runs as PID 1; host↔guest
@@ -114,6 +113,16 @@ proxy.
   handler's wire protocol is unit-tested rootless; the end-to-end restore test
   skips without the privilege.
 - Still todo for P4: diff snapshots, a snapshot-templated pool.
+- P5 (`cmd/microvmd`, `internal/server`, `internal/egress`): HTTP/JSON API —
+  `POST/GET/DELETE /v1/sandboxes`, streaming `POST /v1/sandboxes/{id}/exec`
+  (NDJSON), `PUT/GET /v1/sandboxes/{id}/files/{path}`. Bearer-token auth, per-token
+  + global concurrency quotas, multiple templates, TTL janitor, warm-pool option,
+  startup orphan reconcile. `GET /metrics` (Prometheus, `microvmd_*`), structured
+  JSON request logs. `internal/egress` is a CONNECT/HTTP forward proxy with a
+  domain allow/deny policy; networked sandboxes get `HTTP(S)_PROXY` pointed at it.
+  Run: `make serve` or `MICROVMD_TOKENS=id:secret microvmd -pool 4`. API reference:
+  `docs/api.md`. Tests: `make test-integration` (`internal/server`) +
+  `internal/egress` unit tests.
 - Pool members stay **running**, not paused: on this Firecracker build the guest
   vsock stops answering after `PauseVM`/`ResumeVM` on the same process (Gotcha
   `G-12`). Snapshot restore (a fresh process) is unaffected.

@@ -15,13 +15,17 @@ export ROOTFS_SIZE
 KERNEL  := $(ARTIFACTS)/vmlinux
 ROOTFS  := $(ARTIFACTS)/rootfs.ext4
 
-.PHONY: all build uffd agent images kernel rootfs proto tools demo run clean fmt vet test test-integration tidy
+.PHONY: all build daemon uffd agent images kernel rootfs proto tools demo run serve clean fmt vet test test-integration tidy
 
-all: build uffd agent
+all: build daemon uffd agent
 
 ## build the host control CLI
 build:
 	$(GO) build $(GOFLAGS) -o $(BIN)/microvmctl ./cmd/microvmctl
+
+## build the northbound API daemon
+daemon:
+	$(GO) build $(GOFLAGS) -o $(BIN)/microvmd ./cmd/microvmd
 
 ## build the userfaultfd page-fault handler (used by `restore -uffd`)
 uffd:
@@ -62,6 +66,10 @@ demo: build agent images
 run: build agent images
 	$(BIN)/microvmctl run $(ARGS)
 
+## Phase 5: run the API daemon (MICROVMD_TOKENS=id:secret make serve)
+serve: daemon agent images
+	MICROVMD_TOKENS="$${MICROVMD_TOKENS:-dev:devsecret}" $(BIN)/microvmd $(ARGS)
+
 fmt:
 	$(GO) fmt ./...
 
@@ -71,11 +79,11 @@ vet:
 test:
 	$(GO) test ./...
 
-## boot real microVMs: agent RPCs, snapshot/restore, warm pool, reaper
+## boot real microVMs: agent RPCs, snapshot/restore, warm pool, reaper, HTTP API
 ## (needs /dev/kvm and `make images`)
 test-integration: images
-	$(GO) test -tags integration -v -timeout 15m \
-		./internal/agentclient ./internal/vm ./internal/pool
+	$(GO) test -tags integration -v -timeout 20m \
+		./internal/agentclient ./internal/vm ./internal/pool ./internal/server
 
 ## build a real per-VM network and check isolation from inside the guest.
 ## Runs unprivileged inside a user+net namespace.

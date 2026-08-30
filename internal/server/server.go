@@ -1,0 +1,587 @@
+// Package server is the northbound HTTP API for microvm_controller: create and
+// destroy sandboxes, run commands in them, and move files, with bearer-token
+// auth, per-token and global concurrency quotas, multiple templates, Prometheus
+// metrics, and structured request logs.
+package server
+
+import (
+	"context"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/netip"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/sirupsen/logrus"
+
+	"github.com/M30W-M1X/microvm_controller/internal/agentclient"
+	"github.com/M30W-M1X/microvm_controller/internal/config"
+	"github.com/M30W-M1X/microvm_controller/internal/netconf"
+	"github.com/M30W-M1X/microvm_controller/internal/pool"
+)
+
+// Config configures a Server.
+type Config struct {
+	Templates  []Template        // the first entry is the default
+	Tokens     map[string]string // token id -> secret
+	GlobalMax  int               // 0 = unlimited
+	TokenMax   int               // 0 = unlimited
+	PoolSize   int               // warm, non-networked sandboxes; 0 = no pool
+	DefaultTTL time.Duration
+	MaxTTL     time.Duration
+	NetPool    string // CIDR for networked sandboxes
+	Uplink     string // parent interface for networked sandboxes ("none" to skip NAT)
+	EgressPort int    // if set, networked sandboxes get HTTP(S)_PROXY on this port
+}
+
+// Server holds the API state.
+type Server struct {
+	cfg     Config
+	log     *logrus.Logger
+	reg     *registry
+	tmpl    map[string]Template
+	defTmpl string
+	pool    *pool.Pool
+	ipam    *netconf.Allocator
+	uplink  string
+	m       *metrics
+	promReg *prometheus.Registry
+
+	baseCtx     context.Context // sandbox lifetime; set by Start
+	janitorStop chan struct{}
+	destroyWG   sync.WaitGroup // in-flight sb.destroy() goroutines
+}
+
+// asyncDestroy tears a sandbox down off the request path but keeps it tracked so
+// Shutdown can wait for it.
+func (s *Server) asyncDestroy(sb *Sandbox) {
+	s.destroyWG.Add(1)
+	go func() {
+		defer s.destroyWG.Done()
+		sb.destroy()
+	}()
+}
+
+// New builds a Server. Call Start before serving Handler.
+func New(cfg Config, log *logrus.Logger) (*Server, error) {
+	if len(cfg.Templates) == 0 {
+		return nil, errors.New("at least one template is required")
+	}
+	if len(cfg.Tokens) == 0 {
+		return nil, errors.New("at least one auth token is required")
+	}
+	if cfg.DefaultTTL == 0 {
+		cfg.DefaultTTL = 15 * time.Minute
+	}
+	if cfg.MaxTTL == 0 {
+		cfg.MaxTTL = time.Hour
+	}
+	if cfg.NetPool == "" {
+		cfg.NetPool = netconf.DefaultPool
+	}
+	pfx, err := netip.ParsePrefix(cfg.NetPool)
+	if err != nil {
+		return nil, fmt.Errorf("bad net pool %q: %w", cfg.NetPool, err)
+	}
+	ipam, err := netconf.NewAllocator(pfx)
+	if err != nil {
+		return nil, err
+	}
+
+	s := &Server{
+		cfg:         cfg,
+		log:         log,
+		reg:         newRegistry(cfg.GlobalMax, cfg.TokenMax),
+		tmpl:        map[string]Template{},
+		defTmpl:     cfg.Templates[0].Name,
+		ipam:        ipam,
+		uplink:      cfg.Uplink,
+		promReg:     prometheus.NewRegistry(),
+		janitorStop: make(chan struct{}),
+	}
+	for _, t := range cfg.Templates {
+		s.tmpl[t.Name] = t
+	}
+	s.m = newMetrics(s.promReg, func() float64 {
+		if s.pool == nil {
+			return 0
+		}
+		return float64(s.pool.Ready())
+	})
+	return s, nil
+}
+
+// Start warms the pool and starts the TTL janitor. ctx bounds the lifetime of
+// every sandbox the server creates, so pass a context that lives as long as the
+// process, not a per-request one.
+func (s *Server) Start(ctx context.Context) error {
+	s.baseCtx = ctx
+	if s.cfg.PoolSize > 0 {
+		base, err := s.tmpl[s.defTmpl].machine()
+		if err != nil {
+			return err
+		}
+		p, err := pool.New(ctx, pool.Options{Size: s.cfg.PoolSize}, base, s.log)
+		if err != nil {
+			return fmt.Errorf("warm pool: %w", err)
+		}
+		s.pool = p
+	}
+	go s.janitor()
+	return nil
+}
+
+// Shutdown destroys every sandbox and stops the pool. It waits for in-flight
+// teardowns so no Firecracker process outlives the process, up to the ctx
+// deadline.
+func (s *Server) Shutdown(ctx context.Context) {
+	select {
+	case <-s.janitorStop: // already shut down
+	default:
+		close(s.janitorStop)
+	}
+	for _, sb := range s.reg.list() {
+		s.reg.remove(sb.ID)
+		s.reg.release(sb.TokenID)
+		s.asyncDestroy(sb)
+	}
+	done := make(chan struct{})
+	go func() { s.destroyWG.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		s.log.Warn("shutdown timed out waiting for sandbox teardown")
+	}
+	if s.pool != nil {
+		s.pool.Close()
+	}
+}
+
+// machine builds a config.Machine the warm pool clones members from.
+func (t Template) machine() (config.Machine, error) {
+	m, err := config.NewMachine("tmpl-" + t.Name)
+	if err != nil {
+		return config.Machine{}, err
+	}
+	m.KernelImagePath = t.Kernel
+	m.RootFSPath = t.RootFS
+	m.VCPUs = t.VCPUs
+	m.MemMiB = t.MemMiB
+	return m, nil
+}
+
+// Handler returns the HTTP handler. Middleware order: recover, log+metrics, auth.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("GET /healthz", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	}))
+	mux.Handle("GET /metrics", promhttp.HandlerFor(s.promReg, promhttp.HandlerOpts{}))
+
+	mux.HandleFunc("POST /v1/sandboxes", s.auth(s.handleCreate))
+	mux.HandleFunc("GET /v1/sandboxes", s.auth(s.handleList))
+	mux.HandleFunc("GET /v1/sandboxes/{id}", s.auth(s.handleGet))
+	mux.HandleFunc("DELETE /v1/sandboxes/{id}", s.auth(s.handleDelete))
+	mux.HandleFunc("POST /v1/sandboxes/{id}/exec", s.auth(s.handleExec))
+	mux.HandleFunc("PUT /v1/sandboxes/{id}/files/{path...}", s.auth(s.handlePutFile))
+	mux.HandleFunc("GET /v1/sandboxes/{id}/files/{path...}", s.auth(s.handleGetFile))
+
+	return s.recover(s.observe(mux))
+}
+
+// --- middleware ---
+
+func (s *Server) recover(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if v := recover(); v != nil {
+				s.log.WithField("panic", v).Error("handler panic")
+				writeErr(w, http.StatusInternalServerError, "internal error")
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	wrote  bool
+}
+
+func (sr *statusRecorder) WriteHeader(code int) {
+	if !sr.wrote {
+		sr.status, sr.wrote = code, true
+		sr.ResponseWriter.WriteHeader(code)
+	}
+}
+func (sr *statusRecorder) Write(b []byte) (int, error) {
+	if !sr.wrote {
+		sr.WriteHeader(http.StatusOK)
+	}
+	return sr.ResponseWriter.Write(b)
+}
+func (sr *statusRecorder) Flush() {
+	if f, ok := sr.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (s *Server) observe(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sr := &statusRecorder{ResponseWriter: w, status: 200}
+		next.ServeHTTP(sr, r)
+		route := routeLabel(r)
+		dur := time.Since(start)
+		s.m.httpRequests.WithLabelValues(route, statusClass(sr.status)).Inc()
+		s.m.httpSeconds.WithLabelValues(route).Observe(dur.Seconds())
+		s.log.WithFields(logrus.Fields{
+			"method": r.Method, "route": route, "status": sr.status,
+			"dur_ms": dur.Milliseconds(), "remote": r.RemoteAddr,
+		}).Info("request")
+	})
+}
+
+type ctxKey int
+
+const tokenIDKey ctxKey = 0
+
+func (s *Server) auth(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		var id string
+		for tid, secret := range s.cfg.Tokens {
+			if subtle.ConstantTimeCompare([]byte(got), []byte(secret)) == 1 {
+				id = tid
+				break
+			}
+		}
+		if id == "" {
+			writeErr(w, http.StatusUnauthorized, "missing or invalid bearer token")
+			return
+		}
+		h(w, r.WithContext(context.WithValue(r.Context(), tokenIDKey, id)))
+	}
+}
+
+func tokenID(r *http.Request) string {
+	id, _ := r.Context().Value(tokenIDKey).(string)
+	return id
+}
+
+// --- handlers ---
+
+type createReq struct {
+	Template   string `json:"template"`
+	Networked  bool   `json:"networked"`
+	TTLSeconds int    `json:"ttl_seconds"`
+}
+
+type sandboxView struct {
+	ID        string    `json:"id"`
+	Template  string    `json:"template"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Networked bool      `json:"networked"`
+	GuestIP   string    `json:"guest_ip,omitempty"`
+}
+
+func view(s *Sandbox) sandboxView {
+	return sandboxView{s.ID, s.Template, s.CreatedAt, s.ExpiresAt, s.Networked, s.GuestIP}
+}
+
+func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
+	var req createReq
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "bad JSON body: "+err.Error())
+			return
+		}
+	}
+	name := req.Template
+	if name == "" {
+		name = s.defTmpl
+	}
+	tpl, ok := s.tmpl[name]
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "unknown template "+name)
+		return
+	}
+	ttl := s.cfg.DefaultTTL
+	if req.TTLSeconds > 0 {
+		ttl = time.Duration(req.TTLSeconds) * time.Second
+	}
+	if ttl > s.cfg.MaxTTL {
+		ttl = s.cfg.MaxTTL
+	}
+
+	tid := tokenID(r)
+	if err := s.reg.reserve(tid); err != nil {
+		s.m.quotaRejects.Inc()
+		writeErr(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
+
+	id := newSandboxID()
+	start := time.Now()
+	sb := &Sandbox{ID: id, Template: name, TokenID: tid, CreatedAt: start,
+		ExpiresAt: start.Add(ttl), Networked: req.Networked}
+
+	source := "cold"
+	if !req.Networked && s.pool != nil {
+		acqCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		lease, err := s.pool.Acquire(acqCtx)
+		cancel()
+		if err == nil {
+			sb.lease, sb.cli = lease, lease.Client
+			source = "pool"
+		}
+	}
+	if sb.cli == nil {
+		inst, cli, plan, err := coldBoot(s.baseCtx, s, tpl, id, req.Networked)
+		if err != nil {
+			s.reg.release(tid)
+			writeErr(w, http.StatusInternalServerError, "start sandbox: "+err.Error())
+			return
+		}
+		sb.inst, sb.cli, sb.net = inst, cli, plan
+		sb.GuestIP = guestIP(plan)
+	}
+
+	s.reg.add(sb)
+	s.m.sandboxesActive.WithLabelValues(name).Inc()
+	s.m.sandboxesCreated.WithLabelValues(name, source).Inc()
+	s.m.createSeconds.WithLabelValues(source).Observe(time.Since(start).Seconds())
+	writeJSON(w, http.StatusCreated, view(sb))
+}
+
+func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
+	tid := tokenID(r)
+	var out []sandboxView
+	for _, sb := range s.reg.list() {
+		if sb.TokenID == tid {
+			out = append(out, view(sb))
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sandboxes": out})
+}
+
+func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
+	sb := s.mustOwn(w, r)
+	if sb == nil {
+		return
+	}
+	writeJSON(w, http.StatusOK, view(sb))
+}
+
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	sb := s.mustOwn(w, r)
+	if sb == nil {
+		return
+	}
+	s.reg.remove(sb.ID)
+	s.reg.release(sb.TokenID)
+	s.m.sandboxesActive.WithLabelValues(sb.Template).Dec()
+	s.asyncDestroy(sb)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type execReq struct {
+	Argv      []string          `json:"argv"`
+	Env       map[string]string `json:"env"`
+	Dir       string            `json:"dir"`
+	Stdin     string            `json:"stdin"` // base64
+	TTY       bool              `json:"tty"`
+	TimeoutMS int               `json:"timeout_ms"`
+}
+
+func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
+	sb := s.mustOwn(w, r)
+	if sb == nil {
+		return
+	}
+	var req execReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad JSON body: "+err.Error())
+		return
+	}
+	if len(req.Argv) == 0 {
+		writeErr(w, http.StatusBadRequest, "argv is required")
+		return
+	}
+	stdin, err := base64.StdEncoding.DecodeString(req.Stdin)
+	if req.Stdin != "" && err != nil {
+		writeErr(w, http.StatusBadRequest, "stdin must be base64")
+		return
+	}
+
+	// Networked sandboxes must send outbound HTTP through the egress proxy so
+	// the domain policy applies. The server sets this; a caller cannot override.
+	if sb.net != nil && s.cfg.EgressPort > 0 {
+		if req.Env == nil {
+			req.Env = map[string]string{}
+		}
+		proxy := fmt.Sprintf("http://%s:%d", sb.net.VethHostIP, s.cfg.EgressPort)
+		for _, k := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
+			req.Env[k] = proxy
+		}
+		req.Env["NO_PROXY"] = "localhost,127.0.0.1"
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.WriteHeader(http.StatusOK)
+	enc := json.NewEncoder(w)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+	send := func(v any) { _ = enc.Encode(v); flush() }
+
+	res, err := sb.client().Exec(r.Context(), agentclient.ExecOptions{
+		Argv:    req.Argv,
+		Env:     req.Env,
+		Dir:     req.Dir,
+		Stdin:   stdin,
+		TTY:     req.TTY,
+		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond,
+	}, streamWriter{send, "stdout"}, streamWriter{send, "stderr"})
+	if err != nil {
+		s.m.execTotal.WithLabelValues("error").Inc()
+		send(map[string]any{"stream": "error", "message": err.Error()})
+		return
+	}
+	outcome := "ok"
+	if res.Code != 0 {
+		outcome = "nonzero"
+	}
+	s.m.execTotal.WithLabelValues(outcome).Inc()
+	send(map[string]any{"stream": "exit", "code": res.Code, "signal": res.Signal, "timed_out": res.TimedOut})
+}
+
+type streamWriter struct {
+	send   func(any)
+	stream string
+}
+
+func (sw streamWriter) Write(b []byte) (int, error) {
+	sw.send(map[string]any{"stream": sw.stream, "data": base64.StdEncoding.EncodeToString(b)})
+	return len(b), nil
+}
+
+func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
+	sb := s.mustOwn(w, r)
+	if sb == nil {
+		return
+	}
+	path := "/" + strings.TrimPrefix(r.PathValue("path"), "/")
+	res, err := sb.client().WriteFile(r.Context(), path, 0o644, r.Body)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "write file: "+err.Error())
+		return
+	}
+	s.m.fileBytes.WithLabelValues("in").Add(float64(res.BytesWritten))
+	writeJSON(w, http.StatusOK, map[string]any{"bytes_written": res.BytesWritten, "sha256": res.SHA256})
+}
+
+func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request) {
+	sb := s.mustOwn(w, r)
+	if sb == nil {
+		return
+	}
+	path := "/" + strings.TrimPrefix(r.PathValue("path"), "/")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	counter := &countingWriter{w: w}
+	res, err := sb.client().ReadFile(r.Context(), path, counter)
+	if err != nil {
+		if counter.n == 0 {
+			writeErr(w, http.StatusNotFound, "read file: "+err.Error())
+		}
+		return
+	}
+	s.m.fileBytes.WithLabelValues("out").Add(float64(res.Size))
+	w.Header().Set("X-Sha256", res.SHA256)
+}
+
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(b []byte) (int, error) {
+	n, err := c.w.Write(b)
+	c.n += int64(n)
+	return n, err
+}
+
+// mustOwn resolves the {id} path value and checks the caller owns it.
+func (s *Server) mustOwn(w http.ResponseWriter, r *http.Request) *Sandbox {
+	sb, ok := s.reg.get(r.PathValue("id"))
+	if !ok || sb.TokenID != tokenID(r) {
+		writeErr(w, http.StatusNotFound, "no such sandbox")
+		return nil
+	}
+	return sb
+}
+
+// janitor destroys sandboxes past their TTL.
+func (s *Server) janitor() {
+	t := time.NewTicker(10 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.janitorStop:
+			return
+		case now := <-t.C:
+			for _, sb := range s.reg.list() {
+				if now.After(sb.ExpiresAt) {
+					s.log.WithField("id", sb.ID).Info("sandbox TTL expired")
+					s.reg.remove(sb.ID)
+					s.reg.release(sb.TokenID)
+					s.m.sandboxesActive.WithLabelValues(sb.Template).Dec()
+					s.asyncDestroy(sb)
+				}
+			}
+		}
+	}
+}
+
+// --- helpers ---
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeErr(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+func statusClass(code int) string { return fmt.Sprintf("%dxx", code/100) }
+
+func routeLabel(r *http.Request) string {
+	p := r.URL.Path
+	switch {
+	case p == "/healthz", p == "/metrics", p == "/v1/sandboxes":
+		return r.Method + " " + p
+	case strings.HasPrefix(p, "/v1/sandboxes/"):
+		rest := strings.TrimPrefix(p, "/v1/sandboxes/")
+		if i := strings.IndexByte(rest, '/'); i >= 0 {
+			return r.Method + " /v1/sandboxes/{id}/" + strings.SplitN(rest[i+1:], "/", 2)[0]
+		}
+		return r.Method + " /v1/sandboxes/{id}"
+	default:
+		return r.Method + " other"
+	}
+}

@@ -18,6 +18,10 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   a warm pool of microVMs (`p50` acquire `~1 ms`, with lease TTL / idle reaping), an
   orphan reaper for Firecracker processes a crash left behind, and a userfaultfd
   page-fault handler (`restore -uffd`) that streams guest pages on demand.
+- **Phase 5 ✅** — `microvmd`, the northbound HTTP/JSON API: create/exec/files/delete
+  sandboxes with bearer-token auth, concurrency quotas, templates, TTLs, a warm pool,
+  Prometheus metrics, structured logs, and an egress domain-filter proxy. See
+  [`docs/api.md`](docs/api.md).
 
 ### Phase 1: smoke test
 
@@ -72,6 +76,19 @@ PASS: p50 acquire < 50ms
 $ microvmctl reap        # kill Firecracker processes a crash left behind
 reaped 1: [orphan1]
 ```
+
+### Phase 5: the daemon
+
+```
+$ MICROVMD_TOKENS="dev:s3cr3t" microvmd -addr :8080 -pool 4
+$ T='Authorization: Bearer s3cr3t'
+$ ID=$(curl -s -XPOST -H "$T" localhost:8080/v1/sandboxes | jq -r .id)
+$ curl -s -XPOST -H "$T" -d '{"argv":["uname","-a"]}' localhost:8080/v1/sandboxes/$ID/exec
+{"stream":"stdout","data":"TGludXggLi4uCg=="}
+{"stream":"exit","code":0,"signal":0,"timed_out":false}
+$ curl -s localhost:8080/metrics | grep microvmd_sandboxes_active
+```
+
 
 The host CLI (`cmd/microvmctl`) uses `firecracker-go-sdk` to start Firecracker with a
 downloaded CI `vmlinux` and a minimal ext4 rootfs. The static guest agent
@@ -131,11 +148,13 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/netconf` | per-VM netns + veth + TAP + `/30` IPAM + nftables isolation rules |
 | `internal/pool` | warm pool of running microVMs; one-shot lease + TTL/idle reaping + refill |
 | `cmd/microvm-uffd` | userfaultfd page-fault handler for `restore -uffd` |
+| `cmd/microvmd` | northbound HTTP/JSON API daemon |
+| `internal/server` | API handlers, sandbox registry, auth, quotas, TTL janitor, metrics |
+| `internal/egress` | CONNECT/HTTP forward proxy with a domain allow/deny policy |
 | `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
 | `build/` | `fetch-kernel.sh`, `build-rootfs.sh` |
 | `run/`, `build/artifacts/` | per-VM runtime state and VM images (gitignored) |
 
 ## Not yet (see roadmap in `CLAUDE.md`)
 
-cgroups + rate limiters (P3), diff snapshots + a snapshot-templated pool (P4), the
-public northbound API + metrics (P5).
+cgroups + rate limiters (P3), diff snapshots + a snapshot-templated pool (P4).
