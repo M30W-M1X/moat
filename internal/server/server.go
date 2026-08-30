@@ -24,6 +24,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/M30W-M1X/moat/internal/agentclient"
+	"github.com/M30W-M1X/moat/internal/audit"
 	"github.com/M30W-M1X/moat/internal/config"
 	"github.com/M30W-M1X/moat/internal/netconf"
 	"github.com/M30W-M1X/moat/internal/pool"
@@ -57,6 +58,14 @@ type Config struct {
 	// MaxUploadBytes caps a file upload so the scanner can hold it in memory.
 	// 0 selects the default (64 MiB).
 	MaxUploadBytes int64
+
+	// Audit records boundary crossings. A nil value gives a disabled recorder.
+	Audit *audit.Recorder
+	// Version is reported in the daemon.start audit event.
+	Version string
+	// ConfigSHA256 is the hex sha256 of the loaded moatd.json, or "" when the
+	// daemon started from flags only. Reported in daemon.start.
+	ConfigSHA256 string
 }
 
 // TokenPolicy narrows what one token may do. A zero field falls back to the
@@ -70,6 +79,10 @@ type TokenPolicy struct {
 	// AllowSecretOverride lets a request from this token set "allow_secrets" to
 	// pass content that the secret firewall flagged. It is off by default.
 	AllowSecretOverride bool
+
+	// AuditRead widens audit visibility. "all" lets this token read every
+	// token's events and run verify. Empty means own events only.
+	AuditRead string
 }
 
 // templateAllowed reports whether p permits the named template.
@@ -85,6 +98,9 @@ func (p TokenPolicy) templateAllowed(name string) bool {
 	return false
 }
 
+// auditAll reports whether p may read every token's audit events.
+func (p TokenPolicy) auditAll() bool { return p.AuditRead == "all" }
+
 // Server holds the API state.
 type Server struct {
 	cfg     Config
@@ -99,6 +115,7 @@ type Server struct {
 	maxUp   int64
 	m       *metrics
 	promReg *prometheus.Registry
+	audit   *audit.Recorder
 
 	baseCtx     context.Context // sandbox lifetime; set by Start
 	janitorStop chan struct{}
@@ -176,6 +193,17 @@ func New(cfg Config, log *logrus.Logger) (*Server, error) {
 		}
 		return float64(s.pool.Ready())
 	})
+
+	s.audit = cfg.Audit
+	if s.audit == nil {
+		rec, err := audit.New(audit.Config{Dir: "", Metrics: audit.NopMetrics(), Log: log})
+		if err != nil {
+			return nil, fmt.Errorf("build disabled audit recorder: %w", err)
+		}
+		s.audit = rec
+	} else if s.audit.Enabled() {
+		s.audit.SetMetrics(promAuditMetrics{s.m})
+	}
 	return s, nil
 }
 

@@ -120,6 +120,16 @@ func New(cfg Config) (*Recorder, error) {
 // Enabled reports whether the recorder writes anything.
 func (r *Recorder) Enabled() bool { return r.enabled }
 
+// SetMetrics replaces the metrics sink. Call it once, before heavy traffic.
+func (r *Recorder) SetMetrics(m Metrics) {
+	if m == nil {
+		m = NopMetrics()
+	}
+	r.mu.Lock()
+	r.cfg.Metrics = m
+	r.mu.Unlock()
+}
+
 // RecordSync assigns the envelope fields, appends the event, and fsyncs before
 // returning. A non-nil error means the event is NOT on disk.
 func (r *Recorder) RecordSync(ctx context.Context, e Event) error {

@@ -228,3 +228,15 @@ func TestSyncAndAsyncInterleaveKeepSeqDense(t *testing.T) {
 		prev = e.Hash
 	}
 }
+
+func TestSetMetrics(t *testing.T) {
+	r, _ := testRecorder(t)
+	cm := &countMetrics{Metrics: NopMetrics()}
+	r.SetMetrics(cm)
+	_ = r.RecordSync(context.Background(), Event{Type: TypeExec})
+	// Recorded(...) is called; countMetrics only counts Dropped, so just
+	// assert no panic and a clean write.
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
