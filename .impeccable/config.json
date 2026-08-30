@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-08-30T17:09:17.322Z",
         "reason": "model design decision: the ember 'containment glow' on the single .blast box in the isolation diagram (and its crit-red counterpart on .blast--leak) is the product's core metaphor made visual — a box that is already on fire. Deliberate, on one element, with a matching contrast state. Not a blanket cool-glow look."
+      },
+      {
+        "rule": "radial-halo",
+        "value": "*",
+        "files": [
+          "docs/index.html"
+        ],
+        "createdAt": "2026-08-30T17:27:55.894Z",
+        "reason": "model design decision: the only remaining radial-gradient in docs/index.html is the 16px .brand .ring mark — a hard-stop ember disc (var(--ember) 0 34%, transparent 36%) inside a 2px moat-colored border, i.e. a ring-with-a-dot logo mark, not a soft background wash. The decorative hero background halo the rule originally caught was removed in commit 4f3aca9."
       }
     ]
   }
