@@ -204,6 +204,15 @@ func ArtifactsDir() string {
 	return dataDir()
 }
 
+// AuditDir is the default directory for the moatd audit log. It sits beside the
+// data directory, so it stays after a restart. The runtime directory does not.
+func AuditDir() string {
+	if d := dataDir(); d != "" {
+		return filepath.Join(d, "audit")
+	}
+	return filepath.Join(os.TempDir(), "moat-audit")
+}
+
 // dataDir picks the install data directory from the environment. It does not
 // consult the repo. It always returns a path.
 func dataDir() string {

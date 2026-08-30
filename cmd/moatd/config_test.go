@@ -68,6 +68,29 @@ func TestLoadConfigFile(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAudit(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "moatd.json")
+	os.WriteFile(p, []byte(`{
+	  "templates":[{"name":"default"}],
+	  "tokens":[{"id":"ci","secret":"s"},{"id":"secops","secret":"s2","audit_read":"all"}],
+	  "audit":{"dir":"`+dir+`/aud","max_file_mb":64,"max_age":"48h"}
+	}`), 0o600)
+	lc, err := loadConfigFile(p, "/k", "/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lc.Policies["secops"].AuditRead != "all" {
+		t.Fatalf("audit_read not parsed: %+v", lc.Policies["secops"])
+	}
+	if lc.Audit == nil || lc.Audit.Dir != dir+"/aud" || lc.Audit.MaxFileMB != 64 {
+		t.Fatalf("audit block not parsed: %+v", lc.Audit)
+	}
+	if lc.Audit.MaxAge != 48*time.Hour {
+		t.Fatalf("max_age = %v", lc.Audit.MaxAge)
+	}
+}
+
 func TestLoadConfigFileErrors(t *testing.T) {
 	cases := map[string]string{
 		"no templates":         `{"tokens":[{"id":"a","secret":"b"}]}`,

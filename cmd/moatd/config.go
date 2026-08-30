@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,6 +20,18 @@ type fileConfig struct {
 	Templates []fileTemplate `json:"templates"`
 	Tokens    []fileToken    `json:"tokens"`
 	Defaults  fileDefaults   `json:"defaults"`
+	Audit     *fileAudit     `json:"audit"`
+}
+
+// fileAudit is the on-disk shape of the optional "audit" block. An empty "dir"
+// disables the audit log. A missing block keeps the flag or the built-in value.
+type fileAudit struct {
+	Dir           string `json:"dir"`
+	MaxFileMB     int    `json:"max_file_mb"`
+	MaxTotalMB    int    `json:"max_total_mb"`
+	MaxAge        string `json:"max_age"`
+	FsyncBatch    int    `json:"fsync_batch"`
+	FsyncInterval string `json:"fsync_interval"`
 }
 
 type fileTemplate struct {
@@ -41,6 +55,7 @@ type fileToken struct {
 	MaxTTL        string   `json:"max_ttl"`        // duration string; empty = server max_ttl
 	DenyNetwork   bool     `json:"deny_network"`
 	AllowSecrets  bool     `json:"allow_secret_override"` // may pass secret-flagged content
+	AuditRead     string   `json:"audit_read"`            // "all" = may read the audit log
 }
 
 type fileDefaults struct {
@@ -56,16 +71,30 @@ type fileDefaults struct {
 // loadedConfig is the result of reading a -config file. Zero-valued fields mean
 // "the file did not set this; keep the flag value".
 type loadedConfig struct {
-	Templates  []server.Template
-	Tokens     map[string]string
-	Policies   map[string]server.TokenPolicy
-	GlobalMax  int
-	TokenMax   int
-	DefaultTTL time.Duration
-	MaxTTL     time.Duration
-	Pool       int
-	NetPool    string
-	Uplink     string
+	Templates    []server.Template
+	Tokens       map[string]string
+	Policies     map[string]server.TokenPolicy
+	GlobalMax    int
+	TokenMax     int
+	DefaultTTL   time.Duration
+	MaxTTL       time.Duration
+	Pool         int
+	NetPool      string
+	Uplink       string
+	Audit        *loadedAudit
+	ConfigSHA256 string // hex sha256 of the raw file
+}
+
+// loadedAudit is the parsed "audit" block. Set reports that the file had the
+// block. Durations come from the string form.
+type loadedAudit struct {
+	Dir           string
+	MaxFileMB     int
+	MaxTotalMB    int
+	MaxAge        time.Duration
+	FsyncBatch    int
+	FsyncInterval time.Duration
+	Set           bool
 }
 
 // loadConfigFile reads and validates the file at path. dm supplies the default
@@ -76,6 +105,8 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 	if err != nil {
 		return out, err
 	}
+	sum := sha256.Sum256(raw)
+	out.ConfigSHA256 = hex.EncodeToString(sum[:])
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var fc fileConfig
@@ -139,13 +170,17 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 				return out, fmt.Errorf("%s: token %q allows unknown template %q", path, ft.ID, name)
 			}
 		}
-		if len(ft.Templates) > 0 || ft.MaxConcurrent > 0 || maxTTL > 0 || ft.DenyNetwork || ft.AllowSecrets {
+		if len(ft.Templates) > 0 || ft.MaxConcurrent > 0 || maxTTL > 0 || ft.DenyNetwork || ft.AllowSecrets || ft.AuditRead != "" {
+			if ft.AuditRead != "" && ft.AuditRead != "all" {
+				return out, fmt.Errorf("%s: token %q audit_read must be \"all\" or empty", path, ft.ID)
+			}
 			out.Policies[ft.ID] = server.TokenPolicy{
 				Templates:           ft.Templates,
 				MaxConcurrent:       ft.MaxConcurrent,
 				MaxTTL:              maxTTL,
 				DenyNetwork:         ft.DenyNetwork,
 				AllowSecretOverride: ft.AllowSecrets,
+				AuditRead:           ft.AuditRead,
 			}
 		}
 	}
@@ -162,6 +197,27 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 		if out.MaxTTL, err = time.ParseDuration(d.MaxTTL); err != nil {
 			return out, fmt.Errorf("%s: defaults.max_ttl: %w", path, err)
 		}
+	}
+
+	if fc.Audit != nil {
+		la := &loadedAudit{
+			Dir:        fc.Audit.Dir,
+			MaxFileMB:  fc.Audit.MaxFileMB,
+			MaxTotalMB: fc.Audit.MaxTotalMB,
+			FsyncBatch: fc.Audit.FsyncBatch,
+			Set:        true,
+		}
+		if fc.Audit.MaxAge != "" {
+			if la.MaxAge, err = time.ParseDuration(fc.Audit.MaxAge); err != nil {
+				return out, fmt.Errorf("%s: audit.max_age: %w", path, err)
+			}
+		}
+		if fc.Audit.FsyncInterval != "" {
+			if la.FsyncInterval, err = time.ParseDuration(fc.Audit.FsyncInterval); err != nil {
+				return out, fmt.Errorf("%s: audit.fsync_interval: %w", path, err)
+			}
+		}
+		out.Audit = la
 	}
 	return out, nil
 }

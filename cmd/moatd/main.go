@@ -22,12 +22,16 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/M30W-M1X/moat/internal/audit"
 	"github.com/M30W-M1X/moat/internal/cgroup"
 	"github.com/M30W-M1X/moat/internal/config"
 	"github.com/M30W-M1X/moat/internal/egress"
 	"github.com/M30W-M1X/moat/internal/server"
 	"github.com/M30W-M1X/moat/internal/vm"
 )
+
+// version is the build version. The release build sets it with -ldflags -X.
+var version = "dev"
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address for the API")
@@ -53,6 +57,7 @@ func main() {
 	egressAllow := flag.String("egress-allow", "", "comma list of allowed egress domains (empty = all)")
 	egressDeny := flag.String("egress-deny", "", "comma list of denied egress domains")
 	egressTransparent := flag.String("egress-transparent", "", "listen address for the transparent egress proxy; forces guest 80/443 through it")
+	auditDir := flag.String("audit-dir", "", `audit log directory ("" = default, "off" disables)`)
 	secretScan := flag.Bool("secret-scan", true, "screen files, env, and stdin for credentials on the way into a sandbox")
 	secretRedact := flag.Bool("secret-redact", false, "replace a detected secret with a marker instead of a 409")
 	jsonLog := flag.Bool("json-log", true, "emit structured JSON logs")
@@ -80,6 +85,7 @@ func main() {
 		SecretRedact:  *secretRedact,
 	}
 
+	var loadedAuditFromFile *loadedAudit
 	if *cfgFile != "" {
 		fc, err := loadConfigFile(*cfgFile, dm.KernelImagePath, dm.RootFSPath)
 		if err != nil {
@@ -88,6 +94,8 @@ func main() {
 		cfg.Templates = fc.Templates
 		cfg.Tokens = fc.Tokens
 		cfg.Policies = fc.Policies
+		cfg.ConfigSHA256 = fc.ConfigSHA256
+		loadedAuditFromFile = fc.Audit
 		// A non-zero value in the file's defaults block wins over the flag.
 		cfg.GlobalMax = orInt(fc.GlobalMax, cfg.GlobalMax)
 		cfg.TokenMax = orInt(fc.TokenMax, cfg.TokenMax)
@@ -126,10 +134,53 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// A crash leaves running VMMs behind; reconcile before serving.
+	// Resolve the audit directory. The config file wins first. The flag wins
+	// next. "off" or an explicit empty file value disables the log. An empty
+	// flag keeps the resolved value.
+	auditCfg := audit.Config{
+		Dir: config.AuditDir(),
+		Log: log,
+	}
+	if fa := loadedAuditFromFile; fa != nil && fa.Set {
+		if fa.Dir != "" {
+			auditCfg.Dir = fa.Dir
+		} else {
+			auditCfg.Dir = ""
+		}
+		auditCfg.MaxFileMB = fa.MaxFileMB
+		auditCfg.MaxTotalMB = fa.MaxTotalMB
+		auditCfg.MaxAge = fa.MaxAge
+		auditCfg.FsyncBatch = fa.FsyncBatch
+		auditCfg.FsyncInterval = fa.FsyncInterval
+	}
+	switch *auditDir {
+	case "off":
+		auditCfg.Dir = ""
+	case "":
+		// Keep the resolved value.
+	default:
+		auditCfg.Dir = *auditDir
+	}
+	rec, err := audit.New(auditCfg)
+	if err != nil {
+		log.WithError(err).Fatal("open audit log")
+	}
+	defer rec.Close()
+	if rec.Enabled() {
+		log.WithField("dir", auditCfg.Dir).Info("audit log active")
+	} else {
+		log.Info("audit log disabled")
+	}
+	cfg.Audit = rec
+	cfg.Version = version
+
+	// A crash leaves running VMMs behind. Reconcile before the daemon serves.
 	if root, err := config.RunRoot(); err == nil {
 		if ids := vm.Reconcile(root, nil, log); len(ids) > 0 {
 			log.WithField("ids", ids).Warn("reaped orphan microVMs at startup")
+			for _, id := range ids {
+				_ = rec.RecordSync(ctx, audit.Event{Type: audit.TypeOrphanReap, Sandbox: id, Attrs: map[string]any{"source": "startup"}})
+			}
 		}
 	}
 
@@ -162,6 +213,7 @@ func main() {
 	if err != nil {
 		log.WithError(err).Fatal("build server")
 	}
+	proxy.SetAudit(rec, srv.IdentifyClient)
 	if err := srv.Start(ctx); err != nil {
 		log.WithError(err).Fatal("start server")
 	}

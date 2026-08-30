@@ -3,8 +3,20 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestAuditDir(t *testing.T) {
+	t.Setenv("MOAT_DATA", t.TempDir())
+	got := AuditDir()
+	if filepath.Base(got) != "audit" {
+		t.Fatalf("AuditDir = %q, want it to end in /audit", got)
+	}
+	if !strings.HasPrefix(got, os.Getenv("MOAT_DATA")) {
+		t.Fatalf("AuditDir %q not under MOAT_DATA", got)
+	}
+}
 
 func TestNewMachineDefaults(t *testing.T) {
 	m, err := NewMachine("unit-1")
