@@ -9,9 +9,12 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/M30W-M1X/moat/internal/audit"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
@@ -57,6 +60,16 @@ type Proxy struct {
 	dial     *net.Dialer
 	rt       http.RoundTripper
 	decision *prometheus.CounterVec
+	audit    *audit.Recorder
+	identify func(netip.Addr) (string, string, bool)
+}
+
+// SetAudit attaches an audit recorder and a client-IP resolver. Call it once
+// after you build the Proxy and before you serve traffic. The resolver maps a
+// proxy client IP to its sandbox id and token id.
+func (p *Proxy) SetAudit(rec *audit.Recorder, identify func(netip.Addr) (string, string, bool)) {
+	p.audit = rec
+	p.identify = identify
 }
 
 // New builds a Proxy. reg may be nil.
@@ -91,7 +104,7 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		host, port = r.Host, "443"
 	}
-	if !p.decide(r, host) {
+	if !p.decide(r, host, "proxy") {
 		http.Error(w, "egress to "+host+" is not allowed", http.StatusForbidden)
 		return
 	}
@@ -122,7 +135,7 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	host := r.URL.Hostname()
-	if !p.decide(r, host) {
+	if !p.decide(r, host, "proxy") {
 		http.Error(w, "egress to "+host+" is not allowed", http.StatusForbidden)
 		return
 	}
@@ -143,7 +156,7 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, resp.Body)
 }
 
-func (p *Proxy) decide(r *http.Request, host string) bool {
+func (p *Proxy) decide(r *http.Request, host string, via string) bool {
 	ok := p.pol.Permits(host)
 	d := "allow"
 	if !ok {
@@ -151,7 +164,56 @@ func (p *Proxy) decide(r *http.Request, host string) bool {
 	}
 	p.decision.WithLabelValues(d).Inc()
 	p.log.WithFields(logrus.Fields{"host": host, "method": r.Method, "decision": d}).Info("egress")
+	p.recordEgress(r, host, ok, via)
 	return ok
+}
+
+// recordEgress writes one egress audit event. It records an allow event async
+// and a deny event synchronously. The proxy resolves the sandbox and the token
+// from the client IP. An unknown client IP goes to the "client_ip" attribute
+// and the envelope sandbox and token stay empty. The event holds metadata only.
+func (p *Proxy) recordEgress(r *http.Request, host string, allowed bool, via string) {
+	if p.audit == nil || !p.audit.Enabled() {
+		return
+	}
+	port := 80
+	if r.Method == http.MethodConnect {
+		port = 443
+	}
+	if _, ps, err := net.SplitHostPort(r.Host); err == nil {
+		if n, err := strconv.Atoi(ps); err == nil {
+			port = n
+		}
+	}
+	method := r.Method
+	if method == http.MethodConnect {
+		method = "CONNECT"
+	}
+	attrs := map[string]any{
+		"host":         host,
+		"port":         port,
+		"method":       method,
+		"matched_rule": "",
+		"via":          via,
+	}
+	var sandbox, token string
+	if p.identify != nil {
+		if ap, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
+			if sid, tid, ok := p.identify(ap.Addr()); ok {
+				sandbox, token = sid, tid
+			} else {
+				attrs["client_ip"] = ap.Addr().String()
+			}
+		}
+	}
+	ev := audit.Event{Sandbox: sandbox, Token: token, Attrs: attrs}
+	if allowed {
+		ev.Type = audit.TypeEgressAllow
+		p.audit.Record(ev)
+		return
+	}
+	ev.Type = audit.TypeEgressDeny
+	_ = p.audit.RecordSync(r.Context(), ev)
 }
 
 func pipe(a, b net.Conn) {

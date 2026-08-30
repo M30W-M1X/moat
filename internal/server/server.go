@@ -278,6 +278,18 @@ func (s *Server) Shutdown(ctx context.Context) {
 	}
 }
 
+// IdentifyClient maps an egress proxy client IP to the sandbox that owns it.
+// The proxy client is the guest, so the IP is a guest address. It returns the
+// sandbox id, the token id, and true on a match, or empty strings and false.
+func (s *Server) IdentifyClient(ip netip.Addr) (string, string, bool) {
+	for _, sb := range s.reg.list() {
+		if sb.net != nil && sb.net.GuestIP.Compare(ip) == 0 {
+			return sb.ID, sb.TokenID, true
+		}
+	}
+	return "", "", false
+}
+
 // machine builds a config.Machine the warm pool clones members from.
 func (t Template) machine() (config.Machine, error) {
 	m, err := config.NewMachine("tmpl-" + t.Name)

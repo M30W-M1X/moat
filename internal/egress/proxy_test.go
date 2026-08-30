@@ -4,9 +4,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"testing"
+	"time"
 
+	"github.com/M30W-M1X/moat/internal/audit"
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,6 +36,47 @@ func TestPolicyPermits(t *testing.T) {
 	}
 	if (Policy{Deny: []string{"blocked.test"}}).Permits("blocked.test") {
 		t.Error("deny should block even with empty allow")
+	}
+}
+
+func TestDecideRecordsAudit(t *testing.T) {
+	dir := t.TempDir()
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+	rec, err := audit.New(audit.Config{Dir: dir, Metrics: audit.NopMetrics(), Log: log,
+		FsyncBatch: 1, FsyncInterval: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = rec.Close() })
+
+	p := New(Policy{Allow: []string{"pypi.org"}}, log, nil)
+	p.SetAudit(rec, func(ip netip.Addr) (string, string, bool) {
+		if ip == netip.MustParseAddr("10.0.0.2") {
+			return "sb-42", "ci", true
+		}
+		return "", "", false
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://pypi.org/simple/", nil)
+	req.RemoteAddr = "10.0.0.2:5555"
+	if !p.decide(req, "pypi.org", "proxy") {
+		t.Fatal("pypi.org should be allowed")
+	}
+	req2 := httptest.NewRequest(http.MethodGet, "http://evil.example/", nil)
+	req2.RemoteAddr = "10.0.0.2:5556"
+	if p.decide(req2, "evil.example", "proxy") {
+		t.Fatal("evil.example should be denied")
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	allow, _ := audit.Query(dir, audit.Filter{Types: []string{audit.TypeEgressAllow}})
+	deny, _ := audit.Query(dir, audit.Filter{Types: []string{audit.TypeEgressDeny}})
+	if len(allow) != 1 || allow[0].Sandbox != "sb-42" || allow[0].Attrs["host"] != "pypi.org" {
+		t.Fatalf("allow event wrong: %+v", allow)
+	}
+	if len(deny) != 1 || deny[0].Attrs["host"] != "evil.example" {
+		t.Fatalf("deny event wrong: %+v", deny)
 	}
 }
 

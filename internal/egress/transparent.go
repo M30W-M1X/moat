@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/netip"
 	"strings"
 	"time"
@@ -78,6 +79,17 @@ func (p *Proxy) serveTransparentConn(client *net.TCPConn) {
 	p.log.WithFields(map[string]any{
 		"host": host, "dst": dst.String(), "mode": "transparent", "decision": label,
 	}).Info("egress")
+
+	// Record the decision with via = "transparent". Build a minimal request so
+	// recordEgress can read the method, the port, and the client IP.
+	method := http.MethodGet
+	if dst.Port() == 443 {
+		method = http.MethodConnect
+	}
+	ar := (&http.Request{Method: method, Host: dst.String(), RemoteAddr: client.RemoteAddr().String()}).
+		WithContext(context.Background())
+	p.recordEgress(ar, host, allow, "transparent")
+
 	if !allow {
 		return
 	}
