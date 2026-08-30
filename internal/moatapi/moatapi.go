@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -304,4 +306,138 @@ func (c *Client) GetFile(ctx context.Context, id, path string) ([]byte, error) {
 		return nil, decodeErr(resp)
 	}
 	return io.ReadAll(resp.Body)
+}
+
+// AuditEvent is one event returned by GET /v1/audit.
+type AuditEvent struct {
+	Seq     uint64         `json:"seq"`
+	TS      time.Time      `json:"ts"`
+	Type    string         `json:"type"`
+	Sandbox string         `json:"sandbox"`
+	Token   string         `json:"token"`
+	Attrs   map[string]any `json:"attrs"`
+	Prev    string         `json:"prev"`
+	Hash    string         `json:"hash"`
+}
+
+// AuditFilter narrows an Audit call.
+type AuditFilter struct {
+	Sandbox string
+	Token   string
+	Types   []string
+	Since   string
+	Until   string
+	Limit   int
+	Desc    bool
+}
+
+// Report is the GET /v1/sandboxes/{id}/report body.
+type Report struct {
+	Sandbox       string         `json:"sandbox"`
+	Token         string         `json:"token"`
+	Template      string         `json:"template"`
+	CreatedAt     time.Time      `json:"created_at"`
+	DestroyedAt   time.Time      `json:"destroyed_at"`
+	DestroyReason string         `json:"destroy_reason"`
+	LifetimeS     int64          `json:"lifetime_s"`
+	Networked     bool           `json:"networked"`
+	GuestIP       string         `json:"guest_ip"`
+	Counts        map[string]int `json:"counts"`
+	Exec          struct {
+		N          int   `json:"n"`
+		Nonzero    int   `json:"nonzero"`
+		Errors     int   `json:"errors"`
+		TotalDurMS int64 `json:"total_dur_ms"`
+	} `json:"exec"`
+	Bytes struct {
+		In  int64 `json:"in"`
+		Out int64 `json:"out"`
+	} `json:"bytes"`
+	Files []struct {
+		Dir    string `json:"dir"`
+		Path   string `json:"path"`
+		Bytes  int64  `json:"bytes"`
+		SHA256 string `json:"sha256"`
+		Scan   string `json:"scan"`
+	} `json:"files"`
+	SecretEvents []struct {
+		Type   string   `json:"type"`
+		Target string   `json:"target"`
+		Rules  []string `json:"rules"`
+	} `json:"secret_events"`
+	Egress struct {
+		Allow []string `json:"allow"`
+		Deny  []string `json:"deny"`
+	} `json:"egress"`
+	Chain struct {
+		FirstSeq uint64 `json:"first_seq"`
+		LastSeq  uint64 `json:"last_seq"`
+		Verified bool   `json:"verified"`
+	} `json:"chain"`
+}
+
+// Audit reads events from GET /v1/audit.
+func (c *Client) Audit(ctx context.Context, f AuditFilter) ([]AuditEvent, error) {
+	q := url.Values{}
+	if f.Sandbox != "" {
+		q.Set("sandbox", f.Sandbox)
+	}
+	if f.Token != "" {
+		q.Set("token", f.Token)
+	}
+	for _, t := range f.Types {
+		q.Add("type", t)
+	}
+	if f.Since != "" {
+		q.Set("since", f.Since)
+	}
+	if f.Until != "" {
+		q.Set("until", f.Until)
+	}
+	if f.Limit > 0 {
+		q.Set("limit", strconv.Itoa(f.Limit))
+	}
+	if f.Desc {
+		q.Set("order", "desc")
+	}
+	resp, err := c.do(ctx, http.MethodGet, "/v1/audit?"+q.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, decodeErr(resp)
+	}
+	var out []AuditEvent
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
+	for sc.Scan() {
+		line := bytes.TrimSpace(sc.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var e AuditEvent
+		if err := json.Unmarshal(line, &e); err != nil {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out, sc.Err()
+}
+
+// Report fetches the per-sandbox rollup.
+func (c *Client) Report(ctx context.Context, id string) (Report, error) {
+	resp, err := c.do(ctx, http.MethodGet, "/v1/sandboxes/"+id+"/report", nil)
+	if err != nil {
+		return Report{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Report{}, decodeErr(resp)
+	}
+	var rep Report
+	if err := json.NewDecoder(resp.Body).Decode(&rep); err != nil {
+		return Report{}, err
+	}
+	return rep, nil
 }
