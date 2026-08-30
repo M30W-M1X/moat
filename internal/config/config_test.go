@@ -69,3 +69,31 @@ func TestValidate(t *testing.T) {
 		t.Error("Validate should reject mem < 64 MiB")
 	}
 }
+
+func TestDataDirFromEnv(t *testing.T) {
+	t.Setenv("MOAT_DATA", "/opt/moat-data")
+	if got := dataDir(); got != "/opt/moat-data" {
+		t.Errorf("MOAT_DATA: dataDir() = %q, want /opt/moat-data", got)
+	}
+
+	t.Setenv("MOAT_DATA", "")
+	t.Setenv("XDG_DATA_HOME", "/xdg")
+	if got := dataDir(); got != "/xdg/moat" {
+		t.Errorf("XDG_DATA_HOME: dataDir() = %q, want /xdg/moat", got)
+	}
+
+	t.Setenv("XDG_DATA_HOME", "")
+	// With no env and (almost certainly) no ~/.local/share/moat/vmlinux, it
+	// falls back to the system path.
+	if got := dataDir(); got != "/var/lib/moat" {
+		t.Skipf("dataDir() = %q — a ~/.local/share/moat install is present, skipping", got)
+	}
+}
+
+func TestArtifactsDirUsesRepoInCheckout(t *testing.T) {
+	// The test runs from a repo checkout, so ArtifactsDir must point into it,
+	// not at an install path.
+	if got := ArtifactsDir(); filepath.Base(got) != "artifacts" {
+		t.Errorf("ArtifactsDir() = %q, want a .../build/artifacts path", got)
+	}
+}

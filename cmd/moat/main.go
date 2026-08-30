@@ -42,6 +42,8 @@ func main() {
 		os.Exit(runReap(os.Args[2:]))
 	case "doctor":
 		os.Exit(runDoctor(os.Args[2:]))
+	case "template":
+		os.Exit(runTemplate(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -63,6 +65,7 @@ usage:
   moat bench    [-pool N] [-iters M] [-reap]
   moat reap     [-run-dir DIR]
   moat doctor   check that this host can run Moat
+  moat template list   show the rootfs templates a sandbox can use
 
 demo flags:
   -id string       machine id (default: demo-<pid>)

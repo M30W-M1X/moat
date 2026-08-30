@@ -194,8 +194,20 @@ pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus me
   doctor` (`cmd/moat/doctor.go`) preflights KVM, firecracker/jailer, cgroup v2
   delegation, nft, userfaultfd, images. Tests: `cmd/moat-mcp` (in-memory
   transport + fake moatd).
-- Still todo for M1 (self-serve): the `curl | sh` installer + templates
-  registry. Still todo for P5: a gRPC surface alongside REST.
+- Install (M1): `install.sh` (repo root, POSIX sh) — checks Linux/x86_64/KVM,
+  resolves the latest GitHub release, downloads the tarball + `checksums.txt`,
+  verifies sha256 (and cosign when present), installs binaries to
+  `/usr/local/bin` and images to `/var/lib/moat`, writes a starter
+  `moatd.json`, installs `deploy/moatd.service`. `--user` / `--prefix` /
+  `--data` / `--version` / `--no-service` / `--dry-run`. `build/release.sh`
+  (`make dist`) assembles `dist/moat_<ver>_linux_amd64.tar.gz` + checksums.
+  `internal/config.ArtifactsDir()` / `RunRoot()` fall back to
+  `$MOAT_DATA` → `$XDG_DATA_HOME/moat` → `~/.local/share/moat` → `/var/lib/moat`
+  when there is no repo checkout, so an installed binary needs no flags.
+  `moat template list` shows the configured template. `docs/install.md`.
+- Still todo for M1: a downloadable per-language template registry (`moat
+  template pull python`) — a CDN job, deferred. Still todo for P5: a gRPC
+  surface alongside REST.
 - Pool members stay **running**, not paused: on this Firecracker build the guest
   vsock stops answering after `PauseVM`/`ResumeVM` on the same process (Gotcha
   `G-12`). Snapshot restore (a fresh process) is unaffected.

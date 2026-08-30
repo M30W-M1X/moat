@@ -15,7 +15,7 @@ export ROOTFS_SIZE
 KERNEL  := $(ARTIFACTS)/vmlinux
 ROOTFS  := $(ARTIFACTS)/rootfs.ext4
 
-.PHONY: all build daemon mcp uffd agent images kernel rootfs proto tools demo run serve clean fmt vet test test-integration tidy
+.PHONY: all build daemon mcp uffd agent images kernel rootfs proto tools demo run serve dist clean fmt vet test test-integration tidy
 
 all: build daemon mcp uffd agent
 
@@ -98,6 +98,10 @@ test-net: build agent images
 tidy:
 	$(GO) mod tidy
 
+## assemble a release into dist/ (VERSION=v0.1.0 make dist)
+dist:
+	build/release.sh
+
 clean:
-	rm -rf $(BIN) run
+	rm -rf $(BIN) run dist
 	@echo "kept $(ARTIFACTS). Run 'rm -rf $(ARTIFACTS)' to delete the downloaded images."

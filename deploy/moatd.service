@@ -1,0 +1,43 @@
+# Moat daemon. install.sh writes this to /etc/systemd/system/moatd.service
+# (system) or ~/.config/systemd/user/moatd.service (--user).
+#
+#   systemctl enable --now moatd
+#
+# The daemon needs /dev/kvm. For networked sandboxes (-net) also add:
+#   AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN
+#   CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN
+
+[Unit]
+Description=Moat microVM sandbox daemon
+Documentation=https://moat.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/moatd -config /etc/moat/moatd.json
+Restart=on-failure
+RestartSec=2
+
+Environment=MOAT_DATA=/var/lib/moat
+StateDirectory=moat
+RuntimeDirectory=moat
+Environment=MOAT_RUN=/run/moat
+
+# Access to the hypervisor device.
+DeviceAllow=/dev/kvm rw
+DevicePolicy=closed
+
+# Hardening. Loosen these if a sandbox feature needs more.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/moat /run/moat
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=false
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -86,19 +86,19 @@ const DefaultKernelArgs = "console=ttyS0 reboot=k panic=1 " +
 	"i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd " +
 	"init=/sbin/guest-agent"
 
-// NewMachine returns a Machine that has the Phase 1 default values. It resolves
-// the image paths against the build/artifacts directory in the repo when the
-// caller does not set absolute paths.
+// NewMachine returns a Machine with the default values. It resolves the image
+// paths against a repo checkout when it runs from one, and against the data
+// directory of an install otherwise. The caller can override the paths.
 func NewMachine(id string) (Machine, error) {
 	if id == "" {
 		return Machine{}, fmt.Errorf("machine id must not be empty")
 	}
-	root, err := repoRoot()
+	art := ArtifactsDir()
+	run, err := RunRoot()
 	if err != nil {
 		return Machine{}, err
 	}
-	art := filepath.Join(root, "build", "artifacts")
-	runDir := filepath.Join(root, "run", id)
+	runDir := filepath.Join(run, id)
 
 	return Machine{
 		ID:              id,
@@ -171,13 +171,62 @@ func (m Machine) Validate() error {
 	return nil
 }
 
-// RunRoot returns the directory that holds every machine's run directory.
+// RunRoot returns the directory that holds every machine's run directory. In a
+// repo checkout that is <repo>/run. For an install it is the first writable of
+// $MOAT_RUN, $XDG_RUNTIME_DIR/moat, /run/moat, or a temp directory.
 func RunRoot() (string, error) {
-	root, err := repoRoot()
-	if err != nil {
-		return "", err
+	if root, err := repoRoot(); err == nil {
+		return filepath.Join(root, "run"), nil
 	}
-	return filepath.Join(root, "run"), nil
+	for _, d := range []string{
+		os.Getenv("MOAT_RUN"),
+		xdgJoin("XDG_RUNTIME_DIR", "moat"),
+		"/run/moat",
+		filepath.Join(os.TempDir(), fmt.Sprintf("moat-%d", os.Getuid())),
+	} {
+		if d == "" {
+			continue
+		}
+		if err := os.MkdirAll(d, 0o755); err == nil {
+			return d, nil
+		}
+	}
+	return "", fmt.Errorf("no writable run directory (set $MOAT_RUN)")
+}
+
+// ArtifactsDir returns the directory that holds vmlinux and rootfs.ext4. In a
+// repo checkout that is <repo>/build/artifacts. For an install it is $MOAT_DATA,
+// then $XDG_DATA_HOME/moat, then ~/.local/share/moat, then /var/lib/moat.
+func ArtifactsDir() string {
+	if root, err := repoRoot(); err == nil {
+		return filepath.Join(root, "build", "artifacts")
+	}
+	return dataDir()
+}
+
+// dataDir picks the install data directory from the environment. It does not
+// consult the repo. It always returns a path.
+func dataDir() string {
+	if d := os.Getenv("MOAT_DATA"); d != "" {
+		return d
+	}
+	if d := xdgJoin("XDG_DATA_HOME", "moat"); d != "" {
+		return d
+	}
+	if h, err := os.UserHomeDir(); err == nil {
+		p := filepath.Join(h, ".local", "share", "moat")
+		if _, err := os.Stat(filepath.Join(p, "vmlinux")); err == nil {
+			return p
+		}
+	}
+	return "/var/lib/moat"
+}
+
+func xdgJoin(env, sub string) string {
+	if base := os.Getenv(env); base != "" {
+		return filepath.Join(base, sub)
+	}
+	return ""
 }
 
 // repoRoot searches upward from the working directory and from the executable

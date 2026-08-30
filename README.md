@@ -41,6 +41,11 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   `moat_list` / `moat_destroy`. Point it at a running `moatd` with `MOAT_ADDR` +
   `MOAT_TOKEN`. `SKILL.md` is the agent playbook. `moat doctor` preflights the
   host. HTTP client: `internal/moatapi`.
+- **One-command install ✅** — `curl -fsSL https://moat.sh/install | sh`
+  (`install.sh`): host checks, GitHub-release download, sha256 + cosign verify,
+  binaries + images + a starter config + a systemd unit. `make dist` builds the
+  release tarball. An installed binary finds its images via `$MOAT_DATA` /
+  `/var/lib/moat`. See [`docs/install.md`](docs/install.md).
 
 ### Phase 1: smoke test
 
