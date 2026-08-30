@@ -83,7 +83,7 @@ func startServerWithAudit(t *testing.T, auditDir string) (*httptest.Server, stri
 	}
 	srv, err := server.New(server.Config{
 		Templates: []server.Template{{Name: "default", Kernel: m.KernelImagePath, RootFS: m.RootFSPath, VCPUs: 1, MemMiB: 256}},
-		Tokens:    map[string]string{"t1": "secret1", "secops": "s3"},
+		Tokens:    map[string]string{"t1": "secret1", "secops": "s3", "stranger": "s4"},
 		Policies:  map[string]server.TokenPolicy{"secops": {AuditRead: "all"}},
 		TokenMax:  4,
 		Audit:     rec,
@@ -397,6 +397,41 @@ func TestAuditReadScoping(t *testing.T) {
 	}
 	if m < 2 {
 		t.Fatalf("ci saw %d of its own events, want >= 2", m)
+	}
+
+	// A valid non-all token that owns nothing sees none of ci's events —
+	// this locks the denial path, not just the auth gate.
+	strangerScoped := do(t, ts, "GET", "/v1/audit?sandbox="+sb.ID, "s4", "")
+	defer strangerScoped.Body.Close()
+	if strangerScoped.StatusCode != 200 {
+		t.Fatalf("stranger scoped audit read = %d, want 200", strangerScoped.StatusCode)
+	}
+	sc := 0
+	d3 := json.NewDecoder(strangerScoped.Body)
+	for d3.More() {
+		var e map[string]any
+		if d3.Decode(&e) != nil {
+			break
+		}
+		sc++
+	}
+	if sc != 0 {
+		t.Fatalf("stranger saw %d of ci's audit events, want 0 (scoping bypass)", sc)
+	}
+
+	strangerAll := do(t, ts, "GET", "/v1/audit", "s4", "")
+	defer strangerAll.Body.Close()
+	sa := 0
+	d4 := json.NewDecoder(strangerAll.Body)
+	for d4.More() {
+		var e map[string]any
+		if d4.Decode(&e) != nil {
+			break
+		}
+		sa++
+	}
+	if sa != 0 {
+		t.Fatalf("stranger unfiltered audit read saw %d events, want 0", sa)
 	}
 }
 
