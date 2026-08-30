@@ -125,7 +125,16 @@ pool + orphan reaper ✅ · P5 northbound HTTP API + auth/quotas + Prometheus me
   `vm.unprivileged_userfaultfd=1` — real root on this box (Gotcha `G-14`). The
   handler's wire protocol is unit-tested rootless; the end-to-end restore test
   skips without the privilege.
-- Still todo for P4: diff snapshots, a snapshot-templated pool.
+- Diff snapshots (`internal/vm/diff.go`): `RestoreForDiff` restores a full
+  snapshot with dirty-page tracking on (`SnapshotConfig.EnableDiffSnapshots`);
+  `Instance.CreateSnapshotDiff` then writes a sparse `mem.bin` with only the
+  changed pages plus a full `snapshot.bin`. `RestoreDiff` rebases the sparse
+  diff onto a copy of the base memory (`RebaseMemory`, `SEEK_DATA`/`SEEK_HOLE`)
+  and restores from the merge. A diff snapshot must come from a fresh restore,
+  never a resumed instance (Gotcha `G-12`). CLI: `microvmctl snapshot -exec
+  ... -diff-exec ...` writes `<dir>` + `<dir>/diff`; `microvmctl restore -diff`.
+  On this box a 256 MiB guest's diff `mem.bin` is ~2 MiB on disk.
+- Still todo for P4: a snapshot-templated pool.
 - P5 (`cmd/microvmd`, `internal/server`, `internal/egress`): HTTP/JSON API —
   `POST/GET/DELETE /v1/sandboxes`, streaming `POST /v1/sandboxes/{id}/exec`
   (NDJSON), `PUT/GET /v1/sandboxes/{id}/files/{path}`. Bearer-token auth, per-token

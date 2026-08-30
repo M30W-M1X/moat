@@ -14,6 +14,7 @@ import (
 
 	firecracker "github.com/firecracker-microvm/firecracker-go-sdk"
 	models "github.com/firecracker-microvm/firecracker-go-sdk/client/models"
+	ops "github.com/firecracker-microvm/firecracker-go-sdk/client/operations"
 	"github.com/sirupsen/logrus"
 
 	"github.com/M30W-M1X/microvm_controller/internal/cgroup"
@@ -86,8 +87,43 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 // CreateSnapshot) and resumes it. It uses the file memory backend. The restore
 // keeps the vsock socket path from the snapshot, so use the same machine id.
 func Restore(ctx context.Context, m config.Machine, snapDir string, log *logrus.Logger) (*Instance, error) {
-	snapPath := filepath.Join(snapDir, "snapshot.bin")
-	memPath := filepath.Join(snapDir, "mem.bin")
+	return restoreFrom(ctx, m,
+		filepath.Join(snapDir, "snapshot.bin"),
+		filepath.Join(snapDir, "mem.bin"), false, log)
+}
+
+// RestoreForDiff restores like Restore, and also turns on dirty-page tracking
+// in the restored guest. The caller can then run work and call
+// CreateSnapshotDiff to write a diff against snapDir. Pause and resume on a
+// running VMM break the guest vsock (Gotcha G-12), so a diff snapshot must
+// start from a fresh restore like this one, not from a resumed instance.
+func RestoreForDiff(ctx context.Context, m config.Machine, snapDir string, log *logrus.Logger) (*Instance, error) {
+	return restoreFrom(ctx, m,
+		filepath.Join(snapDir, "snapshot.bin"),
+		filepath.Join(snapDir, "mem.bin"), true, log)
+}
+
+// RestoreDiff starts a microVM from a base snapshot plus a diff snapshot. It
+// first rebases the sparse diff memory file onto a copy of the base memory
+// file, then restores from the merged memory and the diff microVM state.
+// baseDir and diffDir each hold a snapshot.bin and a mem.bin.
+func RestoreDiff(ctx context.Context, m config.Machine, baseDir, diffDir string, log *logrus.Logger) (*Instance, error) {
+	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create run dir: %w", err)
+	}
+	merged := filepath.Join(m.RunDir, "merged-mem.bin")
+	if err := RebaseMemory(
+		filepath.Join(baseDir, "mem.bin"),
+		filepath.Join(diffDir, "mem.bin"), merged); err != nil {
+		return nil, fmt.Errorf("rebase diff memory: %w", err)
+	}
+	return restoreFrom(ctx, m, filepath.Join(diffDir, "snapshot.bin"), merged, false, log)
+}
+
+// restoreFrom loads snapPath (microVM state) and memPath (guest memory) with
+// the file memory backend and resumes the guest. When trackDirty is set, the
+// restored guest tracks dirty pages so a later diff snapshot works.
+func restoreFrom(ctx context.Context, m config.Machine, snapPath, memPath string, trackDirty bool, log *logrus.Logger) (*Instance, error) {
 	for _, p := range []string{snapPath, memPath} {
 		if _, err := os.Stat(p); err != nil {
 			return nil, fmt.Errorf("snapshot file %q: %w", p, err)
@@ -107,6 +143,7 @@ func Restore(ctx context.Context, m config.Machine, snapDir string, log *logrus.
 	// which skips the cold-boot kernel and drive checks.
 	resume := firecracker.WithSnapshot(memPath, snapPath, func(sc *firecracker.SnapshotConfig) {
 		sc.ResumeVM = true
+		sc.EnableDiffSnapshots = trackDirty
 	})
 	return startMachine(ctx, m, cfg, fcBin, log, resume)
 }
@@ -239,6 +276,28 @@ func (in *Instance) CreateSnapshot(ctx context.Context, snapDir string) error {
 	memPath := filepath.Join(snapDir, "mem.bin")
 	if err := in.machine.CreateSnapshot(ctx, memPath, snapPath); err != nil {
 		return fmt.Errorf("create snapshot: %w", err)
+	}
+	return nil
+}
+
+// CreateSnapshotDiff pauses the guest and writes a diff snapshot into snapDir.
+// The microVM state file snapshot.bin is full; the memory file mem.bin is
+// sparse and holds only the pages that changed since the restore. The guest
+// must have started from RestoreForDiff. The guest stays paused.
+func (in *Instance) CreateSnapshotDiff(ctx context.Context, snapDir string) error {
+	if err := os.MkdirAll(snapDir, 0o755); err != nil {
+		return err
+	}
+	if err := in.machine.PauseVM(ctx); err != nil {
+		return fmt.Errorf("pause: %w", err)
+	}
+	snapPath := filepath.Join(snapDir, "snapshot.bin")
+	memPath := filepath.Join(snapDir, "mem.bin")
+	diff := func(p *ops.CreateSnapshotParams) {
+		p.Body.SnapshotType = models.SnapshotCreateParamsSnapshotTypeDiff
+	}
+	if err := in.machine.CreateSnapshot(ctx, memPath, snapPath, diff); err != nil {
+		return fmt.Errorf("create diff snapshot: %w", err)
 	}
 	return nil
 }

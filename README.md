@@ -20,8 +20,10 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   network interface.
 - **Phase 4 ✅** — full snapshot/restore (`~25 ms` to a ready agent vs `~1.1 s` cold),
   a warm pool of microVMs (`p50` acquire `~1 ms`, with lease TTL / idle reaping), an
-  orphan reaper for Firecracker processes a crash left behind, and a userfaultfd
-  page-fault handler (`restore -uffd`) that streams guest pages on demand.
+  orphan reaper for Firecracker processes a crash left behind, a userfaultfd
+  page-fault handler (`restore -uffd`) that streams guest pages on demand, and diff
+  snapshots (`snapshot -diff-exec`, `restore -diff`) whose memory file holds only
+  the changed pages (`~2 MiB` on disk for a `256 MiB` guest).
 - **Phase 5 ✅** — `microvmd`, the northbound HTTP/JSON API: create/exec/files/delete
   sandboxes with bearer-token auth, concurrency quotas, templates, TTLs, a warm pool,
   Prometheus metrics, structured logs, and an egress domain-filter proxy. See
@@ -71,6 +73,12 @@ $ microvmctl restore  -id tpl -- python3 --version                 # ~25 ms to a
 
 $ microvmctl restore -id tpl -uffd -- free -m    # pages stream from mem.bin on demand
                                                  # (needs root / vm.unprivileged_userfaultfd=1)
+
+# diff snapshot: full base, then a memory diff of the changes made after it
+$ microvmctl snapshot -id tpl -exec 'apk add python3' -diff-exec 'pip install requests'
+... full snapshot written   mem_bytes=268435456
+... diff snapshot written   mem_apparent=268435456   mem_disk_bytes=1949696
+$ microvmctl restore -id tpl -diff -- python3 -c 'import requests'   # rebases base+diff
 
 $ microvmctl bench -pool 4 -iters 25
 pool warm   elapsed=1.2s   size=4
@@ -167,5 +175,5 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 
 ## Not yet (see roadmap in `CLAUDE.md`)
 
-diff snapshots + a snapshot-templated pool (P4), a gRPC surface and transparent
-egress redirect (P5).
+a snapshot-templated pool (P4), a gRPC surface and transparent egress redirect
+(P5).
