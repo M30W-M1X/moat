@@ -47,6 +47,10 @@ type Config struct {
 	// WriteFunc writes one audit line to the open file. It defaults to
 	// (*os.File).Write. A test sets it to force a write error.
 	WriteFunc func(*os.File, []byte) (int, error)
+
+	// SyncFunc fsyncs the open file after a synchronous append. It defaults to
+	// (*os.File).Sync. A test sets it to force an fsync error.
+	SyncFunc func(*os.File) error
 }
 
 func (c *Config) setDefaults() {
@@ -73,6 +77,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.WriteFunc == nil {
 		c.WriteFunc = (*os.File).Write
+	}
+	if c.SyncFunc == nil {
+		c.SyncFunc = (*os.File).Sync
 	}
 }
 
@@ -195,7 +202,7 @@ func (r *Recorder) appendLocked(e *Event, sync bool) error {
 		return fmt.Errorf("append audit line: %w", err)
 	}
 	if sync {
-		if err := r.f.Sync(); err != nil {
+		if err := r.cfg.SyncFunc(r.f); err != nil {
 			// The line is on disk but not durable. Roll back the in-memory
 			// state and remove the un-synced bytes so the chain does not fork.
 			r.seq--

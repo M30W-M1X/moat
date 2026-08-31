@@ -8,12 +8,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -656,58 +657,99 @@ func TestAuditEndToEnd(t *testing.T) {
 	}
 }
 
-func TestAuditFailClosedOnUnwritableDir(t *testing.T) {
+// TestAuditFailClosedOnSyncError drives the 503 + rollback path with a
+// deterministic fsync failure. A 201 must imply the sandbox.create event is on
+// disk. When the fsync fails the create must roll back fully.
+func TestAuditFailClosedOnSyncError(t *testing.T) {
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		t.Skip("no /dev/kvm")
+	}
+	m, err := config.NewMachine("srvtest-tpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Validate(); err != nil {
+		t.Skipf("images missing: %v", err)
+	}
 	dir := t.TempDir()
-	ts, token := startServerWithAudit(t, dir)
+	log := logrus.New()
+	log.SetLevel(logrus.WarnLevel)
 
-	// Make the audit dir and its current file read-only so the next append
-	// and fsync fail.
-	fs, _ := filepathGlob(dir)
-	for _, f := range fs {
-		_ = os.Chmod(f, 0o400)
+	var failSync atomic.Bool
+	rec, err := audit.New(audit.Config{
+		Dir: dir, Metrics: audit.NopMetrics(), Log: log,
+		FsyncBatch: 4, FsyncInterval: 20 * time.Millisecond,
+		SyncFunc: func(f *os.File) error {
+			if failSync.Load() {
+				return errors.New("simulated fsync failure")
+			}
+			return f.Sync()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Skip("cannot chmod in this environment")
+	srv, err := server.New(server.Config{
+		Templates: []server.Template{{Name: "default", Kernel: m.KernelImagePath, RootFS: m.RootFSPath, VCPUs: 1, MemMiB: 256}},
+		Tokens:    map[string]string{"t1": "secret1"},
+		TokenMax:  1,
+		Audit:     rec,
+		Version:   "test",
+	}, log)
+	if err != nil {
+		t.Fatal(err)
 	}
-	defer func() {
-		os.Chmod(dir, 0o700)
-		for _, f := range fs {
-			os.Chmod(f, 0o600)
-		}
-	}()
+	if err := srv.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(func() {
+		ts.Close()
+		sc, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		srv.Shutdown(sc)
+		_ = rec.Close()
+	})
+	token := "secret1"
 
+	// The next create cannot fsync its sandbox.create event.
+	failSync.Store(true)
 	resp := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":60}`)
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode == http.StatusCreated {
-		// This kernel and filesystem still honour a write through an
-		// already-open fd after chmod. The audit write cannot be forced to
-		// fail here. Remove the new sandbox and skip.
-		os.Chmod(dir, 0o700)
-		for _, f := range fs {
-			os.Chmod(f, 0o600)
-		}
-		var sb struct {
-			ID string `json:"id"`
-		}
-		json.Unmarshal(body, &sb)
-		if sb.ID != "" {
-			do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close()
-		}
-		t.Skip("audit write still succeeds after chmod on this filesystem")
-	}
 	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("create with unwritable audit = %d (%s), want 503", resp.StatusCode, body)
+		t.Fatalf("create with a failing fsync = %d (%s), want 503", resp.StatusCode, body)
 	}
-	// No sandbox leaked.
+	failSync.Store(false)
+
+	// The sandbox is not in the registry.
 	list := do(t, ts, "GET", "/v1/sandboxes", token, "")
 	lb, _ := io.ReadAll(list.Body)
 	list.Body.Close()
 	if bytes.Contains(lb, []byte(`"id"`)) {
 		t.Fatalf("a sandbox leaked past a failed audit write: %s", lb)
 	}
-}
 
-func filepathGlob(dir string) ([]string, error) {
-	return filepath.Glob(filepath.Join(dir, "audit-*.jsonl"))
+	// The audit log holds no sandbox.create event.
+	time.Sleep(200 * time.Millisecond)
+	creates, _ := audit.Query(dir, audit.Filter{Types: []string{audit.TypeSandboxCreate}})
+	if len(creates) != 0 {
+		t.Fatalf("a sandbox.create event survived a failed fsync: %+v", creates)
+	}
+
+	// The token's one concurrency slot is free again, so a clean create works.
+	time.Sleep(2 * time.Second)
+	ok := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":60}`)
+	ob, _ := io.ReadAll(ok.Body)
+	ok.Body.Close()
+	if ok.StatusCode != http.StatusCreated {
+		t.Fatalf("create after a rolled-back create = %d (%s), want 201", ok.StatusCode, ob)
+	}
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(ob, &sb)
+	if sb.ID != "" {
+		do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close()
+	}
 }
