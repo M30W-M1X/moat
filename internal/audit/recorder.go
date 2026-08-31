@@ -42,6 +42,10 @@ type Config struct {
 	FsyncInterval time.Duration
 	Metrics       Metrics
 	Log           *logrus.Logger
+
+	// WriteFunc writes one audit line to the open file. It defaults to
+	// (*os.File).Write. A test sets it to force a write error.
+	WriteFunc func(*os.File, []byte) (int, error)
 }
 
 func (c *Config) setDefaults() {
@@ -65,6 +69,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.Log == nil {
 		c.Log = logrus.New()
+	}
+	if c.WriteFunc == nil {
+		c.WriteFunc = (*os.File).Write
 	}
 }
 
@@ -172,9 +179,13 @@ func (r *Recorder) appendLocked(e *Event, sync bool) error {
 		r.seq--
 		return err
 	}
-	n, err := r.f.Write(line)
+	n, err := r.cfg.WriteFunc(r.f, line)
 	if err != nil {
+		// A failed write can still leave bytes on disk. Remove the partial
+		// line so the chain does not fork and a later truncate stays correct.
 		r.seq--
+		_ = r.f.Truncate(r.curSize)
+		_, _ = r.f.Seek(r.curSize, io.SeekStart)
 		return fmt.Errorf("append audit line: %w", err)
 	}
 	if sync {

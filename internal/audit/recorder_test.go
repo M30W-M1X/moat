@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,6 +14,76 @@ import (
 
 	"github.com/sirupsen/logrus"
 )
+
+// TestAppendLockedRemovesPartialWrite checks that a failed write leaves no
+// partial line on disk. A test WriteFunc writes a few bytes then errors, like
+// an ENOSPC write. appendLocked must roll the seq back and truncate the file
+// to its pre-write size so the chain does not fork.
+func TestAppendLockedRemovesPartialWrite(t *testing.T) {
+	dir := t.TempDir()
+	log := logrus.New()
+	log.SetLevel(logrus.FatalLevel)
+
+	var failNext atomic.Bool
+	cfg := Config{
+		Dir: dir, MaxFileMB: 8, MaxTotalMB: 64, MaxAge: time.Hour,
+		FsyncBatch: 8, FsyncInterval: 20 * time.Millisecond,
+		Metrics: NopMetrics(), Log: log,
+		WriteFunc: func(f *os.File, b []byte) (int, error) {
+			if failNext.CompareAndSwap(true, false) {
+				n, _ := f.Write(b[:5]) // a few bytes land
+				return n, errors.New("simulated write failure")
+			}
+			return f.Write(b)
+		},
+	}
+	r, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if err := r.RecordSync(ctx, Event{Type: TypeExec, Sandbox: "sb", Token: "ci"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	fileSize := func() int64 {
+		files, _ := listFiles(dir)
+		var total int64
+		for _, f := range files {
+			fi, _ := os.Stat(f)
+			total += fi.Size()
+		}
+		return total
+	}
+	sizeBefore := fileSize()
+	seqBefore := r.seq
+
+	failNext.Store(true)
+	if err := r.RecordSync(ctx, Event{Type: TypeExec, Sandbox: "sb", Token: "ci"}); err == nil {
+		t.Fatal("RecordSync must return the write error")
+	}
+	if r.seq != seqBefore {
+		t.Fatalf("seq = %d after a failed write, want %d", r.seq, seqBefore)
+	}
+	if got := fileSize(); got != sizeBefore {
+		t.Fatalf("file size = %d after a failed write, want %d (partial bytes not removed)", got, sizeBefore)
+	}
+
+	// A following write still chains cleanly.
+	if err := r.RecordSync(ctx, Event{Type: TypeExec, Sandbox: "sb", Token: "ci"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = r.Close()
+	res, err := Verify(dir)
+	if err != nil || !res.OK {
+		t.Fatalf("chain broken after a partial write: %+v (%v)", res, err)
+	}
+	if res.Events != 4 {
+		t.Fatalf("want 4 intact events, got %d", res.Events)
+	}
+}
 
 func testRecorder(t *testing.T) (*Recorder, string) {
 	t.Helper()
