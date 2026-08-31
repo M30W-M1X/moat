@@ -70,7 +70,7 @@ func (p *Proxy) serveTransparentConn(client *net.TCPConn) {
 	host := hostFromStream(br, dst)
 	_ = client.SetReadDeadline(time.Time{})
 
-	allow := p.pol.Permits(host)
+	rule, allow := p.pol.Match(host)
 	label := "allow"
 	if !allow {
 		label = "deny"
@@ -88,7 +88,7 @@ func (p *Proxy) serveTransparentConn(client *net.TCPConn) {
 	}
 	ar := (&http.Request{Method: method, Host: dst.String(), RemoteAddr: client.RemoteAddr().String()}).
 		WithContext(context.Background())
-	p.recordEgress(ar, host, allow, "transparent")
+	p.recordEgress(ar, host, allow, "transparent", rule)
 
 	if !allow {
 		return

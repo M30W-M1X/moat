@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/M30W-M1X/moat/internal/audit"
@@ -29,28 +30,44 @@ type Policy struct {
 	Deny  []string
 }
 
-// Permits reports whether host (no port) is reachable under the policy.
-func (p Policy) Permits(host string) bool {
+// Match reports whether host (no port) is reachable under the policy and names
+// the rule that decided it. The rule is a Deny or Allow pattern, or
+// "default-allow" when Allow is empty, or "default-deny" when Allow is set and
+// nothing matched.
+func (p Policy) Match(host string) (rule string, allowed bool) {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	for _, d := range p.Deny {
 		if hostMatches(host, d) {
-			return false
+			return d, false
 		}
 	}
 	if len(p.Allow) == 0 {
-		return true
+		return "default-allow", true
 	}
 	for _, a := range p.Allow {
 		if hostMatches(host, a) {
-			return true
+			return a, true
 		}
 	}
-	return false
+	return "default-deny", false
+}
+
+// Permits reports whether host (no port) is reachable under the policy.
+func (p Policy) Permits(host string) bool {
+	_, ok := p.Match(host)
+	return ok
 }
 
 func hostMatches(host, pattern string) bool {
 	pattern = strings.ToLower(strings.TrimPrefix(pattern, "*."))
 	return host == pattern || strings.HasSuffix(host, "."+pattern)
+}
+
+// auditHook holds the audit sink and the client-IP resolver together, so
+// SetAudit swaps both with one atomic store.
+type auditHook struct {
+	rec      *audit.Recorder
+	identify func(netip.Addr) (string, string, bool)
 }
 
 // Proxy is the forward proxy handler.
@@ -60,16 +77,14 @@ type Proxy struct {
 	dial     *net.Dialer
 	rt       http.RoundTripper
 	decision *prometheus.CounterVec
-	audit    *audit.Recorder
-	identify func(netip.Addr) (string, string, bool)
+	audit    atomic.Pointer[auditHook]
 }
 
-// SetAudit attaches an audit recorder and a client-IP resolver. Call it once
-// after you build the Proxy and before you serve traffic. The resolver maps a
-// proxy client IP to its sandbox id and token id.
+// SetAudit attaches an audit recorder and a client-IP resolver. It is safe to
+// call while the proxy serves traffic. The resolver maps a proxy client IP to
+// its sandbox id and token id.
 func (p *Proxy) SetAudit(rec *audit.Recorder, identify func(netip.Addr) (string, string, bool)) {
-	p.audit = rec
-	p.identify = identify
+	p.audit.Store(&auditHook{rec: rec, identify: identify})
 }
 
 // New builds a Proxy. reg may be nil.
@@ -157,14 +172,14 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) decide(r *http.Request, host string, via string) bool {
-	ok := p.pol.Permits(host)
+	rule, ok := p.pol.Match(host)
 	d := "allow"
 	if !ok {
 		d = "deny"
 	}
 	p.decision.WithLabelValues(d).Inc()
 	p.log.WithFields(logrus.Fields{"host": host, "method": r.Method, "decision": d}).Info("egress")
-	p.recordEgress(r, host, ok, via)
+	p.recordEgress(r, host, ok, via, rule)
 	return ok
 }
 
@@ -174,8 +189,9 @@ func (p *Proxy) decide(r *http.Request, host string, via string) bool {
 // resolves the sandbox and the token from the client IP. An unknown client IP
 // goes to the "client_ip" attribute and the envelope sandbox and token stay
 // empty. The event holds metadata only.
-func (p *Proxy) recordEgress(r *http.Request, host string, allowed bool, via string) {
-	if p.audit == nil || !p.audit.Enabled() {
+func (p *Proxy) recordEgress(r *http.Request, host string, allowed bool, via, rule string) {
+	h := p.audit.Load()
+	if h == nil || h.rec == nil || !h.rec.Enabled() {
 		return
 	}
 	port := 80
@@ -195,13 +211,13 @@ func (p *Proxy) recordEgress(r *http.Request, host string, allowed bool, via str
 		"host":         host,
 		"port":         port,
 		"method":       method,
-		"matched_rule": "",
+		"matched_rule": rule,
 		"via":          via,
 	}
 	var sandbox, token string
-	if p.identify != nil {
+	if h.identify != nil {
 		if ap, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
-			if sid, tid, ok := p.identify(ap.Addr()); ok {
+			if sid, tid, ok := h.identify(ap.Addr()); ok {
 				sandbox, token = sid, tid
 			} else {
 				attrs["client_ip"] = ap.Addr().String()
@@ -214,7 +230,7 @@ func (p *Proxy) recordEgress(r *http.Request, host string, allowed bool, via str
 	} else {
 		ev.Type = audit.TypeEgressDeny
 	}
-	p.audit.Record(ev)
+	h.rec.Record(ev)
 }
 
 func pipe(a, b net.Conn) {

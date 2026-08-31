@@ -75,8 +75,35 @@ func TestDecideRecordsAudit(t *testing.T) {
 	if len(allow) != 1 || allow[0].Sandbox != "sb-42" || allow[0].Attrs["host"] != "pypi.org" {
 		t.Fatalf("allow event wrong: %+v", allow)
 	}
+	if allow[0].Attrs["matched_rule"] != "pypi.org" {
+		t.Fatalf("allow matched_rule = %v, want pypi.org", allow[0].Attrs["matched_rule"])
+	}
 	if len(deny) != 1 || deny[0].Attrs["host"] != "evil.example" {
 		t.Fatalf("deny event wrong: %+v", deny)
+	}
+	if deny[0].Attrs["matched_rule"] != "default-deny" {
+		t.Fatalf("deny matched_rule = %v, want default-deny", deny[0].Attrs["matched_rule"])
+	}
+}
+
+func TestPolicyMatch(t *testing.T) {
+	cases := []struct {
+		pol       Policy
+		host      string
+		wantRule  string
+		wantAllow bool
+	}{
+		{Policy{}, "anything.test", "default-allow", true},
+		{Policy{Deny: []string{"blocked.test"}}, "api.blocked.test", "blocked.test", false},
+		{Policy{Allow: []string{"pypi.org"}}, "pypi.org", "pypi.org", true},
+		{Policy{Allow: []string{"pypi.org"}}, "evil.example", "default-deny", false},
+		{Policy{Allow: []string{"a.test"}, Deny: []string{"a.test"}}, "a.test", "a.test", false},
+	}
+	for _, c := range cases {
+		rule, allow := c.pol.Match(c.host)
+		if rule != c.wantRule || allow != c.wantAllow {
+			t.Errorf("Match(%q) = (%q, %v), want (%q, %v)", c.host, rule, allow, c.wantRule, c.wantAllow)
+		}
 	}
 }
 
