@@ -141,7 +141,8 @@ its failure never fails a request but increments `moat_audit_dropped_total`.
   fired), `findings` (count). The matched value is never recorded.
 - `egress.allow` / `egress.deny`: `host`, `port`, `method` (for plain HTTP)
   or `"CONNECT"`, `matched_rule` (the allow/deny pattern that decided it, or
-  `""`), `via` (`proxy`|`transparent`). The envelope `sandbox` and `token`
+  `"default-allow"` / `"default-deny"` when no pattern matched),
+  `via` (`proxy`|`transparent`). The envelope `sandbox` and `token`
   are set from the client-IP resolver (§4.3); when it cannot resolve the
   client IP the envelope carries `sandbox:""`, `token:""` and `attrs` adds
   `client_ip`.
