@@ -64,6 +64,11 @@ func podmanLoad(ctx context.Context, archive string) (string, error) {
 	return "", fmt.Errorf("podman load %s: no image reference in output: %s", archive, strings.TrimSpace(string(out)))
 }
 
+// podmanImageExists reports whether ref is already in local storage.
+func podmanImageExists(ctx context.Context, ref string) bool {
+	return exec.CommandContext(ctx, "podman", "image", "exists", ref).Run() == nil
+}
+
 // podmanInspect reads the image metadata for ref.
 func podmanInspect(ctx context.Context, ref string) (inspectImage, error) {
 	out, err := exec.CommandContext(ctx, "podman", "inspect", "--type", "image", ref).Output()
