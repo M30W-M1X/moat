@@ -18,14 +18,14 @@ rm -rf "$DIST"
 mkdir -p "$STAGE/bin" "$STAGE/share"
 
 export CGO_ENABLED=0 GOOS=$OS GOARCH=$ARCH
-LDFLAGS="-s -w -X main.version=$VERSION"
+LDFLAGS="-s -w -buildid= -X main.version=$VERSION"
 
 echo "  build binaries"
 go build -ldflags "$LDFLAGS" -o "$STAGE/bin/moat"      ./cmd/moat
 go build -ldflags "$LDFLAGS" -o "$STAGE/bin/moatd"     ./cmd/moatd
 go build -ldflags "$LDFLAGS" -o "$STAGE/bin/moat-mcp"  ./cmd/moat-mcp
 go build -ldflags "$LDFLAGS" -o "$STAGE/bin/moat-uffd" ./cmd/moat-uffd
-go build -ldflags "$LDFLAGS" -o "$STAGE/share/guest-agent" ./guest/agent
+go build -trimpath -buildvcs=false -ldflags "$LDFLAGS" -o "$STAGE/share/guest-agent" ./guest/agent
 
 cp "$ROOT/SKILL.md" "$ROOT/deploy/moatd.service" "$ROOT/docs/moatd.example.json" "$STAGE/share/"
 

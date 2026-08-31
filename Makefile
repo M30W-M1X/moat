@@ -37,7 +37,7 @@ uffd:
 
 ## build the guest agent that runs inside the VM (static, runs as PID 1)
 agent:
-	CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags='-s -w' -o $(BIN)/guest-agent ./guest/agent
+	CGO_ENABLED=0 $(GO) build $(GOFLAGS) -trimpath -buildvcs=false -ldflags='-s -w -buildid=' -o $(BIN)/guest-agent ./guest/agent
 
 ## install the protobuf codegen tools into $GOBIN (no root needed)
 tools:

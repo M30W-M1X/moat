@@ -2,6 +2,8 @@ module github.com/M30W-M1X/moat
 
 go 1.27
 
+toolchain go1.27.0
+
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/containernetworking/plugins v1.0.1
