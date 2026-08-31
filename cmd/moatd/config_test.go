@@ -122,3 +122,45 @@ func TestLoadConfigFileErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfigTemplateExecDefaults(t *testing.T) {
+	path := writeTemp(t, `{
+	  "templates": [
+	    { "name": "python", "rootfs": "/data/python-rootfs.ext4",
+	      "env": {"PATH": "/usr/local/bin:/usr/bin", "PYTHONUNBUFFERED": "1"},
+	      "workdir": "/app",
+	      "default_argv": ["python3"],
+	      "source": "docker.io/library/python@sha256:abc" }
+	  ],
+	  "tokens": [ { "id": "t", "secret": "s" } ]
+	}`)
+	cfg, err := loadConfigFile(path, "/data/vmlinux", "/data/rootfs.ext4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := cfg.Templates[0]
+	if tpl.Dir != "/app" {
+		t.Errorf("Dir = %q, want /app", tpl.Dir)
+	}
+	if tpl.Env["PYTHONUNBUFFERED"] != "1" || tpl.Env["PATH"] == "" {
+		t.Errorf("Env = %v", tpl.Env)
+	}
+	if len(tpl.DefaultArgv) != 1 || tpl.DefaultArgv[0] != "python3" {
+		t.Errorf("DefaultArgv = %v", tpl.DefaultArgv)
+	}
+	if tpl.Source == "" {
+		t.Errorf("Source not carried")
+	}
+}
+
+func TestLoadConfigTemplateWithoutExecDefaults(t *testing.T) {
+	path := writeTemp(t, `{"templates":[{"name":"default"}],"tokens":[{"id":"t","secret":"s"}]}`)
+	cfg, err := loadConfigFile(path, "/k", "/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := cfg.Templates[0]
+	if tpl.Env != nil || tpl.Dir != "" || tpl.DefaultArgv != nil {
+		t.Errorf("unset exec defaults must stay zero: %+v", tpl)
+	}
+}

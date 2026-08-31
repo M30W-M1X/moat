@@ -48,6 +48,12 @@ type fileTemplate struct {
 	PidsMax   int64   `json:"pids_max"`    // cgroup pids.max; 0 = no cap
 	DiskBW    int64   `json:"disk_bw"`     // rootfs bytes/sec; 0 = no limit
 	NetBW     int64   `json:"net_bw"`      // network bytes/sec; 0 = no limit
+
+	// Exec defaults from an imported image. All optional.
+	Env         map[string]string `json:"env"`
+	Workdir     string            `json:"workdir"`
+	DefaultArgv []string          `json:"default_argv"`
+	Source      string            `json:"source"`
 }
 
 type fileToken struct {
@@ -148,8 +154,12 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 				MemBytes: ft.MemMaxMiB << 20,
 				PIDs:     ft.PidsMax,
 			},
-			DiskBW: ft.DiskBW,
-			NetBW:  ft.NetBW,
+			DiskBW:      ft.DiskBW,
+			NetBW:       ft.NetBW,
+			Env:         ft.Env,
+			Dir:         ft.Workdir,
+			DefaultArgv: ft.DefaultArgv,
+			Source:      ft.Source,
 		}
 		out.Templates = append(out.Templates, t)
 	}
