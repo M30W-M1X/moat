@@ -5,60 +5,57 @@
 # virtio-blk, virtio-mmio, ext4, and devtmpfs auto-mount. Phase 1 needs all of
 # these.
 #
+# This script downloads one pinned kernel and checks its sha256. Bump the three
+# KERNEL_* values together, then run `make images && make images-verify` and
+# commit the new images.lock.
+#
 # usage: build/fetch-kernel.sh [OUT_PATH]
 #   OUT_PATH  where to write the kernel (default: build/artifacts/vmlinux)
 #
 # env:
-#   KERNEL_VERSION   version prefix to match, for example "6.1" (default: 6.1)
-#   CI_SNAPSHOT      use this CI dir, for example "20260826-761f88fbb951-0"
-#                    (default: the newest dir under firecracker-ci/)
+#   KERNEL_CI_SNAPSHOT     override the pinned CI snapshot dir
+#   KERNEL_VERSION_EXACT   override the pinned kernel version
+#   KERNEL_SHA256          override the pinned sha256
 set -euo pipefail
 
 OUT="${1:-build/artifacts/vmlinux}"
 ARCH="$(uname -m)"
-KERNEL_VERSION="${KERNEL_VERSION:-6.1}"
+
+# Pinned kernel. Bump these three values together, then run
+# `make images && make images-verify` and commit the new images.lock.
+KERNEL_CI_SNAPSHOT="${KERNEL_CI_SNAPSHOT:-20260826-761f88fbb951-0}"
+KERNEL_VERSION_EXACT="${KERNEL_VERSION_EXACT:-6.1.182}"
+KERNEL_SHA256="${KERNEL_SHA256:-90f6c45a719c76c08f09ba5e80b4a7f1044e33152c92b9e45a22e87c0021bac5}"
+
 BUCKET="https://s3.amazonaws.com/spec.ccfc.min"
+KEY="firecracker-ci/${KERNEL_CI_SNAPSHOT}/${ARCH}/vmlinux-${KERNEL_VERSION_EXACT}"
+KERNEL_URL="${BUCKET}/${KEY}"
 
 mkdir -p "$(dirname "$OUT")"
-if [[ -s "$OUT" ]]; then
-  echo "kernel already present: $OUT ($(du -h "$OUT" | cut -f1))"
+
+verify() {
+  local f="$1"
+  echo "${KERNEL_SHA256}  ${f}" | sha256sum -c - >/dev/null 2>&1
+}
+
+if [[ -s "$OUT" ]] && verify "$OUT"; then
+  echo "kernel already present and verified: $OUT"
   exit 0
 fi
 
-# The CI bucket uses this key layout:
-#   firecracker-ci/<YYYYMMDD-<sha>-0>/<arch>/vmlinux-<ver>
-snapshot="${CI_SNAPSHOT:-}"
-if [[ -z "$snapshot" ]]; then
-  echo "resolving newest Firecracker CI snapshot..."
-  snapshot="$(curl -fsSL "${BUCKET}?list-type=2&prefix=firecracker-ci/&delimiter=/" \
-    | grep -oE 'firecracker-ci/[0-9]{8}-[0-9a-f]+-0/' \
-    | sed 's#firecracker-ci/##; s#/##' \
-    | sort | tail -1)"
+echo "downloading $KERNEL_URL"
+curl -fSL --progress-bar -o "${OUT}.tmp" "$KERNEL_URL"
+
+if ! verify "${OUT}.tmp"; then
+  got="$(sha256sum "${OUT}.tmp" | cut -d' ' -f1)"
+  rm -f "${OUT}.tmp"
+  echo "ERROR: kernel sha256 mismatch" >&2
+  echo "  want ${KERNEL_SHA256}" >&2
+  echo "  got  ${got}" >&2
+  exit 1
 fi
-[[ -n "$snapshot" ]] || { echo "ERROR: could not resolve a CI snapshot dir" >&2; exit 1; }
-
-prefix="firecracker-ci/${snapshot}/${ARCH}/vmlinux-"
-echo "  snapshot=$snapshot  arch=$ARCH  want=$KERNEL_VERSION.x"
-
-key="$(curl -fsSL "${BUCKET}?list-type=2&prefix=${prefix}" \
-  | grep -oE "${prefix}[0-9]+\.[0-9]+\.[0-9]+" \
-  | sort -V -u \
-  | grep -E "vmlinux-${KERNEL_VERSION}\." \
-  | tail -1 || true)"
-
-if [[ -z "$key" ]]; then
-  echo "  no vmlinux-${KERNEL_VERSION}.x found. Using the newest version instead."
-  key="$(curl -fsSL "${BUCKET}?list-type=2&prefix=${prefix}" \
-    | grep -oE "${prefix}[0-9]+\.[0-9]+\.[0-9]+" \
-    | sort -V -u | tail -1)"
-fi
-[[ -n "$key" ]] || { echo "ERROR: no vmlinux under ${prefix}" >&2; exit 1; }
-
-url="${BUCKET}/${key}"
-echo "downloading $url"
-curl -fSL --progress-bar -o "${OUT}.tmp" "$url"
 mv "${OUT}.tmp" "$OUT"
-echo "wrote $OUT ($(du -h "$OUT" | cut -f1))  [${key##*/}]"
+echo "wrote $OUT (${KERNEL_VERSION_EXACT}, snapshot ${KERNEL_CI_SNAPSHOT})"
 
 # Also download the matching config file for reference. Ignore errors.
-curl -fsSL -o "${OUT}.config" "${url}.config" 2>/dev/null || true
+curl -fsSL -o "${OUT}.config" "${KERNEL_URL}.config" 2>/dev/null || true
