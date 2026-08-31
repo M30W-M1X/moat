@@ -8,6 +8,7 @@ import (
 
 	"github.com/M30W-M1X/moat/internal/cgroup"
 	"github.com/M30W-M1X/moat/internal/config"
+	"github.com/M30W-M1X/moat/internal/imagelock"
 	"github.com/M30W-M1X/moat/internal/vm"
 )
 
@@ -80,6 +81,9 @@ func runDoctor(_ []string) int {
 		} else {
 			check("images", "WARN", false, "run: make images ("+verr.Error()+")")
 		}
+		// images.lock — informational.
+		mark, detail := imageLockStatus(m.KernelImagePath, m.RootFSPath)
+		check("image-lock", mark, mark == "PASS", detail)
 	} else {
 		check("images", "WARN", false, err.Error())
 	}
@@ -91,6 +95,29 @@ func runDoctor(_ []string) int {
 	}
 	fmt.Println("ready.")
 	return 0
+}
+
+// imageLockStatus reports the doctor line for the images.lock beside a rootfs.
+func imageLockStatus(kernelPath, rootfsPath string) (mark, detail string) {
+	p := imagelock.Find(rootfsPath)
+	if p == "" {
+		return "WARN", "no images.lock beside " + rootfsPath
+	}
+	l, err := imagelock.Load(p)
+	if err != nil {
+		return "FAIL", "images.lock unreadable: " + err.Error()
+	}
+	if err := l.VerifyFiles(kernelPath, rootfsPath); err != nil {
+		return "FAIL", err.Error()
+	}
+	return "PASS", "images.lock verified (sbom " + shortSHA(l.SBOM.SHA256) + ")"
+}
+
+func shortSHA(h string) string {
+	if len(h) > 12 {
+		return h[:12]
+	}
+	return h
 }
 
 // binVersion runs "<bin> --version" and returns its first line, or "unknown".
