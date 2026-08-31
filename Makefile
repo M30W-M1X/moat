@@ -12,8 +12,18 @@ export GOTOOLCHAIN ?= local
 
 KERNEL  := $(ARTIFACTS)/vmlinux
 ROOTFS  := $(ARTIFACTS)/rootfs.ext4
+SBOM    := $(ARTIFACTS)/sbom.cdx.json
+LOCK    := $(ARTIFACTS)/images.lock
 
-.PHONY: all build daemon mcp uffd agent images kernel rootfs proto tools demo run serve dist clean fmt vet test test-integration tidy
+# Pins — keep in sync with build/fetch-kernel.sh and build/build-rootfs.sh.
+KERNEL_VERSION_EXACT ?= 6.1.182
+KERNEL_CI_SNAPSHOT   ?= 20260826-761f88fbb951-0
+KERNEL_SHA256        ?= 90f6c45a719c76c08f09ba5e80b4a7f1044e33152c92b9e45a22e87c0021bac5
+BASE_IMAGE           ?= docker.io/library/alpine@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e
+SOURCE_DATE_EPOCH    ?= 1788134400
+export SOURCE_DATE_EPOCH
+
+.PHONY: all build daemon mcp uffd agent images kernel rootfs sbom lock images-verify proto tools demo run serve dist clean fmt vet test test-integration tidy
 
 all: build daemon mcp uffd agent
 
@@ -48,7 +58,7 @@ proto:
 	buf lint
 	buf generate
 
-images: kernel rootfs
+images: kernel rootfs sbom lock
 
 ## download a vmlinux with virtio-vsock from the Firecracker CI bucket
 kernel: $(KERNEL)
@@ -59,6 +69,28 @@ $(KERNEL):
 rootfs: $(ROOTFS)
 $(ROOTFS): agent build/build-rootfs.sh
 	build/build-rootfs.sh "$(ROOTFS)" "$(BIN)/guest-agent"
+
+## generate the CycloneDX SBOM for the built rootfs
+sbom: $(SBOM)
+$(SBOM): $(ROOTFS) agent
+	$(GO) run ./build/sbomgen \
+	  -rootfs "$(ROOTFS)" -agent "$(BIN)/guest-agent" \
+	  -kernel-version "$(KERNEL_VERSION_EXACT)" -kernel-snapshot "$(KERNEL_CI_SNAPSHOT)" \
+	  -kernel-sha256 "$(KERNEL_SHA256)" -base-image "$(BASE_IMAGE)" \
+	  -source-date-epoch "$(SOURCE_DATE_EPOCH)" -out "$(SBOM)"
+
+## write build/artifacts/images.lock from the built images and the SBOM
+lock: $(LOCK)
+$(LOCK): $(KERNEL) $(ROOTFS) $(SBOM) $(BIN)/guest-agent
+	build/gen-images-lock.sh "$(ARTIFACTS)" \
+	  "$(KERNEL_VERSION_EXACT)" "$(KERNEL_CI_SNAPSHOT)" \
+	  "$(BASE_IMAGE)" "$(SOURCE_DATE_EPOCH)" > "$(LOCK)"
+
+## build the rootfs twice and assert the bytes match images.lock
+images-verify: images
+	build/images-verify.sh "$(ARTIFACTS)" "$(BIN)/guest-agent" \
+	  "$(KERNEL_VERSION_EXACT)" "$(KERNEL_CI_SNAPSHOT)" \
+	  "$(KERNEL_SHA256)" "$(BASE_IMAGE)" "$(SOURCE_DATE_EPOCH)"
 
 ## Phase 1 exit test: start a VM and check the agent over vsock
 demo: build agent images

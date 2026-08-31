@@ -1,0 +1,23 @@
+{
+  "schema": "moat.images.lock/v1",
+  "source_date_epoch": 1788134400,
+  "kernel": {
+    "path": "vmlinux",
+    "sha256": "90f6c45a719c76c08f09ba5e80b4a7f1044e33152c92b9e45a22e87c0021bac5",
+    "ci_snapshot": "20260826-761f88fbb951-0",
+    "version": "6.1.182",
+    "source": "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20260826-761f88fbb951-0/x86_64/vmlinux-6.1.182"
+  },
+  "rootfs": {
+    "path": "rootfs.ext4",
+    "sha256": "668f8357a2d36505dc6e702ec86025d9f02c5f5261173f1fdfe5fa3ef93b01c7",
+    "size_bytes": 268435456,
+    "base_image": "docker.io/library/alpine@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e",
+    "fs_uuid": "5a5a5a5a-0000-4000-8000-000000000001",
+    "mkfs_version": "mke2fs 1.47.3 (8-Jul-2025)"
+  },
+  "sbom": { "path": "sbom.cdx.json", "sha256": "db59bfaa10a618862031531312706792fc920c6dcf0a6eeaf3b8be99921c43aa" },
+  "guest_agent": { "sha256": "1918459e1a2dab7c6180c05a7a1558e7efb92769325a314c76e0ced249a0a6a2", "go": "go1.27.0" },
+  "generated_by": "moat build pipeline",
+  "generated_at": "2026-08-31T15:35:15Z"
+}
