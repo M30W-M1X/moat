@@ -442,20 +442,28 @@ func TestAuditReadScoping(t *testing.T) {
 		t.Fatalf("secops saw %d events for %s, want >= 2", n, sb.ID)
 	}
 
-	// ci sees its own sandbox's events.
+	// ci sees its own sandbox's events. The non-all path scopes each event
+	// through the O(1) sandbox owner index, not a per-event log scan.
 	own := do(t, ts, "GET", "/v1/audit?sandbox="+sb.ID, ciToken, "")
 	defer own.Body.Close()
 	m := 0
+	sawCreate := false
 	d2 := json.NewDecoder(own.Body)
 	for d2.More() {
 		var e map[string]any
 		if d2.Decode(&e) != nil {
 			break
 		}
+		if e["type"] == "sandbox.create" {
+			sawCreate = true
+		}
 		m++
 	}
 	if m < 2 {
 		t.Fatalf("ci saw %d of its own events, want >= 2", m)
+	}
+	if !sawCreate {
+		t.Fatal("ci did not see the sandbox.create event for its own sandbox")
 	}
 
 	// A valid non-all token that owns nothing sees none of ci's events —

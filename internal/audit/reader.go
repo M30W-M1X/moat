@@ -51,7 +51,8 @@ const (
 )
 
 // Query returns the events in dir that match f, in seq order. It reverses the
-// order when f.Desc is set.
+// order when f.Desc is set. Query holds at most limit events during the scan,
+// so an unfiltered query over a full retention-cap log stays bounded.
 func Query(dir string, f Filter) ([]Event, error) {
 	limit := f.Limit
 	if limit <= 0 {
@@ -65,7 +66,32 @@ func Query(dir string, f Filter) ([]Event, error) {
 		return nil, err
 	}
 	var out []Event
+
+	if f.Desc {
+		// Walk files newest name first and lines back to front. Stop once the
+		// window holds limit events. Newer names sort after older names.
+		for i := len(files) - 1; i >= 0 && len(out) < limit; i-- {
+			evs, _, err := scanFile(files[i])
+			if err != nil {
+				return nil, err
+			}
+			for j := len(evs) - 1; j >= 0 && len(out) < limit; j-- {
+				if f.match(evs[j]) {
+					out = append(out, evs[j])
+				}
+			}
+		}
+		// A final stable sort guards against duplicate-seq corruption.
+		sort.SliceStable(out, func(a, b int) bool { return out[a].Seq > out[b].Seq })
+		return out, nil
+	}
+
+	// Ascending. Files and lines are already in seq order. Keep the first
+	// limit matches, then stop.
 	for _, file := range files {
+		if len(out) >= limit {
+			break
+		}
 		evs, _, err := scanFile(file)
 		if err != nil {
 			return nil, err
@@ -73,18 +99,13 @@ func Query(dir string, f Filter) ([]Event, error) {
 		for _, e := range evs {
 			if f.match(e) {
 				out = append(out, e)
+				if len(out) >= limit {
+					break
+				}
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if f.Desc {
-			return out[i].Seq > out[j].Seq
-		}
-		return out[i].Seq < out[j].Seq
-	})
-	if len(out) > limit {
-		out = out[:limit]
-	}
+	sort.SliceStable(out, func(a, b int) bool { return out[a].Seq < out[b].Seq })
 	return out, nil
 }
 

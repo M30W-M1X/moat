@@ -393,14 +393,12 @@ func (r *Recorder) LiveReport(sandboxID string) (Report, error) {
 	return rep, nil
 }
 
-// SandboxToken returns the token id that created sandboxID.
+// SandboxToken returns the token id that created sandboxID. The lookup goes
+// through the in-memory index. It takes no lock on the writer, no file scan,
+// and no fsync. recover rebuilds the index, so a restart keeps the answer.
 func (r *Recorder) SandboxToken(sandboxID string) (string, bool) {
 	if !r.enabled {
 		return "", false
 	}
-	evs, err := r.LiveQuery(Filter{Sandbox: sandboxID, Types: []string{TypeSandboxCreate}, Limit: 1})
-	if err != nil || len(evs) == 0 {
-		return "", false
-	}
-	return evs[0].Token, true
+	return r.idx.tokenFor(sandboxID)
 }
