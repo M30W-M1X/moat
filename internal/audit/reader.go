@@ -3,6 +3,7 @@ package audit
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -49,6 +50,21 @@ const (
 	defaultLimit = 1000
 	maxLimit     = 100000
 )
+
+// ParseWhen reads a time bound. It accepts RFC3339 or a Go duration with a
+// leading "-" (for example -15m), which it subtracts from now. The bool is
+// false when s matches neither form.
+func ParseWhen(s string) (time.Time, bool) {
+	if ts, err := time.Parse(time.RFC3339, s); err == nil {
+		return ts, true
+	}
+	if strings.HasPrefix(s, "-") {
+		if d, err := time.ParseDuration(s); err == nil {
+			return time.Now().Add(d), true
+		}
+	}
+	return time.Time{}, false
+}
 
 // Query returns the events in dir that match f, in seq order. It reverses the
 // order when f.Desc is set. Query holds at most limit events during the scan,

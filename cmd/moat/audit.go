@@ -119,8 +119,19 @@ func auditList(ctx context.Context, f auditFilter, dir, addr, token string, asJS
 		w.Flush()
 	}
 	if dir != "" {
-		evs, err := audit.Query(dir, audit.Filter{Sandbox: f.sandbox, Token: f.token,
-			Types: f.types, Limit: f.limit, Desc: f.desc})
+		fil := audit.Filter{Sandbox: f.sandbox, Token: f.token,
+			Types: f.types, Limit: f.limit, Desc: f.desc}
+		if f.since != "" {
+			if ts, ok := audit.ParseWhen(f.since); ok {
+				fil.Since = ts
+			}
+		}
+		if f.until != "" {
+			if ts, ok := audit.ParseWhen(f.until); ok {
+				fil.Until = ts
+			}
+		}
+		evs, err := audit.Query(dir, fil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "query:", err)
 			return 1

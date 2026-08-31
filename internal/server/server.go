@@ -996,18 +996,8 @@ func atoiOr(s string, def int) int {
 }
 
 // parseWhen accepts RFC3339 or a Go duration with a leading "-" (e.g. -15m),
-// which it subtracts from now.
-func parseWhen(s string) (time.Time, bool) {
-	if ts, err := time.Parse(time.RFC3339, s); err == nil {
-		return ts, true
-	}
-	if strings.HasPrefix(s, "-") {
-		if d, err := time.ParseDuration(s); err == nil {
-			return time.Now().Add(d), true
-		}
-	}
-	return time.Time{}, false
-}
+// which it subtracts from now. The CLI offline path shares audit.ParseWhen.
+func parseWhen(s string) (time.Time, bool) { return audit.ParseWhen(s) }
 
 // mustOwn resolves the {id} path value and checks the caller owns it.
 func (s *Server) mustOwn(w http.ResponseWriter, r *http.Request) *Sandbox {
