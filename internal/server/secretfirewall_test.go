@@ -1,6 +1,8 @@
 package server
 
 import (
+	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -132,5 +134,63 @@ func TestScreenAudits(t *testing.T) {
 	}
 	if rules, _ := a["rules"].([]any); len(rules) == 0 {
 		t.Fatal("secret.block has no rules")
+	}
+}
+
+// TestScreenFailsClosedOnRecordError checks that screen() reports the
+// RecordSync error for an allow or a redact decision. A failed record must not
+// pass flagged content without a durable audit line.
+func TestScreenFailsClosedOnRecordError(t *testing.T) {
+	log := logrus.New()
+	log.SetLevel(logrus.PanicLevel)
+
+	build := func(t *testing.T, redact bool) *Server {
+		t.Helper()
+		dir := t.TempDir()
+		rec, err := audit.New(audit.Config{
+			Dir: dir, Metrics: audit.NopMetrics(), Log: log,
+			SyncFunc: func(*os.File) error { return errors.New("simulated fsync failure") },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = rec.Close() })
+		s, err := New(Config{
+			Templates:    []Template{{Name: "default", Kernel: "/x", RootFS: "/y"}},
+			Tokens:       map[string]string{"priv": "s"},
+			Policies:     map[string]TokenPolicy{"priv": {AllowSecretOverride: true}},
+			SecretRedact: redact,
+			Audit:        rec,
+		}, log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+
+	// allow decision: override policy plus allow_secrets.
+	s := build(t, false)
+	d := s.screen("priv", "env:AWS_SECRET_ACCESS_KEY", []byte(awsSecretLine), true)
+	if d.action != "allow" {
+		t.Fatalf("action = %q, want allow", d.action)
+	}
+	if d.recErr == nil || !d.auditUnrecorded() {
+		t.Fatalf("allow with a failed record: recErr=%v auditUnrecorded=%v", d.recErr, d.auditUnrecorded())
+	}
+
+	// redact decision.
+	sr := build(t, true)
+	dr := sr.screen("priv", "/work/.env", []byte("prefix\n"+awsSecretLine+"\nsuffix\n"), false)
+	if dr.action != "redact" {
+		t.Fatalf("action = %q, want redact", dr.action)
+	}
+	if dr.recErr == nil || !dr.auditUnrecorded() {
+		t.Fatalf("redact with a failed record: recErr=%v auditUnrecorded=%v", dr.recErr, dr.auditUnrecorded())
+	}
+
+	// clean content never sets recErr.
+	dc := s.screen("priv", "/work/ok.txt", []byte("name = widget\n"), false)
+	if dc.recErr != nil || dc.auditUnrecorded() {
+		t.Fatalf("clean content must not report an audit error: %+v", dc)
 	}
 }

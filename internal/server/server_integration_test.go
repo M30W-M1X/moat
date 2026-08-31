@@ -657,10 +657,12 @@ func TestAuditEndToEnd(t *testing.T) {
 	}
 }
 
-// TestAuditFailClosedOnSyncError drives the 503 + rollback path with a
-// deterministic fsync failure. A 201 must imply the sandbox.create event is on
-// disk. When the fsync fails the create must roll back fully.
-func TestAuditFailClosedOnSyncError(t *testing.T) {
+// startServerAuditSyncToggle builds a server whose audit recorder fails its
+// synchronous fsync while the returned flag is set. It returns the test server
+// and that flag.
+func startServerAuditSyncToggle(t *testing.T, dir string, tokens map[string]string,
+	policies map[string]server.TokenPolicy, tokenMax int) (*httptest.Server, *atomic.Bool) {
+	t.Helper()
 	if _, err := os.Stat("/dev/kvm"); err != nil {
 		t.Skip("no /dev/kvm")
 	}
@@ -671,7 +673,6 @@ func TestAuditFailClosedOnSyncError(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Skipf("images missing: %v", err)
 	}
-	dir := t.TempDir()
 	log := logrus.New()
 	log.SetLevel(logrus.WarnLevel)
 
@@ -691,8 +692,9 @@ func TestAuditFailClosedOnSyncError(t *testing.T) {
 	}
 	srv, err := server.New(server.Config{
 		Templates: []server.Template{{Name: "default", Kernel: m.KernelImagePath, RootFS: m.RootFSPath, VCPUs: 1, MemMiB: 256}},
-		Tokens:    map[string]string{"t1": "secret1"},
-		TokenMax:  1,
+		Tokens:    tokens,
+		Policies:  policies,
+		TokenMax:  tokenMax,
 		Audit:     rec,
 		Version:   "test",
 	}, log)
@@ -710,6 +712,15 @@ func TestAuditFailClosedOnSyncError(t *testing.T) {
 		srv.Shutdown(sc)
 		_ = rec.Close()
 	})
+	return ts, &failSync
+}
+
+// TestAuditFailClosedOnSyncError drives the 503 + rollback path with a
+// deterministic fsync failure. A 201 must imply the sandbox.create event is on
+// disk. When the fsync fails the create must roll back fully.
+func TestAuditFailClosedOnSyncError(t *testing.T) {
+	dir := t.TempDir()
+	ts, failSync := startServerAuditSyncToggle(t, dir, map[string]string{"t1": "secret1"}, nil, 1)
 	token := "secret1"
 
 	// The next create cannot fsync its sandbox.create event.
@@ -751,5 +762,117 @@ func TestAuditFailClosedOnSyncError(t *testing.T) {
 	json.Unmarshal(ob, &sb)
 	if sb.ID != "" {
 		do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close()
+	}
+}
+
+// TestSecretAllowFailsClosedOnSyncError checks that an allowed secret does not
+// enter a sandbox when its audit record cannot fsync. The exec must not run.
+func TestSecretAllowFailsClosedOnSyncError(t *testing.T) {
+	dir := t.TempDir()
+	ts, failSync := startServerAuditSyncToggle(t, dir,
+		map[string]string{"priv": "s3cr3t"},
+		map[string]server.TokenPolicy{"priv": {AllowSecretOverride: true}}, 4)
+	token := "s3cr3t"
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":120}`)
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+	if sb.ID == "" {
+		t.Fatal("create returned no id")
+	}
+	t.Cleanup(func() { do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close() })
+
+	failSync.Store(true)
+	body := `{"argv":["/bin/true"],"env":{"AWS_SECRET_ACCESS_KEY":"aZ2bYc4dXe6fWg8hVi0jUk2lTm4nSo6pRq8rQs0t"},"allow_secrets":true}`
+	er := do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", token, body)
+	eb, _ := io.ReadAll(er.Body)
+	er.Body.Close()
+	failSync.Store(false)
+
+	if er.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("exec with an allowed secret and a failing audit sync = %d (%s), want 503", er.StatusCode, eb)
+	}
+	if !bytes.Contains(eb, []byte("audit write failed")) {
+		t.Fatalf("503 body missing the reason: %s", eb)
+	}
+	// The exec did not run: no NDJSON exit frame came back.
+	if bytes.Contains(eb, []byte(`"stream":"exit"`)) {
+		t.Fatalf("exec ran despite the 503: %s", eb)
+	}
+}
+
+// TestAuditBlockedFilePutRecorded checks that a blocked PUT records a file.put
+// event with scan "block" and zero bytes, on top of the secret.block event.
+func TestAuditBlockedFilePutRecorded(t *testing.T) {
+	dir := t.TempDir()
+	ts, token := startServerWithAudit(t, dir)
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":120}`)
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+	t.Cleanup(func() { do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close() })
+
+	secretFile := "AWS_SECRET_ACCESS_KEY=aZ2bYc4dXe6fWg8hVi0jUk2lTm4nSo6pRq8rQs0t\n"
+	pr := do(t, ts, "PUT", "/v1/sandboxes/"+sb.ID+"/files/work/.env", token, secretFile)
+	pr.Body.Close()
+	if pr.StatusCode != 409 {
+		t.Fatalf("put secret = %d, want 409", pr.StatusCode)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+	evs, _ := audit.Query(dir, audit.Filter{})
+	var sawBlock, sawFilePut bool
+	for _, e := range evs {
+		switch e.Type {
+		case audit.TypeSecretBlock:
+			if e.Attrs["target"] == "/work/.env" {
+				sawBlock = true
+			}
+		case audit.TypeFilePut:
+			if e.Sandbox != sb.ID {
+				continue
+			}
+			sawFilePut = true
+			if s, _ := e.Attrs["scan"].(string); s != "block" {
+				t.Fatalf("blocked file.put scan = %q, want block", s)
+			}
+			if bv, _ := e.Attrs["bytes"].(float64); bv != 0 {
+				t.Fatalf("blocked file.put bytes = %v, want 0", bv)
+			}
+			for _, bad := range []string{"content", "sha256", "value"} {
+				if _, leak := e.Attrs[bad]; leak {
+					t.Fatalf("blocked file.put leaked %q", bad)
+				}
+			}
+		}
+	}
+	if !sawBlock || !sawFilePut {
+		t.Fatalf("blocked PUT events: secret.block=%v file.put=%v", sawBlock, sawFilePut)
+	}
+
+	// The report lists the refused write.
+	rep := do(t, ts, "GET", "/v1/sandboxes/"+sb.ID+"/report", token, "")
+	var r struct {
+		Files []struct {
+			Path string `json:"path"`
+			Scan string `json:"scan"`
+		} `json:"files"`
+	}
+	json.NewDecoder(rep.Body).Decode(&r)
+	rep.Body.Close()
+	found := false
+	for _, f := range r.Files {
+		if f.Path == "/work/.env" && f.Scan == "block" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("report files do not list the blocked write: %+v", r.Files)
 	}
 }

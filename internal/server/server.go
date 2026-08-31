@@ -838,6 +838,10 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 		d := s.screen(tokenID(r), path, raw, allow)
 		scanAction = d.action
 		if d.action == "block" {
+			// Record that the write did not happen. The event holds no file
+			// content.
+			s.audit.Record(audit.Event{Type: audit.TypeFilePut, Sandbox: sb.ID, Token: tokenID(r),
+				Attrs: map[string]any{"path": path, "bytes": 0, "scan": "block"}})
 			writeSecretBlock(w, path, d.findings)
 			return
 		}
