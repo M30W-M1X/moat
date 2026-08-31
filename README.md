@@ -5,9 +5,10 @@ disposable, hardware-isolated sandboxes for untrusted AI-agent code and tool use
 
 See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
 `docs/implementation-plan.html` for the full plan.
-[`docs/developer-guide.md`](docs/developer-guide.md) is the low-level guide:
-every package, the security model, the image pipeline, the build, the API,
-and how to deploy.
+[`docs/developer-guide.md`](docs/developer-guide.md) is the low-level guide —
+every package, the security model, the image pipeline, the build, the API, and
+how to deploy. [`docs/developer-guide.html`](docs/developer-guide.html) is the
+same content as a standalone page with diagrams.
 
 ## Status
 

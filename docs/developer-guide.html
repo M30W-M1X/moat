@@ -1,0 +1,1182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Low-level developer guide for Moat: architecture, security model, image pipeline, build, API, deployment.">
+<style>html,body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Moat Developer Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=B612:wght@400;700&display=swap">
+<style>
+  :root{
+    --bg:#f4f5f3; --surface:#ffffff; --surface-2:#fbfbf9;
+    --ink:#1b1e26; --ink-2:#474d5a; --ink-3:#767d8b;
+    --rule:#dcdfd9; --rule-2:#c7cbc2;
+    --accent:#1f6f7d; --accent-ink:#134651; --accent-wash:#e2edec;
+    --alarm:#c0401d; --alarm-ink:#8f2c12; --alarm-wash:#f2e0d8;
+    --ok:#2f6b3d;
+    --diagram-bg:#fbfbf7; --diagram-ink:#1b1e26; --diagram-rule:#b9bdb2;
+    --f-display:"Spectral","Iowan Old Style",Georgia,serif;
+    --f-text:"B612",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --f-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,"Cascadia Mono",Consolas,"Liberation Mono",monospace;
+    --maxw:820px; --sidebar:264px;
+    color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#10141a; --surface:#171c24; --surface-2:#1b212a;
+      --ink:#e7ebf0; --ink-2:#aeb6c2; --ink-3:#7c8592;
+      --rule:#2a313b; --rule-2:#38414d;
+      --accent:#54c1cd; --accent-ink:#8fd8e1; --accent-wash:#15303a;
+      --alarm:#ff7d51; --alarm-ink:#ff9c78; --alarm-wash:#3a2117;
+      --ok:#6fbf7f;
+      --diagram-bg:#f4f4ee; --diagram-ink:#1b1e26; --diagram-rule:#9aa091;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10141a; --surface:#171c24; --surface-2:#1b212a;
+    --ink:#e7ebf0; --ink-2:#aeb6c2; --ink-3:#7c8592;
+    --rule:#2a313b; --rule-2:#38414d;
+    --accent:#54c1cd; --accent-ink:#8fd8e1; --accent-wash:#15303a;
+    --alarm:#ff7d51; --alarm-ink:#ff9c78; --alarm-wash:#3a2117;
+    --ok:#6fbf7f;
+    --diagram-bg:#f4f4ee; --diagram-ink:#1b1e26; --diagram-rule:#9aa091;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:var(--f-text);font-size:15.5px;line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+  a{color:var(--accent-ink);text-underline-offset:2px;text-decoration-color:var(--rule-2)}
+  a:hover{text-decoration-color:currentColor}
+  code{font-family:var(--f-mono);font-size:.9em;background:var(--surface-2);
+    border:1px solid var(--rule);border-radius:3px;padding:.06em .34em}
+  pre{margin:1.1em 0;background:var(--surface-2);border:1px solid var(--rule);
+    border-left:3px solid var(--accent);border-radius:5px;padding:.95em 1.1em;
+    overflow-x:auto;font-family:var(--f-mono);font-size:13px;line-height:1.6}
+  pre code{background:none;border:0;padding:0;font-size:inherit}
+
+  .skip{position:absolute;left:-999px}
+  .skip:focus{left:12px;top:12px;background:var(--surface);border:1px solid var(--rule);
+    padding:.5em .8em;border-radius:5px;z-index:20}
+
+  /* ---- shell ---- */
+  header.top{
+    position:sticky;top:0;z-index:12;background:var(--bg);
+    border-bottom:1px solid var(--rule);
+  }
+  .top-in{max-width:calc(var(--sidebar) + var(--maxw) + 96px);margin:0 auto;
+    padding:14px 28px;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+  .brand{font-family:var(--f-display);font-weight:600;font-size:19px;letter-spacing:.01em}
+  .brand b{color:var(--accent-ink)}
+  .brand span{color:var(--ink-3);font-weight:400}
+  .tagline{color:var(--ink-3);font-size:13px;flex:1;min-width:180px}
+  .toggle{margin-left:auto;font-family:var(--f-mono);font-size:12px;
+    background:var(--surface);color:var(--ink-2);border:1px solid var(--rule);
+    border-radius:5px;padding:.42em .7em;cursor:pointer}
+  .toggle:hover{border-color:var(--rule-2);color:var(--ink)}
+
+  .wrap{max-width:calc(var(--sidebar) + var(--maxw) + 96px);margin:0 auto;
+    padding:0 28px;display:grid;grid-template-columns:var(--sidebar) minmax(0,1fr);gap:48px}
+
+  nav.toc{
+    position:sticky;top:60px;align-self:start;height:calc(100vh - 76px);
+    overflow-y:auto;padding:26px 0 40px;font-size:13.5px;
+  }
+  nav.toc ol{list-style:none;margin:0;padding:0;counter-reset:s}
+  nav.toc > ol > li:not(.grp){counter-increment:s;margin:.15em 0}
+  nav.toc > ol > li > a{display:block;padding:.32em .6em;border-radius:4px;
+    color:var(--ink-2);text-decoration:none}
+  nav.toc > ol > li > a::before{content:counter(s) ".\00a0\00a0";color:var(--ink-3);
+    font-family:var(--f-mono);font-size:11px}
+  nav.toc > ol > li > a:hover{background:var(--surface-2);color:var(--ink)}
+  nav.toc a.active{background:var(--accent-wash);color:var(--accent-ink);font-weight:700}
+  nav.toc .grp{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-3);padding:1.4em .6em .5em}
+
+  main{padding:34px 0 120px;min-width:0}
+  .lede{font-family:var(--f-display);font-size:26px;line-height:1.42;font-weight:400;
+    color:var(--ink);margin:0 0 .2em;max-width:34ch;letter-spacing:.005em}
+  .lede + p{color:var(--ink-2);max-width:62ch}
+  .meta{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3);
+    border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+    padding:.7em 0;margin:1.6em 0 0;display:flex;gap:1.5em;flex-wrap:wrap}
+
+  section{padding-top:34px;margin-top:20px;border-top:1px solid var(--rule);scroll-margin-top:64px}
+  section:first-of-type{border-top:0}
+  h2{font-family:var(--f-display);font-weight:600;font-size:23px;line-height:1.3;
+    margin:.1em 0 .1em;letter-spacing:.005em}
+  h2 .n{font-family:var(--f-mono);font-size:13px;color:var(--accent-ink);
+    margin-right:.7em;font-weight:400}
+  h3{font-family:var(--f-display);font-weight:600;font-size:17.5px;margin:1.9em 0 .3em}
+  h4{font-family:var(--f-mono);font-size:12px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink-3);margin:1.6em 0 .3em}
+  p{margin:.7em 0;max-width:66ch}
+  ul,ol{max-width:66ch;padding-left:1.3em}
+  li{margin:.28em 0}
+  strong{color:var(--ink);font-weight:700}
+
+  table{border-collapse:collapse;width:100%;margin:1.2em 0;font-size:13.5px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--rule);padding:.5em .7em;text-align:left;vertical-align:top}
+  th{background:var(--surface-2);font-family:var(--f-mono);font-size:11px;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);font-weight:700}
+  td code{font-size:.85em;white-space:nowrap}
+  tbody tr:nth-child(even){background:var(--surface-2)}
+
+  /* ---- callouts ---- */
+  .note{border:1px solid var(--rule);border-left:3px solid var(--accent);
+    background:var(--surface-2);border-radius:5px;padding:.85em 1.05em;margin:1.2em 0;font-size:14px}
+  .note.warn{border-left-color:var(--alarm);background:var(--alarm-wash)}
+  .note .k{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-3);display:block;margin-bottom:.25em}
+  .note.warn .k{color:var(--alarm-ink)}
+
+  /* ---- figures ---- */
+  figure{margin:1.7em 0;border:1px solid var(--rule);border-radius:7px;overflow:hidden;background:var(--surface)}
+  .figbody{background:var(--diagram-bg);color:var(--diagram-ink);padding:22px 20px 14px;overflow-x:auto}
+  figure svg{display:block;margin:0 auto;max-width:100%;height:auto}
+  figcaption{font-size:12.5px;color:var(--ink-2);padding:.7em 1em;border-top:1px solid var(--rule);
+    background:var(--surface)}
+  figcaption b{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-3);margin-right:.6em}
+
+  /* svg primitives */
+  .d-box{fill:var(--diagram-bg);stroke:var(--diagram-ink);stroke-width:1.4}
+  .d-box.host{fill:#ffffff}
+  .d-fill{fill:var(--diagram-ink);opacity:.05}
+  .d-accent{stroke:var(--accent-ink);stroke-width:1.8}
+  .d-accent-fill{fill:var(--accent-wash)}
+  .d-alarm{stroke:var(--alarm-ink);stroke-width:1.6}
+  .d-alarm-fill{fill:var(--alarm-wash)}
+  .d-line{stroke:var(--diagram-ink);stroke-width:1.3;fill:none}
+  .d-line.dash{stroke-dasharray:5 4}
+  .d-line.accent{stroke:var(--accent-ink);stroke-width:1.7}
+  .d-line.alarm{stroke:var(--alarm-ink);stroke-width:1.5}
+  .d-t{fill:var(--diagram-ink);font-family:var(--f-text);font-size:12.5px}
+  .d-t.mono{font-family:var(--f-mono);font-size:11px}
+  .d-t.lbl{font-family:var(--f-mono);font-size:10px;fill:var(--diagram-ink);opacity:.72}
+  .d-t.hd{font-family:var(--f-mono);font-size:10px;letter-spacing:.12em;opacity:.6}
+  .d-t.mid{text-anchor:middle}
+  .d-t.end{text-anchor:end}
+  .d-grp{fill:none;stroke:var(--diagram-rule);stroke-width:1;stroke-dasharray:3 3}
+
+  hr.soft{border:0;border-top:1px solid var(--rule);margin:2.4em 0}
+  .foot{color:var(--ink-3);font-size:12.5px;margin-top:3em;border-top:1px solid var(--rule);padding-top:1.2em}
+  .kbd{font-family:var(--f-mono);font-size:.86em;border:1px solid var(--rule-2);border-bottom-width:2px;
+    border-radius:4px;padding:.05em .4em;background:var(--surface)}
+
+  @media (max-width:940px){
+    .wrap{grid-template-columns:1fr;gap:0}
+    nav.toc{position:static;height:auto;border-bottom:1px solid var(--rule);
+      padding:14px 0;columns:2;font-size:13px}
+    nav.toc .grp{padding-top:.6em}
+    main{padding-top:22px}
+    .lede{font-size:22px}
+  }
+  @media (max-width:560px){ nav.toc{columns:1} .top-in{padding:12px 16px} .wrap{padding:0 16px} }
+</style>
+</head>
+<body>
+
+<a class="skip" href="#start">Skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <span class="brand"><b>Moat</b> <span>·</span> Developer Guide</span>
+    <span class="tagline">Firecracker microVM sandboxes for untrusted AI-agent code</span>
+    <button class="toggle" id="tg" type="button" aria-label="Toggle colour theme">theme</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Contents">
+    <ol>
+      <li class="grp" aria-hidden="true">Orientation</li>
+      <li><a href="#arch">Architecture at a glance</a></li>
+      <li><a href="#layout">Repository layout</a></li>
+      <li><a href="#security">The security model</a></li>
+      <li class="grp" aria-hidden="true">Internals</li>
+      <li><a href="#vm">Firecracker driver</a></li>
+      <li><a href="#agent">The guest agent &amp; vsock</a></li>
+      <li><a href="#net">Networking</a></li>
+      <li><a href="#limits">Resource limits &amp; the pool</a></li>
+      <li><a href="#api">The northbound API</a></li>
+      <li><a href="#egress">Egress &amp; the secret firewall</a></li>
+      <li><a href="#audit">The audit log</a></li>
+      <li class="grp" aria-hidden="true">Supply chain</li>
+      <li><a href="#images">The image pipeline</a></li>
+      <li class="grp" aria-hidden="true">Working with it</li>
+      <li><a href="#build">Building &amp; testing</a></li>
+      <li><a href="#use">Using it</a></li>
+      <li><a href="#deploy">Deploying moatd</a></li>
+      <li><a href="#config">Configuration reference</a></li>
+      <li><a href="#ops">Operations</a></li>
+      <li><a href="#limits-road">Limits &amp; roadmap</a></li>
+    </ol>
+  </nav>
+
+  <main id="start">
+    <p class="lede">One microVM per task. Never reused. Burned when the task ends.</p>
+    <p>Moat is a Go control plane that starts, isolates, and reaps Firecracker microVMs
+    as disposable, hardware-isolated sandboxes. This guide works from the isolation
+    boundary outward: first the mechanism, then each package, then the supply chain, the
+    build, the API, and how to run <code>moatd</code> in your own environment.</p>
+    <div class="meta">
+      <span>module: github.com/M30W-M1X/moat</span>
+      <span>go 1.27.0</span>
+      <span>kernel: vmlinux 6.1.182 (pinned)</span>
+      <span>base: alpine@sha256:c64c687c…</span>
+    </div>
+
+    <!-- ========================================================= 1 -->
+    <section id="arch">
+      <h2><span class="n">01</span>Architecture at a glance</h2>
+      <p>A single daemon, <code>moatd</code>, owns the control plane: authentication,
+      concurrency quotas, templates, a TTL janitor, Prometheus metrics, and structured
+      request logs. Everything that touches an untrusted workload lives behind it — the
+      warm pool, the Firecracker driver, the egress proxy — and each running sandbox is
+      one microVM with its own kernel, network namespace, and cgroup.</p>
+
+      <figure>
+        <div class="figbody">
+          <svg viewBox="0 0 720 452" role="img" aria-label="Moat system architecture: an HTTP client sends bearer-token requests to moatd, which acquires from the warm pool, cold-boots through internal/vm, and points the sandbox at internal/egress; each sandbox is one microVM running the guest agent, wrapped in a netns and a cgroup.">
+            <text x="248" y="18" class="d-t hd mid">CLIENT</text>
+            <rect x="248" y="26" width="224" height="44" rx="5" class="d-box"/>
+            <text x="360" y="46" class="d-t mid">agent / CI / SDK</text>
+            <text x="360" y="61" class="d-t lbl mid">HTTP + bearer token</text>
+
+            <line x1="360" y1="70" x2="360" y2="102" class="d-line accent" marker-end="url(#ah)"/>
+            <text x="368" y="90" class="d-t lbl">POST /v1/sandboxes  ·  /exec</text>
+
+            <!-- host control plane -->
+            <rect x="14" y="106" width="692" height="150" rx="7" class="d-grp"/>
+            <text x="26" y="123" class="d-t hd">HOST — CONTROL PLANE</text>
+
+            <rect x="26" y="132" width="200" height="116" rx="5" class="d-box host"/>
+            <text x="126" y="168" class="d-t mid">moatd</text>
+            <text x="126" y="184" class="d-t lbl mid">internal/server</text>
+            <text x="126" y="204" class="d-t lbl mid">auth · quota</text>
+            <text x="126" y="219" class="d-t lbl mid">template · TTL janitor</text>
+
+            <rect x="470" y="132" width="222" height="32" rx="5" class="d-box"/>
+            <text x="581" y="152" class="d-t mid">internal/pool — warm running VMs</text>
+            <rect x="470" y="174" width="222" height="32" rx="5" class="d-box"/>
+            <text x="581" y="194" class="d-t mid">internal/vm — Firecracker + jailer</text>
+            <rect x="470" y="216" width="222" height="32" rx="5" class="d-box"/>
+            <text x="581" y="236" class="d-t mid">internal/egress — domain policy</text>
+
+            <line x1="228" y1="148" x2="468" y2="148" class="d-line" marker-end="url(#ah)"/>
+            <text x="248" y="142" class="d-t lbl">acquire</text>
+            <line x1="228" y1="190" x2="468" y2="190" class="d-line dash" marker-end="url(#ah)"/>
+            <text x="248" y="184" class="d-t lbl">cold boot</text>
+            <line x1="228" y1="232" x2="468" y2="232" class="d-line" marker-end="url(#ah)"/>
+            <text x="248" y="226" class="d-t lbl">HTTP(S)_PROXY</text>
+
+            <!-- microVM -->
+            <line x1="360" y1="256" x2="360" y2="288" class="d-line accent" marker-end="url(#ah)"/>
+            <text x="368" y="276" class="d-t lbl">vsock :5252  ·  gRPC</text>
+
+            <rect x="118" y="290" width="484" height="150" rx="7" class="d-accent" fill="none"/>
+            <text x="132" y="308" class="d-t hd">ONE MICROVM — ONE TASK SESSION</text>
+            <rect x="132" y="316" width="456" height="46" rx="5" class="d-box"/>
+            <text x="360" y="336" class="d-t mid">guest/agent — PID 1</text>
+            <text x="360" y="351" class="d-t lbl mid">Exec · WriteFile · ReadFile · Info</text>
+
+            <rect x="132" y="374" width="146" height="52" rx="5" class="d-box"/>
+            <text x="205" y="397" class="d-t mid">netns + TAP</text>
+            <text x="205" y="412" class="d-t lbl mid">/30 · nftables</text>
+            <rect x="287" y="374" width="146" height="52" rx="5" class="d-box"/>
+            <text x="360" y="397" class="d-t mid">cgroup v2</text>
+            <text x="360" y="412" class="d-t lbl mid">cpu · mem · pids</text>
+            <rect x="442" y="374" width="146" height="52" rx="5" class="d-box"/>
+            <text x="515" y="397" class="d-t mid">rootfs.ext4 (ro)</text>
+            <text x="515" y="412" class="d-t lbl mid">+ vmlinux · scratch</text>
+
+            <defs>
+              <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 0L10 5L0 10z" fill="var(--diagram-ink)"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption><b>Fig 1</b> The daemon is the only thing a client talks to. The pool, the
+          driver, and the proxy sit behind it, and every workload runs inside one
+          short-lived microVM reached only over vsock.</figcaption>
+      </figure>
+
+      <h3>The lifecycle of one request</h3>
+      <p>A <code>create</code> then <code>exec</code> then <code>destroy</code> moves
+      through the daemon, the boot path, the network setup, and the guest agent. The
+      audit log records each boundary crossing.</p>
+
+      <figure>
+        <div class="figbody">
+          <svg viewBox="0 0 720 430" role="img" aria-label="Sequence of a sandbox request: the client creates a sandbox, moatd checks the quota and boots a VM through internal/vm and internal/netconf, dials the guest agent, streams an exec, then destroys the VM and releases the quota.">
+            <!-- lifelines -->
+            <g class="d-t mono mid">
+              <text x="70" y="22">client</text>
+              <text x="215" y="22">moatd</text>
+              <text x="360" y="22">pool / vm</text>
+              <text x="505" y="22">netconf</text>
+              <text x="645" y="22">guest agent</text>
+            </g>
+            <g class="d-line dash">
+              <line x1="70" y1="30" x2="70" y2="404"/>
+              <line x1="215" y1="30" x2="215" y2="404"/>
+              <line x1="360" y1="30" x2="360" y2="404"/>
+              <line x1="505" y1="30" x2="505" y2="404"/>
+              <line x1="645" y1="30" x2="645" y2="404"/>
+            </g>
+
+            <line x1="70" y1="52" x2="213" y2="52" class="d-line accent" marker-end="url(#ah2)"/>
+            <text x="74" y="46" class="d-t lbl">POST /v1/sandboxes</text>
+            <rect x="207" y="58" width="16" height="70" class="d-fill"/>
+            <text x="219" y="74" class="d-t lbl">auth · quota reserve · resolve template</text>
+
+            <line x1="215" y1="96" x2="358" y2="96" class="d-line" marker-end="url(#ah2)"/>
+            <text x="219" y="90" class="d-t lbl">Acquire or Boot</text>
+            <line x1="360" y1="118" x2="503" y2="118" class="d-line" marker-end="url(#ah2)"/>
+            <text x="364" y="112" class="d-t lbl">Apply Plan — netns · TAP · /30 · nft</text>
+            <line x1="503" y1="140" x2="361" y2="140" class="d-line dash" marker-end="url(#ah2)"/>
+
+            <line x1="360" y1="162" x2="643" y2="162" class="d-line" marker-end="url(#ah2)"/>
+            <text x="364" y="156" class="d-t lbl">dial vsock · Info readiness</text>
+            <line x1="643" y1="182" x2="217" y2="182" class="d-line dash" marker-end="url(#ah2)"/>
+            <line x1="213" y1="204" x2="71" y2="204" class="d-line accent" marker-end="url(#ah2)"/>
+            <text x="74" y="198" class="d-t lbl">201 { id }</text>
+
+            <line x1="70" y1="242" x2="213" y2="242" class="d-line accent" marker-end="url(#ah2)"/>
+            <text x="74" y="236" class="d-t lbl">POST /v1/sandboxes/{id}/exec</text>
+            <line x1="215" y1="264" x2="643" y2="264" class="d-line" marker-end="url(#ah2)"/>
+            <text x="219" y="258" class="d-t lbl">Exec stream (argv · env · stdin · timeout)</text>
+            <line x1="643" y1="286" x2="71" y2="286" class="d-line accent" marker-end="url(#ah2)"/>
+            <text x="74" y="280" class="d-t lbl">NDJSON: started · stdout/stderr · exit</text>
+
+            <line x1="70" y1="326" x2="213" y2="326" class="d-line" marker-end="url(#ah2)"/>
+            <text x="74" y="320" class="d-t lbl">DELETE  (or TTL janitor · shutdown)</text>
+            <line x1="215" y1="348" x2="358" y2="348" class="d-line" marker-end="url(#ah2)"/>
+            <text x="219" y="342" class="d-t lbl">Stop — kill VMM · remove cgroup</text>
+            <line x1="360" y1="370" x2="503" y2="370" class="d-line" marker-end="url(#ah2)"/>
+            <text x="364" y="364" class="d-t lbl">Destroy Plan · quota release</text>
+            <line x1="213" y1="392" x2="71" y2="392" class="d-line" marker-end="url(#ah2)"/>
+            <text x="74" y="386" class="d-t lbl">204</text>
+
+            <defs>
+              <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 0L10 5L0 10z" fill="var(--diagram-ink)"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption><b>Fig 2</b> Teal arrows are the client-visible request and response.
+          Grey arrows are internal calls. The <code>exec</code> stream stays open for the
+          life of the process.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ========================================================= 2 -->
+    <section id="layout">
+      <h2><span class="n">02</span>Repository layout</h2>
+      <p><code>internal/</code> is a Go internal tree — nothing outside the module imports
+      it. External code uses <code>internal/moatapi</code> or the HTTP API.</p>
+      <table>
+        <thead><tr><th>Path</th><th>~Lines</th><th>Responsibility</th></tr></thead>
+        <tbody>
+          <tr><td><code>cmd/moat</code></td><td>1540</td><td>host CLI: <code>demo run snapshot restore bench reap doctor template audit</code></td></tr>
+          <tr><td><code>cmd/moatd</code></td><td>690</td><td>the northbound HTTP daemon and its config loader</td></tr>
+          <tr><td><code>cmd/moat-mcp</code></td><td>440</td><td>Model Context Protocol server (stdio) for AI agents</td></tr>
+          <tr><td><code>cmd/moat-uffd</code></td><td>290</td><td>userfaultfd page-fault handler for <code>restore -uffd</code></td></tr>
+          <tr><td><code>guest/agent</code></td><td>470</td><td>the in-VM agent: PID 1, mounts pseudo-fs, reaps children, serves gRPC over vsock</td></tr>
+          <tr><td><code>internal/vm</code></td><td>1225</td><td>Firecracker driver: <code>Boot</code>, <code>Restore</code>, snapshot + diff, <code>Reconcile</code></td></tr>
+          <tr><td><code>internal/agentclient</code></td><td>410</td><td>host-side gRPC client for the guest agent</td></tr>
+          <tr><td><code>internal/vsockconn</code></td><td>190</td><td>host→guest dial through Firecracker's vsock mux socket</td></tr>
+          <tr><td><code>internal/config</code></td><td>380</td><td><code>Machine</code> config, kernel args, run + data directory resolution</td></tr>
+          <tr><td><code>internal/netconf</code></td><td>920</td><td>per-VM netns + veth + TAP + <code>/30</code> IPAM + nftables rules</td></tr>
+          <tr><td><code>internal/cgroup</code></td><td>230</td><td>cgroup v2 <code>cpu.max</code> / <code>memory.max</code> / <code>pids.max</code> on the VMM</td></tr>
+          <tr><td><code>internal/pool</code></td><td>450</td><td>warm pool of running microVMs, leases with TTL + idle timeout</td></tr>
+          <tr><td><code>internal/server</code></td><td>3000</td><td>the HTTP API, auth, quotas, templates, janitor, metrics, the image check</td></tr>
+          <tr><td><code>internal/egress</code></td><td>800</td><td>forward + transparent egress proxy with a domain policy</td></tr>
+          <tr><td><code>internal/secretscan</code></td><td>470</td><td>ingress secret firewall — vendored Gitleaks rules, in-repo evaluator</td></tr>
+          <tr><td><code>internal/audit</code></td><td>2100</td><td>append-only, hash-chained audit log: writer, reader, per-sandbox report</td></tr>
+          <tr><td><code>internal/imagelock</code></td><td>290</td><td>load and verify <code>images.lock</code> at daemon startup</td></tr>
+          <tr><td><code>internal/moatapi</code></td><td>490</td><td>Go client for the moatd HTTP API</td></tr>
+          <tr><td><code>build/</code></td><td>—</td><td><code>fetch-kernel.sh</code>, <code>build-rootfs.sh</code>, <code>sbomgen</code>, <code>gen-images-lock.sh</code>, <code>images-verify.sh</code></td></tr>
+          <tr><td><code>proto/agent/v1</code></td><td>—</td><td>the guest-agent protobuf; <code>gen/</code> holds committed generated code</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ========================================================= 3 -->
+    <section id="security">
+      <h2><span class="n">03</span>The security model</h2>
+      <p>Moat runs code it does not trust. The isolation is layered so a break in one
+      layer still meets another. Read the diagram from the untrusted centre outward.</p>
+
+      <figure>
+        <div class="figbody">
+          <svg viewBox="0 0 720 470" role="img" aria-label="Defense in depth: a guest process is wrapped by the seccomp-filtered jailer, then KVM and the Firecracker VMM, then cgroup and rate-limit caps, then a network namespace with nftables, then the egress proxy, before anything reaches the host.">
+            <!-- nested bands, top-down -->
+            <rect x="10" y="12" width="700" height="446" rx="8" class="d-box host"/>
+            <text x="24" y="32" class="d-t hd">HOST KERNEL · KVM · moatd  (trusted)</text>
+
+            <rect x="40" y="44" width="640" height="368" rx="7" class="d-box"/>
+            <text x="54" y="63" class="d-t mono">egress proxy — domain allow / deny · transparent DNAT</text>
+            <text x="54" y="78" class="d-t lbl">stops: exfiltration to an arbitrary domain</text>
+
+            <rect x="70" y="90" width="580" height="300" rx="7" class="d-box"/>
+            <text x="84" y="109" class="d-t mono">netns + veth + TAP + nftables</text>
+            <text x="84" y="124" class="d-t lbl">stops: reaching the host, other VMs, 169.254/16, RFC-1918</text>
+
+            <rect x="100" y="136" width="520" height="234" rx="7" class="d-box"/>
+            <text x="114" y="155" class="d-t mono">cgroup v2 caps + Firecracker rate limiters</text>
+            <text x="114" y="170" class="d-t lbl">stops: CPU / memory / PID / bandwidth starvation</text>
+
+            <rect x="130" y="182" width="460" height="168" rx="7" class="d-box"/>
+            <text x="144" y="201" class="d-t mono">KVM + Firecracker VMM — minimal device model</text>
+            <text x="144" y="216" class="d-t lbl">stops: a guest-kernel exploit reaching the host kernel</text>
+
+            <rect x="160" y="228" width="400" height="102" rx="7" class="d-box"/>
+            <text x="174" y="247" class="d-t mono">jailer — chroot · seccomp · dropped caps · own uid</text>
+            <text x="174" y="262" class="d-t lbl">stops: a VMM compromise acting with privilege</text>
+
+            <rect x="216" y="276" width="288" height="46" rx="6" class="d-alarm" fill="var(--alarm-wash)"/>
+            <text x="360" y="297" class="d-t mid mono">untrusted guest process</text>
+            <text x="360" y="312" class="d-t lbl mid">every command · every byte written · every packet</text>
+            <text x="360" y="344" class="d-t lbl mid">files reach it only through vsock RPCs — there is no shared mount</text>
+          </svg>
+        </div>
+        <figcaption><b>Fig 3</b> Each band names its mechanism and what it stops. The
+          vermilion box is the only untrusted element inside the host boundary. A caller's
+          files reach it only through vsock RPCs.</figcaption>
+      </figure>
+
+      <h3>Threat model</h3>
+      <ul>
+        <li><strong>Trusted:</strong> the host kernel, KVM, Firecracker and the jailer,
+          <code>moatd</code>, the guest agent binary, the pinned kernel and base image.</li>
+        <li><strong>Untrusted:</strong> every process the guest runs, every byte it writes,
+          every packet it sends, and every file a caller asks to put into a sandbox.</li>
+        <li><strong>Out of scope:</strong> a KVM or hardware (microcode, speculative
+          execution) vulnerability, a malicious host operator, GPU workloads
+          (Firecracker has no VFIO — <code>DD-11</code>).</li>
+      </ul>
+
+      <div class="note warn">
+        <span class="k">Known gap · G-19</span>
+        <strong>The cold-boot rootfs is read-write.</strong> <code>vm.Boot</code> attaches
+        the root drive with <code>IsReadOnly: false</code>, and <code>coldBoot</code> points
+        the machine straight at the template <code>rootfs.ext4</code>. Only the warm pool
+        copies the rootfs per member, so a non-pooled sandbox writes into the shared
+        template image for the life of that boot. The fix — attach the root drive
+        read-only, or copy per sandbox — is a planned VM-driver change.
+      </div>
+      <div class="note">
+        <span class="k">Also</span>
+        The jailer path (<code>-jail</code>) and real-uplink NAT need a root host. UFFD
+        restore needs read access to <code>/dev/userfaultfd</code> or
+        <code>vm.unprivileged_userfaultfd=1</code> (<code>G-14</code>).
+      </div>
+    </section>
+
+    <!-- ========================================================= 4 -->
+    <section id="vm">
+      <h2><span class="n">04</span>Firecracker driver — <code>internal/vm</code></h2>
+      <p><code>Boot(ctx, m config.Machine, log) (*Instance, error)</code> builds a
+      <code>firecracker.Config</code> — one root drive, one vsock device, and a network
+      interface when <code>m.Net</code> is set — then <code>startMachine</code> applies
+      either the jailer (<code>cfg.JailerCfg</code>) or a plain unprivileged process, starts
+      the VMM, and waits for the guest agent on vsock. <code>Instance</code> holds the
+      VMM <code>pid</code> so <code>internal/cgroup</code> can cap it.</p>
+
+      <h3>Cold boot versus snapshot restore</h3>
+      <figure>
+        <div class="figbody">
+          <svg viewBox="0 0 720 300" role="img" aria-label="Cold boot runs config, kernel handoff, userland init and agent listen, and takes about 1.1 seconds. Snapshot restore starts a fresh VMM and resumes a paused guest, reaching a ready agent in about 25 milliseconds.">
+            <text x="12" y="24" class="d-t hd">COLD BOOT · moat run / coldBoot</text>
+            <line x1="16" y1="40" x2="704" y2="40" class="d-line"/>
+            <g>
+              <rect x="16" y="48" width="150" height="40" rx="5" class="d-box"/><text x="91" y="72" class="d-t mid">baseConfig + jailer</text>
+              <rect x="176" y="48" width="150" height="40" rx="5" class="d-box"/><text x="251" y="72" class="d-t mid">start VMM</text>
+              <rect x="336" y="48" width="180" height="40" rx="5" class="d-box"/><text x="426" y="68" class="d-t mid">kernel handoff</text><text x="426" y="82" class="d-t lbl mid">init=/sbin/guest-agent</text>
+              <rect x="526" y="48" width="178" height="40" rx="5" class="d-box"/><text x="615" y="68" class="d-t mid">mount fs · vsock listen</text><text x="615" y="82" class="d-t lbl mid">Info OK</text>
+            </g>
+            <line x1="166" y1="68" x2="174" y2="68" class="d-line" marker-end="url(#ah4)"/>
+            <line x1="326" y1="68" x2="334" y2="68" class="d-line" marker-end="url(#ah4)"/>
+            <line x1="516" y1="68" x2="524" y2="68" class="d-line" marker-end="url(#ah4)"/>
+            <text x="704" y="108" class="d-t mono end">≈ 1.1 s to a ready agent</text>
+
+            <text x="12" y="164" class="d-t hd">SNAPSHOT RESTORE · moat restore</text>
+            <line x1="16" y1="180" x2="704" y2="180" class="d-line"/>
+            <rect x="16" y="188" width="200" height="40" rx="5" class="d-box"/><text x="116" y="208" class="d-t mid">fresh VMM · snapshot/load</text><text x="116" y="222" class="d-t lbl mid">snapshot.bin + mem.bin</text>
+            <rect x="226" y="188" width="180" height="40" rx="5" class="d-accent" fill="var(--accent-wash)"/><text x="316" y="208" class="d-t mid">resume paused guest</text><text x="316" y="222" class="d-t lbl mid">clock resync</text>
+            <rect x="416" y="188" width="150" height="40" rx="5" class="d-box"/><text x="491" y="212" class="d-t mid">agent answers</text>
+            <line x1="216" y1="208" x2="224" y2="208" class="d-line" marker-end="url(#ah4)"/>
+            <line x1="406" y1="208" x2="414" y2="208" class="d-line" marker-end="url(#ah4)"/>
+            <text x="704" y="248" class="d-t mono end">≈ 25 ms to a ready agent</text>
+            <text x="16" y="272" class="d-t lbl">Diff snapshot: sparse mem.bin, only changed pages, rebased onto a base copy (RebaseMemory).</text>
+            <defs>
+              <marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0 0L10 5L0 10z" fill="var(--diagram-ink)"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption><b>Fig 4</b> The difference the two paths turn on: cold boot pays for a
+          full kernel handoff and userland init; restore starts a process and resumes an
+          already-initialised guest.</figcaption>
+      </figure>
+
+      <table>
+        <thead><tr><th>Call</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>CreateSnapshot(ctx, dir)</code></td><td>pause the VM, write <code>snapshot.bin</code> + <code>mem.bin</code>, leave it paused</td></tr>
+          <tr><td><code>Restore(ctx, m, dir, log)</code></td><td>fresh VMM from a full snapshot</td></tr>
+          <tr><td><code>RestoreForDiff</code> → <code>CreateSnapshotDiff</code></td><td>restore with dirty-page tracking, then write a sparse <code>mem.bin</code></td></tr>
+          <tr><td><code>RestoreDiff</code></td><td>rebase the sparse diff onto a base-memory copy (<code>SEEK_DATA</code>/<code>SEEK_HOLE</code>), restore from the merge</td></tr>
+          <tr><td><code>RestoreUFFD</code> + <code>cmd/moat-uffd</code></td><td>raw <code>snapshot/load</code> with <code>mem_backend</code>; a handler streams pages on demand via <code>userfaultfd</code></td></tr>
+          <tr><td><code>Reconcile(runRoot, keep, log)</code></td><td>read every <code>firecracker.pid</code>, kill the processes a crash left behind</td></tr>
+        </tbody>
+      </table>
+      <div class="note warn">
+        <span class="k">Gotcha · G-12</span>
+        <code>PauseVM</code>/<code>ResumeVM</code> on the same VMM process breaks the guest
+        vsock on this Firecracker build. The warm pool keeps members <strong>running</strong>,
+        not paused. Snapshot restore starts a fresh process and is unaffected.
+      </div>
+    </section>
+
+    <!-- ========================================================= 5 -->
+    <section id="agent">
+      <h2><span class="n">05</span>The guest agent &amp; vsock</h2>
+      <p>The agent is a static (<code>CGO_ENABLED=0</code>) binary. The kernel runs it as
+      PID 1 through <code>init=/sbin/guest-agent</code>. As PID 1 it must never return —
+      the kernel panics if init exits — so every fatal path calls <code>haltForever</code>.
+      On start it mounts <code>/proc</code>, <code>/sys</code>, <code>/dev</code> (tolerating
+      <code>EBUSY</code>), <code>/dev/pts</code>, <code>/dev/shm</code>, a tmpfs
+      <code>/run</code>; sets a base <code>PATH</code> and <code>/etc/resolv.conf</code>;
+      installs a <code>SIGCHLD</code> reaper; and serves gRPC on <code>AF_VSOCK</code>
+      port 5252.</p>
+
+      <h4>The vsock handshake</h4>
+      <p>Firecracker multiplexes guest vsock connections over one host Unix socket. To
+      open a guest connection the host connects to that socket, writes
+      <code>CONNECT &lt;port&gt;\n</code>, reads <code>OK &lt;hostport&gt;\n</code>, and then
+      the stream is a raw pipe to the guest listener. <code>internal/vsockconn</code>
+      implements it; <code>internal/agentclient</code> wraps it in a gRPC
+      <code>ClientConn</code> with a custom dialer. Host CID is 2. The first guest is CID 3.</p>
+
+      <table>
+        <thead><tr><th>RPC</th><th>Shape</th></tr></thead>
+        <tbody>
+          <tr><td><code>Info</code></td><td>agent version, pid, <code>uname -r</code>, uptime — the host's readiness check</td></tr>
+          <tr><td><code>Exec</code></td><td>request: <code>argv</code>, <code>env</code>, <code>dir</code>, <code>stdin</code>, <code>timeout_ms</code>, <code>tty</code>+size. Stream: <code>Started{pid}</code>, then <code>stdout</code>/<code>stderr</code> chunks, then one <code>Exit{code, signal, timed_out}</code>. Timeout kills the process group.</td></tr>
+          <tr><td><code>WriteFile</code></td><td>first chunk sets <code>path</code>+<code>mode</code>; every chunk carries <code>data</code>. Response: <code>bytes_written</code> + hex SHA-256.</td></tr>
+          <tr><td><code>ReadFile</code></td><td>data chunks, then a final chunk with <code>eof</code>, <code>size</code>, <code>sha256</code>, no data.</td></tr>
+        </tbody>
+      </table>
+      <p>Files move <em>only</em> through <code>WriteFile</code> / <code>ReadFile</code> over
+      vsock. There is no shared mount.</p>
+    </section>
+
+    <!-- ========================================================= 6 -->
+    <section id="net">
+      <h2><span class="n">06</span>Networking — <code>internal/netconf</code></h2>
+      <p><code>Apply Plan</code> / <code>Destroy Plan</code> need <code>CAP_NET_ADMIN</code>
+      and <code>CAP_SYS_ADMIN</code> — real root, or
+      <code>unshare --user --map-root-user --mount --net</code>. A <code>Plan</code>
+      (from <code>BuildPlan(lease, uplink)</code>) describes a named netns, a veth pair, a
+      TAP inside the netns, a static <code>/30</code> guest address from the
+      <code>10.62.0.0/16</code> pool, and the kernel <code>ip=</code> argument so the guest
+      configures the NIC at boot with no DHCP.</p>
+
+      <figure>
+        <div class="figbody">
+          <svg viewBox="0 0 720 320" role="img" aria-label="Guest traffic leaves the TAP inside the network namespace, crosses a veth pair to the host, where nftables drops anything aimed at the host, other VMs, link-local, or RFC-1918 ranges and masquerades the rest; web traffic is DNAT-redirected to the transparent egress proxy.">
+            <rect x="12" y="60" width="150" height="200" rx="7" class="d-accent" fill="none"/>
+            <text x="24" y="52" class="d-t hd">VM NETNS</text>
+            <rect x="28" y="80" width="118" height="44" rx="5" class="d-box"/><text x="87" y="101" class="d-t mid">guest NIC</text><text x="87" y="115" class="d-t lbl mid">10.62.x.2/30</text>
+            <rect x="28" y="150" width="118" height="44" rx="5" class="d-box"/><text x="87" y="171" class="d-t mid">TAP</text><text x="87" y="185" class="d-t lbl mid">10.62.x.1/30</text>
+            <rect x="28" y="210" width="118" height="38" rx="5" class="d-box"/><text x="87" y="233" class="d-t mid">nft: DNAT 80/443</text>
+            <line x1="87" y1="124" x2="87" y2="148" class="d-line" marker-end="url(#ah6)"/>
+
+            <line x1="146" y1="172" x2="228" y2="172" class="d-line" marker-end="url(#ah6)"/>
+            <text x="150" y="165" class="d-t lbl">veth pair</text>
+
+            <rect x="230" y="40" width="230" height="240" rx="7" class="d-box host"/>
+            <text x="244" y="32" class="d-t hd">HOST NETNS</text>
+            <rect x="246" y="70" width="198" height="52" rx="5" class="d-box"/>
+            <text x="345" y="89" class="d-t mid">nftables — chain forward</text>
+            <text x="345" y="104" class="d-t lbl mid">DROP → host · other VMs</text>
+            <text x="345" y="117" class="d-t lbl mid">DROP → link-local · RFC-1918</text>
+            <rect x="246" y="138" width="198" height="40" rx="5" class="d-box"/>
+            <text x="345" y="158" class="d-t mid">chain postrouting</text><text x="345" y="171" class="d-t lbl mid">masquerade oif veth</text>
+            <rect x="246" y="196" width="198" height="44" rx="5" class="d-alarm" fill="var(--alarm-wash)"/>
+            <text x="345" y="216" class="d-t mid">transparent egress proxy</text>
+            <text x="345" y="229" class="d-t lbl mid">SO_ORIGINAL_DST · SNI / Host</text>
+            <line x1="246" y1="216" x2="150" y2="229" class="d-line alarm dash" marker-end="url(#ah6)"/>
+
+            <line x1="460" y1="150" x2="540" y2="150" class="d-line accent" marker-end="url(#ah6)"/>
+            <text x="464" y="143" class="d-t lbl">allowed only</text>
+            <rect x="542" y="128" width="160" height="44" rx="5" class="d-box"/>
+            <text x="622" y="149" class="d-t mid">forward proxy</text><text x="622" y="163" class="d-t lbl mid">domain allow / deny</text>
+            <line x1="622" y1="172" x2="622" y2="210" class="d-line accent" marker-end="url(#ah6)"/>
+            <text x="630" y="196" class="d-t lbl">internet</text>
+            <defs>
+              <marker id="ah6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0 0L10 5L0 10z" fill="var(--diagram-ink)"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption><b>Fig 5</b> Everything private is dropped in the <code>forward</code>
+          chain first. Only the point-to-point links and established flows pass, then the
+          host masquerades toward the proxy. The DNAT rule (dashed) forces guest web
+          traffic through the transparent proxy even if the guest ignores
+          <code>HTTP(S)_PROXY</code>.</figcaption>
+      </figure>
+
+      <pre><code>chain forward {
+  type filter hook forward priority 0; policy accept;
+  ct state established,related accept
+  ip daddr { &lt;tap /30&gt;, &lt;veth /30&gt; } accept
+  ip daddr 169.254.0.0/16 drop        # link-local + cloud metadata
+  ip daddr 127.0.0.0/8   drop
+  ip daddr 10.0.0.0/8    drop          # RFC-1918
+  ip daddr 172.16.0.0/12 drop
+  ip daddr 192.168.0.0/16 drop
+}</code></pre>
+    </section>
+
+    <!-- ========================================================= 7 -->
+    <section id="limits">
+      <h2><span class="n">07</span>Resource limits &amp; the warm pool</h2>
+      <p><code>cgroup.Apply(name, pid, Limits) (remove func(), error)</code> writes
+      <code>cpu.max</code>, <code>memory.max</code>, <code>pids.max</code> into a new leaf
+      under this process's delegated systemd subtree
+      (<code>…/user@&lt;uid&gt;.service/microvm/mvm-&lt;id&gt;</code>). It needs no root when
+      systemd delegation is in effect. <code>Instance.Stop</code> calls the returned
+      <code>remove</code> after the VMM exits. <code>Limits</code> is
+      <code>{CPUCores float64, MemBytes int64, PIDs int64}</code>; a zero field means no
+      cap. Firecracker's own per-VM token-bucket rate limiters cap the rootfs block
+      device and the network interface (one-second refill).</p>
+
+      <h3>The pool — <code>internal/pool</code></h3>
+      <p><code>pool.New(ctx, Options{Size}, base, log)</code> starts <code>Size</code>
+      microVMs from a copy of the base rootfs and keeps them running and idle.
+      <code>Acquire(ctx)</code> returns a <code>*Lease</code> — p50 about 1 ms — carrying a
+      TTL and an idle timeout. <code>Lease.Touch()</code> resets the idle clock; a
+      background <code>sweep</code> force-releases a straggler. <code>Lease.Release()</code>
+      discards the member (one VM per session) and <code>refill</code> starts a
+      replacement. <code>moatd -pool N</code> turns it on; it serves only non-networked
+      sandboxes.</p>
+    </section>
+
+    <!-- ========================================================= 8 -->
+    <section id="api">
+      <h2><span class="n">08</span>The northbound API — <code>internal/server</code></h2>
+      <p><code>server.New(cfg, log)</code> validates config, builds the template map, runs
+      the image check, builds the secret scanner, registers metrics.
+      <code>Start(ctx)</code> starts the pool, writes <code>daemon.start</code>, starts the
+      TTL janitor. <code>Shutdown(ctx)</code> writes <code>daemon.stop</code>, destroys
+      every sandbox, waits for in-flight teardowns.</p>
+      <table>
+        <thead><tr><th>Method + path</th><th>Handler</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET /healthz</code></td><td>liveness, no auth</td></tr>
+          <tr><td><code>GET /metrics</code></td><td>Prometheus text, no auth</td></tr>
+          <tr><td><code>POST /v1/sandboxes</code></td><td>create — quota check, template resolve, boot</td></tr>
+          <tr><td><code>GET /v1/sandboxes</code></td><td>list the caller's sandboxes</td></tr>
+          <tr><td><code>GET /v1/sandboxes/{id}</code></td><td>one sandbox</td></tr>
+          <tr><td><code>DELETE /v1/sandboxes/{id}</code></td><td>destroy</td></tr>
+          <tr><td><code>POST /v1/sandboxes/{id}/exec</code></td><td>stream a command as NDJSON</td></tr>
+          <tr><td><code>PUT /v1/sandboxes/{id}/files/{path...}</code></td><td>write a file (scanned)</td></tr>
+          <tr><td><code>GET /v1/sandboxes/{id}/files/{path...}</code></td><td>read a file, <code>X-Sha256</code> trailer</td></tr>
+          <tr><td><code>GET /v1/sandboxes/{id}/report</code></td><td>per-sandbox audit rollup</td></tr>
+          <tr><td><code>GET /v1/audit</code></td><td>the audit stream (NDJSON), per-token scope</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Auth</strong> is a bearer token. <code>Config.Tokens</code> maps id →
+      secret; <code>Config.Policies</code> maps id → <code>TokenPolicy</code> (template
+      allowlist, per-token concurrency, TTL cap, <code>deny_network</code>,
+      <code>allow_secret_override</code>, <code>audit_read: "all"</code>).
+      <strong>Quotas</strong> — <code>registry.reserve</code>/<code>release</code> enforce
+      <code>GlobalMax</code> and the per-token cap; a block gets <code>429</code> and a
+      <code>quota.reject</code> event.</p>
+    </section>
+
+    <!-- ========================================================= 9 -->
+    <section id="egress">
+      <h2><span class="n">09</span>Egress &amp; the ingress secret firewall</h2>
+      <h3>Egress proxy — <code>internal/egress</code></h3>
+      <p>One <code>Proxy</code> serves two listeners. <strong>Forward</strong>: handles
+      <code>CONNECT</code> (filtered by requested host name, no TLS interception) and
+      absolute-URI HTTP; a networked sandbox gets <code>HTTP(S)_PROXY</code> pointed here.
+      <strong>Transparent</strong>: takes DNAT-redirected raw connections, recovers the
+      pre-DNAT address with <code>SO_ORIGINAL_DST</code>, reads the host from the request
+      line or the TLS SNI, applies the same policy, and splices.</p>
+      <p><code>Policy{Allow, Deny []string}</code>. A host is allowed when it matches no
+      <code>Deny</code> entry and (<code>Allow</code> is empty or it matches an
+      <code>Allow</code> entry). Matching is case-insensitive on the exact name or any
+      parent domain. Each decision is an <code>egress.allow</code> / <code>egress.deny</code>
+      audit event with host, port, method, matched rule, the <code>via</code> listener,
+      and the resolved sandbox and token. Both go on the async audit path so a guest
+      cannot flood the writer with denials.</p>
+
+      <h3>Secret firewall — <code>internal/secretscan</code></h3>
+      <p><code>secretscan.New()</code> loads the vendored Gitleaks rule set
+      (<code>gitleaks.toml</code>, MIT). The Gitleaks module itself is <strong>not</strong>
+      imported — it pulls 200+ dependencies. A slim in-repo evaluator runs a keyword
+      prefilter, the regex, an optional Shannon-entropy floor, then the allowlists.</p>
+      <p><code>moatd</code> scans every <code>-env</code> value, every stdin, and every
+      file body on the way in. A hit returns <code>409</code>, unless the token has
+      <code>allow_secret_override</code> and the request sets <code>allow_secrets: true</code>
+      (audited), or <code>-secret-redact</code> is on (a marker replaces the secret).
+      <code>secret.block</code> / <code>allow</code> / <code>redact</code> events record only
+      the target, the deduped rule ids, and a count — the matched value never leaves the
+      scanner. A failed <code>secret.allow</code> or <code>secret.redact</code> audit write
+      returns <code>503</code>: the content does not enter with no durable record.</p>
+    </section>
+
+    <!-- ========================================================= 10 -->
+    <section id="audit">
+      <h2><span class="n">10</span>The audit log — <code>internal/audit</code></h2>
+      <p>An append-only JSONL log with a SHA-256 hash chain. Each event's <code>hash</code>
+      is the SHA-256 of its canonical form (keys sorted at every level, <code>hash</code>
+      omitted, <code>ts</code> in RFC3339Nano UTC). Each event's <code>prev</code> is the
+      previous event's <code>hash</code>. The first event's <code>prev</code> is 64 zeros.</p>
+
+      <figure>
+        <div class="figbody">
+          <svg viewBox="0 0 720 280" role="img" aria-label="Boundary events are written synchronously with an fsync and a rollback on failure. Hot events go through a bounded async queue with batched fsync. Each event's hash feeds the next event's prev field, forming a chain that Verify recomputes.">
+            <text x="16" y="18" class="d-t hd">TWO WRITE PATHS</text>
+            <rect x="16" y="28" width="256" height="50" rx="5" class="d-box"/>
+            <text x="144" y="48" class="d-t mid">RecordSync + fsync</text>
+            <text x="144" y="64" class="d-t lbl mid">sandbox · daemon · quota · secret</text>
+            <rect x="16" y="92" width="256" height="50" rx="5" class="d-box"/>
+            <text x="144" y="112" class="d-t mid">Record → bounded queue</text>
+            <text x="144" y="128" class="d-t lbl mid">exec · file · egress — batched fsync</text>
+            <text x="16" y="164" class="d-t lbl">full queue → drop the event + moat_audit_dropped_total</text>
+            <text x="16" y="182" class="d-t lbl">sync-write failure → roll back seq · truncate · return the error</text>
+            <text x="16" y="196" class="d-t lbl">the chain never forks</text>
+
+            <line x1="272" y1="53" x2="336" y2="76" class="d-line" marker-end="url(#ah7)"/>
+            <line x1="272" y1="117" x2="336" y2="90" class="d-line" marker-end="url(#ah7)"/>
+
+            <text x="340" y="18" class="d-t hd">HASH CHAIN — audit-YYYY-MM-DD.NNNNN.jsonl</text>
+            <rect x="340" y="30" width="112" height="60" rx="5" class="d-box"/>
+            <text x="396" y="50" class="d-t mid">event N-1</text>
+            <text x="396" y="66" class="d-t lbl mid">prev = …</text>
+            <text x="396" y="80" class="d-t lbl mid">hash = H1</text>
+            <rect x="480" y="30" width="112" height="60" rx="5" class="d-box"/>
+            <text x="536" y="50" class="d-t mid">event N</text>
+            <text x="536" y="66" class="d-t lbl mid">prev = H1</text>
+            <text x="536" y="80" class="d-t lbl mid">hash = H2</text>
+            <rect x="620" y="30" width="90" height="60" rx="5" class="d-box"/>
+            <text x="665" y="50" class="d-t mid">event N+1</text>
+            <text x="665" y="66" class="d-t lbl mid">prev = H2</text>
+            <line x1="452" y1="60" x2="478" y2="60" class="d-line accent" marker-end="url(#ah7)"/>
+            <line x1="592" y1="60" x2="618" y2="60" class="d-line accent" marker-end="url(#ah7)"/>
+
+            <text x="340" y="120" class="d-t lbl">Verify: recompute every hash · check prev links · check seq</text>
+            <text x="340" y="136" class="d-t lbl">a corrupt non-final line → moatd will not start</text>
+            <text x="340" y="152" class="d-t lbl">a crash-truncated final line is tolerated</text>
+
+            <line x1="144" y1="78" x2="144" y2="92" class="d-line" marker-end="url(#ah7)"/>
+            <text x="16" y="234" class="d-t lbl">Retention: remove by age, then total size — never the current file.</text>
+            <text x="16" y="252" class="d-t lbl">Read scope: audit_read "all" sees all — otherwise own sandboxes + own token.</text>
+            <defs>
+              <marker id="ah7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0 0L10 5L0 10z" fill="var(--diagram-ink)"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption><b>Fig 6</b> Boundary events block until durable. Hot events never
+          block — a full queue drops and meters. Either way, each event's hash is the next
+          event's <code>prev</code>, so a single altered byte breaks the chain at that
+          point.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ========================================================= 11 -->
+    <section id="images">
+      <h2><span class="n">11</span>The image pipeline</h2>
+      <p><code>make images</code> runs four steps: <code>kernel</code>,
+      <code>rootfs</code>, <code>sbom</code>, <code>lock</code>. The result is a
+      byte-identical <code>rootfs.ext4</code> on one toolchain, a pinned + hash-checked
+      kernel, a CycloneDX SBOM, and <code>images.lock</code>. <code>moatd</code> verifies
+      the kernel and rootfs against the lock at startup and fails closed on a mismatch.</p>
+
+      <figure>
+        <div class="figbody">
+          <svg viewBox="0 0 720 372" role="img" aria-label="fetch-kernel produces a pinned vmlinux and build-rootfs a deterministic rootfs with the trimpath guest-agent inside it. sbomgen reads the rootfs and the agent and emits a CycloneDX SBOM. gen-images-lock hashes the kernel, rootfs, and SBOM into images.lock. A canonical copy is checked in and a copy ships in the release tarball. moatd verifyImages checks the kernel and rootfs against the lock at startup.">
+            <text x="14" y="16" class="d-t hd">BUILD  ·  make images</text>
+            <rect x="14" y="24" width="200" height="44" rx="5" class="d-box"/>
+            <text x="114" y="43" class="d-t mid">fetch-kernel.sh</text>
+            <text x="114" y="58" class="d-t lbl mid">pinned snapshot + sha256</text>
+            <rect x="14" y="84" width="200" height="44" rx="5" class="d-box"/>
+            <text x="114" y="103" class="d-t mid">build-rootfs.sh</text>
+            <text x="114" y="118" class="d-t lbl mid">SOURCE_DATE_EPOCH · fixed UUID</text>
+            <rect x="14" y="144" width="200" height="40" rx="5" class="d-box"/>
+            <text x="114" y="168" class="d-t mid">guest-agent  ·  -trimpath</text>
+
+            <line x1="214" y1="106" x2="266" y2="140" class="d-line" marker-end="url(#ah8)"/>
+            <line x1="214" y1="164" x2="266" y2="150" class="d-line" marker-end="url(#ah8)"/>
+            <rect x="268" y="128" width="176" height="44" rx="5" class="d-box"/>
+            <text x="356" y="147" class="d-t mid">sbomgen  (go run)</text>
+            <text x="356" y="162" class="d-t lbl mid">debugfs · go version -m</text>
+            <line x1="444" y1="150" x2="500" y2="150" class="d-line" marker-end="url(#ah8)"/>
+            <rect x="502" y="128" width="150" height="44" rx="5" class="d-box"/>
+            <text x="577" y="147" class="d-t mid">sbom.cdx.json</text>
+            <text x="577" y="162" class="d-t lbl mid">CycloneDX 1.5</text>
+
+            <!-- everything feeds gen-images-lock -->
+            <line x1="214" y1="46" x2="150" y2="46" class="d-line"/>
+            <line x1="150" y1="46" x2="150" y2="214" class="d-line"/>
+            <line x1="150" y1="214" x2="196" y2="214" class="d-line" marker-end="url(#ah8)"/>
+            <line x1="577" y1="172" x2="577" y2="196" class="d-line"/>
+            <line x1="577" y1="196" x2="446" y2="196" class="d-line"/>
+            <line x1="446" y1="196" x2="446" y2="214" class="d-line" marker-end="url(#ah8)"/>
+            <rect x="198" y="200" width="424" height="52" rx="5" class="d-accent" fill="var(--accent-wash)"/>
+            <text x="410" y="222" class="d-t mid">gen-images-lock.sh</text>
+            <text x="410" y="238" class="d-t lbl mid">sha256(kernel · rootfs · sbom) + provenance  →  images.lock</text>
+
+            <line x1="410" y1="252" x2="410" y2="278" class="d-line" marker-end="url(#ah8)"/>
+            <rect x="198" y="280" width="200" height="40" rx="5" class="d-box"/>
+            <text x="298" y="299" class="d-t mid">images.lock — repo root</text>
+            <text x="298" y="313" class="d-t lbl mid">checked in</text>
+            <rect x="422" y="280" width="200" height="40" rx="5" class="d-box"/>
+            <text x="522" y="299" class="d-t mid">images.lock — release</text>
+            <text x="522" y="313" class="d-t lbl mid">tarball + /var/lib/moat</text>
+            <line x1="398" y1="300" x2="420" y2="300" class="d-line" marker-end="url(#ah8)"/>
+
+            <text x="14" y="300" class="d-t hd">RUNTIME</text>
+            <line x1="298" y1="320" x2="180" y2="344" class="d-line accent" marker-end="url(#ah8)"/>
+            <line x1="522" y1="320" x2="360" y2="346" class="d-line accent" marker-end="url(#ah8)"/>
+            <rect x="14" y="330" width="360" height="40" rx="5" class="d-box host"/>
+            <text x="194" y="349" class="d-t mid">moatd · verifyImages  (server.New)</text>
+            <text x="194" y="363" class="d-t lbl mid">digests == images.lock  ·  enforce | warn | off</text>
+
+            <text x="392" y="344" class="d-t lbl">make images-verify:</text>
+            <text x="392" y="358" class="d-t lbl">rebuild → assert byte-identical + matches the lock</text>
+            <defs>
+              <marker id="ah8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0 0L10 5L0 10z" fill="var(--diagram-ink)"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption><b>Fig 7</b> The lock is the single source of truth. The build writes it,
+          a canonical copy is committed, a copy ships with the release, and
+          <code>moatd</code> enforces it before the first sandbox boots.</figcaption>
+      </figure>
+
+      <h4>Rootfs determinism controls</h4>
+      <table>
+        <thead><tr><th>Non-determinism source</th><th>Control</th></tr></thead>
+        <tbody>
+          <tr><td>the <code>alpine:3.20</code> tag moves</td><td>pin <code>BASE_IMAGE=…@sha256:c64c687c…</code></td></tr>
+          <tr><td><code>podman export</code> file times &amp; order</td><td><code>find "$root" -exec touch --date=@$SOURCE_DATE_EPOCH</code></td></tr>
+          <tr><td>the agent binary embeds paths + a build id</td><td><code>go build -trimpath -buildvcs=false -ldflags='-s -w -buildid='</code>, <code>toolchain go1.27.0</code></td></tr>
+          <tr><td><code>mkfs.ext4</code> UUID, hash seed, times, lazy init</td><td><code>E2FSPROGS_FAKE_TIME=… mkfs.ext4 -U &lt;fixed&gt; -E hash_seed=&lt;fixed&gt;,lazy_itable_init=0,lazy_journal_init=0</code></td></tr>
+          <tr><td>callers disagreed on size</td><td><code>ROOTFS_SIZE</code> frozen at <code>256M</code></td></tr>
+        </tbody>
+      </table>
+      <div class="note">
+        <span class="k">Scope of the guarantee</span>
+        Byte-identical holds for a fixed toolchain (same <code>podman</code>,
+        <code>e2fsprogs</code>, <code>tar</code>, <code>go</code>). On a different
+        <code>e2fsprogs</code> the package set and the SBOM still match, but the ext4 byte
+        layout can shift. <code>moatd</code> enforces the digest from the lock that shipped
+        <em>with that image</em>, so the runtime check is unaffected.
+      </div>
+      <h4>Bumping the kernel or base image</h4>
+      <ol>
+        <li>Resolve the new pin values (commands in the plan).</li>
+        <li>Edit the constants in <code>build/fetch-kernel.sh</code>,
+          <code>build/build-rootfs.sh</code>, and the <code>Makefile</code>.</li>
+        <li><code>make images &amp;&amp; make images-verify</code>.</li>
+        <li><code>cp build/artifacts/images.lock images.lock</code> and commit.</li>
+        <li>Re-sign <code>images.lock.sig</code> at release time.</li>
+      </ol>
+    </section>
+
+    <!-- ========================================================= 12 -->
+    <section id="build">
+      <h2><span class="n">12</span>Building &amp; testing</h2>
+      <h4>Toolchain</h4>
+      <ul>
+        <li><strong>Go 1.27.0 exactly</strong> — <code>go.mod</code> declares
+          <code>toolchain go1.27.0</code>; the Makefile exports
+          <code>GOTOOLCHAIN=local</code>. A reproducible agent needs this version.</li>
+        <li><code>podman</code>, <code>e2fsprogs</code> (<code>mkfs.ext4</code>,
+          <code>debugfs</code>), <code>tar</code>, <code>curl</code> for the image pipeline.</li>
+        <li><code>firecracker</code> and <code>jailer</code> on <code>PATH</code> (tested
+          against v1.16.1). <code>/dev/kvm</code> readable + writable.</li>
+        <li><code>buf</code>, <code>protoc-gen-go</code>, <code>protoc-gen-go-grpc</code>
+          only to regenerate <code>gen/</code> — <code>make tools</code> installs them into
+          <code>$GOBIN</code>, no root.</li>
+      </ul>
+      <table>
+        <thead><tr><th>Target</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>make all</code></td><td>build every binary into <code>bin/</code></td></tr>
+          <tr><td><code>make images</code></td><td><code>kernel → rootfs → sbom → lock</code> into <code>build/artifacts/</code></td></tr>
+          <tr><td><code>make images-verify</code></td><td>rebuild + assert byte-for-byte reproducible</td></tr>
+          <tr><td><code>make test</code></td><td><code>go test ./...</code> — unit, no VM, fast (the gate)</td></tr>
+          <tr><td><code>make test-integration</code></td><td><code>-tags integration</code> — boots real microVMs; needs <code>/dev/kvm</code> + <code>make images</code></td></tr>
+          <tr><td><code>make test-net</code></td><td>network isolation test, rootless in a user+net namespace</td></tr>
+          <tr><td><code>make proto</code></td><td>regenerate <code>gen/</code> from <code>proto/</code></td></tr>
+          <tr><td><code>make dist</code></td><td>assemble <code>dist/moat_&lt;ver&gt;_linux_amd64.tar.gz</code> + checksums</td></tr>
+        </tbody>
+      </table>
+      <p>Integration helpers boot from a <strong>private sparse copy</strong> of the rootfs
+      (<code>copyRootFS</code>), so a test cannot mutate the shared
+      <code>build/artifacts/rootfs.ext4</code> (<code>G-19</code>).</p>
+    </section>
+
+    <!-- ========================================================= 13 -->
+    <section id="use">
+      <h2><span class="n">13</span>Using it</h2>
+      <h3>The <code>moat</code> CLI</h3>
+      <table>
+        <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>moat demo</code></td><td>start a microVM, run the agent readiness check, stop it</td></tr>
+          <tr><td><code>moat run [flags] -- CMD</code></td><td>start a one-shot microVM, run a command, tear it down</td></tr>
+          <tr><td><code>moat snapshot / restore</code></td><td>capture and reload a warmed VM (<code>-diff</code>, <code>-uffd</code>)</td></tr>
+          <tr><td><code>moat bench</code></td><td>warm-pool acquire / release benchmark</td></tr>
+          <tr><td><code>moat reap</code></td><td>kill Firecracker processes a crash left behind</td></tr>
+          <tr><td><code>moat doctor</code></td><td>preflight KVM, firecracker, cgroup delegation, nft, userfaultfd, images, <code>images.lock</code></td></tr>
+          <tr><td><code>moat template list</code></td><td>show the configured template</td></tr>
+          <tr><td><code>moat audit {tail,query,report,verify}</code></td><td>read the audit log, offline (<code>-dir</code>) or over the API</td></tr>
+        </tbody>
+      </table>
+      <pre><code>moat run -net -put ./main.go:/work/main.go -get /work/out:./out -timeout 60s -- \
+  sh -c 'cd /work &amp;&amp; go build -o out ./main.go'</code></pre>
+
+      <h3>The HTTP API — a walkthrough</h3>
+      <pre><code>MOAT_TOKENS=ci:s3cr3t moatd -pool 4
+
+H='-H Authorization: Bearer s3cr3t'
+id=$(curl -s $H -XPOST localhost:8080/v1/sandboxes -d '{"ttl_seconds":120}' | jq -r .id)
+
+# NDJSON: a started frame, stdout/stderr frames, one exit frame
+curl -s $H -XPOST localhost:8080/v1/sandboxes/$id/exec \
+  -d '{"argv":["sh","-c","echo hi; uname -r"]}'
+
+curl -s $H -XPUT --data-binary @main.go \
+  localhost:8080/v1/sandboxes/$id/files/work/main.go
+
+curl -s $H localhost:8080/v1/sandboxes/$id/report | jq
+curl -s $H -XDELETE localhost:8080/v1/sandboxes/$id</code></pre>
+      <p>Full request and response shapes are in <code>docs/api.md</code>.</p>
+
+      <h3>MCP server &amp; the Go client</h3>
+      <p><code>moat-mcp</code> is a Model Context Protocol server over stdio exposing
+      <code>moat_create</code>, <code>moat_list</code>, <code>moat_destroy</code>,
+      <code>moat_exec</code>, <code>moat_write_file</code>, <code>moat_read_file</code>. Point
+      it at a running <code>moatd</code> with <code>MOAT_ADDR</code> and
+      <code>MOAT_TOKEN</code>. A secret block comes back as an <code>IsError</code> result
+      that tells the agent to ask the user. <code>internal/moatapi</code> is the Go client
+      — <code>Create</code>, <code>List</code>, <code>Destroy</code>, <code>Exec</code>,
+      <code>PutFile</code> (<code>*SecretBlockedError</code> on <code>409</code>),
+      <code>GetFile</code>, <code>Audit</code>, <code>Report</code>.</p>
+    </section>
+
+    <!-- ========================================================= 14 -->
+    <section id="deploy">
+      <h2><span class="n">14</span>Deploying <code>moatd</code></h2>
+      <h4>Host requirements</h4>
+      <ul>
+        <li>Linux / x86-64 with <strong>nested or bare-metal KVM</strong>. Bare metal for
+          production; GCP nested virtualization works for dev.</li>
+        <li><code>/dev/kvm</code> accessible to the <code>moatd</code> user.</li>
+        <li><code>firecracker</code> + <code>jailer</code> on <code>PATH</code>.</li>
+        <li>An uncompressed <code>vmlinux</code> and a <code>rootfs.ext4</code> — from
+          <code>make images</code>, the release tarball, or <code>install.sh</code>.</li>
+        <li>cgroup v2 with a <strong>delegated systemd subtree</strong> for rootless
+          resource caps. Without it, the caps need root.</li>
+        <li>For networked sandboxes: <code>nft</code> on <code>PATH</code> and
+          <code>CAP_NET_ADMIN</code> + <code>CAP_SYS_ADMIN</code>.</li>
+      </ul>
+      <p>Run <code>moat doctor</code> on the target host — one line per check.</p>
+
+      <h4>Installer</h4>
+      <pre><code>curl -fsSL https://raw.githubusercontent.com/M30W-M1X/moat/main/install.sh | sh</code></pre>
+      <p>Checks Linux / x86-64 / KVM, resolves the latest GitHub release, verifies SHA-256
+      (and cosign when configured), installs binaries to <code>/usr/local/bin</code> and
+      images + <code>images.lock</code> + <code>sbom.cdx.json</code> to
+      <code>/var/lib/moat</code>, writes a starter <code>moatd.json</code>, installs
+      <code>deploy/moatd.service</code>. Flags: <code>--user --prefix --data --version
+      --no-service --dry-run</code>.</p>
+
+      <h4>systemd unit</h4>
+      <p><code>deploy/moatd.service</code> sets <code>DeviceAllow=/dev/kvm rw</code>,
+      <code>NoNewPrivileges</code>, <code>ProtectSystem=strict</code>,
+      <code>ProtectHome=read-only</code>, <code>PrivateTmp</code>, and a read-write path
+      list of <code>/var/lib/moat</code> and <code>/run/moat</code>. For networked
+      sandboxes add <code>AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN</code>.
+      Then <code>systemctl enable --now moatd</code>.</p>
+
+      <h4>Directory resolution</h4>
+      <ul>
+        <li><strong>data</strong> (<code>vmlinux</code>, <code>rootfs.ext4</code>,
+          <code>images.lock</code>, audit): <code>$MOAT_DATA</code> →
+          <code>$XDG_DATA_HOME/moat</code> → <code>~/.local/share/moat</code> →
+          <code>/var/lib/moat</code>. In a checkout: <code>&lt;repo&gt;/build/artifacts</code>.</li>
+        <li><strong>run</strong> (sockets, pid files, scratch): <code>$MOAT_RUN</code> →
+          <code>$XDG_RUNTIME_DIR/moat</code> → <code>/run/moat</code> → a temp dir.</li>
+      </ul>
+      <div class="note">
+        <span class="k">Rootless vs root</span>
+        <strong>Rootless</strong> covers cold-boot sandboxes, exec, file I/O, resource caps
+        (with delegation), the audit log, the egress proxy in <code>HTTP_PROXY</code> mode,
+        and snapshots. <strong>Root or <code>unshare</code></strong> is needed for the
+        network namespace path, the transparent DNAT, the jailer, real-uplink NAT, and
+        UFFD restore without <code>/dev/userfaultfd</code>.
+      </div>
+    </section>
+
+    <!-- ========================================================= 15 -->
+    <section id="config">
+      <h2><span class="n">15</span>Configuration reference</h2>
+      <h4>Key <code>moatd</code> flags</h4>
+      <table>
+        <thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>-addr</code></td><td><code>:8080</code></td><td>API listen address</td></tr>
+          <tr><td><code>-config FILE</code></td><td>—</td><td>JSON: templates, tokens, per-token policy, defaults</td></tr>
+          <tr><td><code>-tokens</code></td><td>—</td><td><code>id:secret,…</code> (else <code>$MOAT_TOKENS</code>)</td></tr>
+          <tr><td><code>-pool N</code></td><td><code>0</code></td><td>warm non-networked sandboxes to keep ready</td></tr>
+          <tr><td><code>-global-max / -token-max</code></td><td><code>64 / 16</code></td><td>concurrency caps</td></tr>
+          <tr><td><code>-default-ttl / -max-ttl</code></td><td><code>15m / 1h</code></td><td>sandbox lifetime and its cap</td></tr>
+          <tr><td><code>-cpu-max / -mem-max / -pids-max</code></td><td><code>0</code></td><td>per-sandbox cgroup caps</td></tr>
+          <tr><td><code>-disk-bw / -net-bw</code></td><td><code>0</code></td><td>per-sandbox bandwidth, bytes/sec</td></tr>
+          <tr><td><code>-net-pool / -uplink</code></td><td><code>10.62.0.0/16 / none</code></td><td>networked addressing + NAT parent</td></tr>
+          <tr><td><code>-egress-allow / -egress-deny</code></td><td>—</td><td>domain policy for the proxy</td></tr>
+          <tr><td><code>-egress-transparent ADDR</code></td><td>—</td><td>second listener + the namespace DNAT</td></tr>
+          <tr><td><code>-audit-dir</code></td><td>data <code>/audit</code></td><td><code>""</code> = default, <code>"off"</code> disables</td></tr>
+          <tr><td><code>-secret-scan / -secret-redact</code></td><td><code>true / false</code></td><td>ingress firewall behaviour</td></tr>
+          <tr><td><code>-image-verify</code></td><td><code>enforce</code></td><td><code>enforce / warn / off</code></td></tr>
+          <tr><td><code>-cosign-identity / -cosign-issuer</code></td><td>—</td><td>verify <code>images.lock.sig</code></td></tr>
+        </tbody>
+      </table>
+      <h4><code>moatd.json</code></h4>
+      <p>Top-level: <code>templates</code>, <code>tokens</code>, <code>defaults</code>,
+      <code>audit</code>, <code>image_verify</code>, <code>cosign_identity</code>,
+      <code>cosign_issuer</code>. Unknown keys are rejected.</p>
+      <ul>
+        <li><strong>template:</strong> <code>name kernel rootfs vcpus mem_mib cpu_max
+          mem_max_mib pids_max disk_bw net_bw</code></li>
+        <li><strong>token:</strong> <code>id secret templates max_concurrent max_ttl
+          deny_network allow_secret_override audit_read</code></li>
+        <li><strong>defaults:</strong> <code>global_max token_max default_ttl max_ttl pool
+          net_pool uplink</code></li>
+        <li><strong>audit:</strong> <code>dir max_file_mb max_total_mb max_age fsync_batch
+          fsync_interval</code></li>
+      </ul>
+      <h4>Environment</h4>
+      <p><code>MOAT_TOKENS</code>, <code>MOAT_DATA</code>, <code>MOAT_RUN</code>,
+      <code>MOAT_IMAGE_VERIFY</code>, <code>MOAT_COSIGN_IDENTITY</code>,
+      <code>MOAT_COSIGN_ISSUER</code>, <code>MOAT_ADDR</code>, <code>MOAT_TOKEN</code>.
+      Image-setting precedence: flag → env → file → default.</p>
+    </section>
+
+    <!-- ========================================================= 16 -->
+    <section id="ops">
+      <h2><span class="n">16</span>Operations</h2>
+      <h4>Metrics — <code>GET /metrics</code></h4>
+      <pre><code>moat_sandboxes_active{template}          moat_audit_events_total{type,result}
+moat_sandboxes_created_total{template,source}   moat_audit_dropped_total
+moat_sandbox_create_seconds{source}      moat_audit_write_seconds{path}
+moat_exec_total{outcome}                 moat_audit_queue_depth
+moat_file_bytes_total{direction}         moat_egress_requests_total{decision}
+moat_secret_findings_total{rule,action}  moat_http_requests_total{route,status}
+moat_quota_rejects_total                 moat_http_request_seconds{route}
+moat_pool_ready</code></pre>
+      <h4>The audit log</h4>
+      <p><code>moat audit tail -dir /var/lib/moat/audit</code> follows.
+      <code>moat audit query -dir … -since -15m -type exec</code> filters offline.
+      <code>moat audit verify -dir …</code> recomputes the chain and exits non-zero on a
+      break. Over the API, add <code>-addr</code> and <code>-token</code> (the token needs
+      <code>audit_read: "all"</code> for an unfiltered pull).</p>
+      <h4>Crash recovery</h4>
+      <p><code>moatd</code> runs <code>vm.Reconcile</code> at startup and kills orphan
+      Firecracker processes, one <code>orphan.reap</code> event each. If <code>moatd</code>
+      refuses to start with an audit error, run <code>moat audit verify -dir &lt;dir&gt;</code>,
+      move the named file aside, and restart.</p>
+      <p>Every footgun that cost real debugging time is a numbered <code>G-N</code> entry
+      in the project "Gotchas" note (<code>G-1</code> … <code>G-19</code>), in a symptom →
+      cause → fix shape. Read it before a deep change to the kernel args, the image
+      pipeline, the netns path, or the audit writer.</p>
+    </section>
+
+    <!-- ========================================================= 17 -->
+    <section id="limits-road">
+      <h2><span class="n">17</span>Limits &amp; roadmap</h2>
+      <ul>
+        <li><strong>Cold-boot rootfs is read-write</strong> (<code>G-19</code>). Fix:
+          attach the root drive read-only, or copy per sandbox.</li>
+        <li><strong>No snapshot-templated warm pool</strong> — the pool cold-boots its
+          members.</li>
+        <li><strong>A gRPC northbound surface</strong> alongside REST is planned.</li>
+        <li><strong>A template registry</strong> (<code>moat template pull python</code>)
+          is a deferred CDN job.</li>
+        <li><strong>CI</strong> — the repo has none yet. <code>make images-verify</code> is
+          the exact check a CI job would run.</li>
+        <li><strong>Signing <code>images.lock</code></strong> in an automated release is
+          manual today.</li>
+        <li><strong>GPU workloads</strong> are out of scope for Firecracker
+          (<code>DD-11</code>). A parallel gVisor / Cloud Hypervisor backend would keep the
+          VM-driver interface abstract.</li>
+      </ul>
+      <p class="foot">Style: all comments and log / error strings follow ASD-STE100.
+      Durable decisions go to the agentcairn vault; full write-ups to
+      <code>ClaudeVault/projects/microvm-controller/</code>; every footgun to the
+      <code>G-N</code> log. Non-trivial work goes through a spec in
+      <code>docs/superpowers/specs/</code> and a plan in
+      <code>docs/superpowers/plans/</code> before implementation. No new Go module
+      dependency without a strong reason.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+  (function(){
+    var root=document.documentElement, btn=document.getElementById('tg');
+    var KEY='moat-guide-theme';
+    function cur(){ try{return localStorage.getItem(KEY)}catch(e){return null} }
+    function sysDark(){ return matchMedia('(prefers-color-scheme:dark)').matches }
+    function apply(t){ if(t==='dark'||t==='light') root.setAttribute('data-theme',t); else root.removeAttribute('data-theme'); }
+    apply(cur());
+    btn.addEventListener('click',function(){
+      var isDark = root.getAttribute('data-theme')==='dark' || (!root.hasAttribute('data-theme') && sysDark());
+      var next = isDark ? 'light' : 'dark';
+      apply(next);
+      try{ localStorage.setItem(KEY,next) }catch(e){}
+    });
+
+    // active section in the sidebar
+    var links=[].slice.call(document.querySelectorAll('nav.toc a'));
+    var map={}; links.forEach(function(a){ var id=a.getAttribute('href').slice(1); map[id]=a; });
+    var obs=new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(e.isIntersecting){
+          links.forEach(function(a){a.classList.remove('active')});
+          var a=map[e.target.id]; if(a) a.classList.add('active');
+        }
+      });
+    },{rootMargin:'-64px 0px -70% 0px'});
+    document.querySelectorAll('section[id]').forEach(function(s){obs.observe(s)});
+  })();
+</script>
+</body>
+</html>
