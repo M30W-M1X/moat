@@ -266,6 +266,36 @@ func TestRecordAsyncDropsWhenFull(t *testing.T) {
 	}
 }
 
+// TestRecordAfterClose checks the use-after-Close guards. RecordSync returns
+// an error and Record drops the event and meters it.
+func TestRecordAfterClose(t *testing.T) {
+	dir := t.TempDir()
+	cm := &countMetrics{Metrics: NopMetrics()}
+	log := logrus.New()
+	log.SetLevel(logrus.FatalLevel)
+	r, err := New(Config{Dir: dir, MaxFileMB: 8, MaxTotalMB: 64, MaxAge: time.Hour,
+		FsyncBatch: 8, FsyncInterval: 20 * time.Millisecond, Metrics: cm, Log: log})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RecordSync(context.Background(), Event{Type: TypeExec}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.RecordSync(context.Background(), Event{Type: TypeExec}); err == nil {
+		t.Fatal("RecordSync after Close must return an error")
+	}
+
+	before := cm.dropped.Load()
+	r.Record(Event{Type: TypeExec})
+	if got := cm.dropped.Load(); got != before+1 {
+		t.Fatalf("Record after Close: drop metric %d, want %d", got, before+1)
+	}
+}
+
 func TestSyncAndAsyncInterleaveKeepSeqDense(t *testing.T) {
 	r, dir := testRecorder(t)
 	var wg sync.WaitGroup

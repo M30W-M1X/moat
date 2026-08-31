@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -143,6 +144,11 @@ func (r *Recorder) RecordSync(ctx context.Context, e Event) error {
 	if !r.enabled {
 		return nil
 	}
+	select {
+	case <-r.closed:
+		return errors.New("audit recorder closed")
+	default:
+	}
 	start := time.Now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -269,6 +275,13 @@ func (r *Recorder) Flush() {
 func (r *Recorder) Record(e Event) {
 	if !r.enabled {
 		return
+	}
+	select {
+	case <-r.closed:
+		// The writer has stopped. Drop the event and meter it.
+		r.cfg.Metrics.Dropped()
+		return
+	default:
 	}
 	select {
 	case r.queue <- e:

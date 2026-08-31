@@ -219,6 +219,7 @@ func main() {
 	}
 
 	httpSrv := &http.Server{Addr: *addr, Handler: srv.Handler()}
+	shutdownDone := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		log.Info("shutting down")
@@ -226,12 +227,16 @@ func main() {
 		defer cancel()
 		_ = httpSrv.Shutdown(sc)
 		srv.Shutdown(sc)
+		close(shutdownDone)
 	}()
 
 	log.WithField("addr", *addr).Info("moatd listening")
 	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.WithError(err).Fatal("http server")
 	}
+	// Wait for srv.Shutdown to write daemon.stop and the final destroy events
+	// before the deferred rec.Close runs.
+	<-shutdownDone
 }
 
 func parseTokens(flagVal string) map[string]string {
