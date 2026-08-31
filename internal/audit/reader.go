@@ -67,8 +67,9 @@ func ParseWhen(s string) (time.Time, bool) {
 }
 
 // Query returns the events in dir that match f, in seq order. It reverses the
-// order when f.Desc is set. Query holds at most limit events during the scan,
-// so an unfiltered query over a full retention-cap log stays bounded.
+// order when f.Desc is set. Query keeps at most limit matched events plus one
+// file in memory at a time, so a query over a full retention-cap log stays
+// bounded.
 func Query(dir string, f Filter) ([]Event, error) {
 	limit := f.Limit
 	if limit <= 0 {
