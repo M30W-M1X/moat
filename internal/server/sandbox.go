@@ -21,7 +21,7 @@ import (
 )
 
 // Template names a kernel and rootfs a sandbox can start from, plus the
-// per-sandbox resource caps.
+// per-sandbox resource caps and the exec defaults from an imported image.
 type Template struct {
 	Name   string
 	Kernel string
@@ -31,6 +31,13 @@ type Template struct {
 	Limits cgroup.Limits
 	DiskBW int64 // rootfs bytes/sec, 0 = no limit
 	NetBW  int64 // network bytes/sec, 0 = no limit
+
+	// Exec defaults. An imported template fills these from the image config.
+	// A request value always wins over the template value.
+	Env         map[string]string // added under the request env
+	Dir         string            // working directory when the request sends none
+	DefaultArgv []string          // argv when the request sends none
+	Source      string            // "<repo>@sha256:...", informational
 }
 
 // Sandbox is one running microVM handed to an API caller.
@@ -42,6 +49,8 @@ type Sandbox struct {
 	ExpiresAt time.Time
 	Networked bool
 	GuestIP   string
+
+	tpl Template // the template this sandbox started from
 
 	// Exactly one of lease / inst is set.
 	lease *pool.Lease
