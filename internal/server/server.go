@@ -63,10 +63,10 @@ type Config struct {
 
 	// Audit records boundary crossings. A nil value gives a disabled recorder.
 	Audit *audit.Recorder
-	// Version is reported in the daemon.start audit event.
+	// Version names the build. The daemon.start audit event records it.
 	Version string
 	// ConfigSHA256 is the hex sha256 of the loaded moatd.json, or "" when the
-	// daemon started from flags only. Reported in daemon.start.
+	// daemon started from flags only. The daemon.start audit event records it.
 	ConfigSHA256 string
 }
 
@@ -763,7 +763,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	envKeys := make([]string, 0, len(req.Env))
 	for k := range req.Env {
 		if k == "HTTP_PROXY" || k == "HTTPS_PROXY" || k == "http_proxy" || k == "https_proxy" || k == "NO_PROXY" {
-			continue // proxy vars are injected, not caller data
+			continue // the server injects these proxy variables, they are not caller data
 		}
 		envKeys = append(envKeys, k)
 	}
@@ -914,14 +914,20 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		f.Token = q.Get("token")
 	}
 	if since := q.Get("since"); since != "" {
-		if ts, ok := parseWhen(since); ok {
-			f.Since = ts
+		ts, ok := parseWhen(since)
+		if !ok {
+			writeErr(w, http.StatusBadRequest, "bad since: use RFC3339 or a negative Go duration like -15m")
+			return
 		}
+		f.Since = ts
 	}
 	if until := q.Get("until"); until != "" {
-		if ts, ok := parseWhen(until); ok {
-			f.Until = ts
+		ts, ok := parseWhen(until)
+		if !ok {
+			writeErr(w, http.StatusBadRequest, "bad until: use RFC3339 or a negative Go duration like -15m")
+			return
 		}
+		f.Until = ts
 	}
 
 	evs, err := s.audit.LiveQuery(f)
@@ -1074,7 +1080,7 @@ func statusClass(code int) string { return fmt.Sprintf("%dxx", code/100) }
 func routeLabel(r *http.Request) string {
 	p := r.URL.Path
 	switch {
-	case p == "/healthz", p == "/metrics", p == "/v1/sandboxes":
+	case p == "/healthz", p == "/metrics", p == "/v1/sandboxes", p == "/v1/audit":
 		return r.Method + " " + p
 	case strings.HasPrefix(p, "/v1/sandboxes/"):
 		rest := strings.TrimPrefix(p, "/v1/sandboxes/")

@@ -89,7 +89,7 @@ func auditVerify(ctx context.Context, dir, addr, token string, asJSON bool) int 
 		return 2
 	}
 	// The API has no verify endpoint. verify runs client-side over a full
-	// pull. audit_read=all is required for an unfiltered pull.
+	// pull. An unfiltered pull needs a token with audit_read=all.
 	c := moatapi.New(addr, token)
 	evs, err := c.Audit(ctx, moatapi.AuditFilter{Limit: 100000})
 	if err != nil {

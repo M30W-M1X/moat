@@ -49,8 +49,10 @@ const (
 const zeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
 
 // canonical serialises e with keys sorted at every level and the hash field
-// omitted. encoding/json already sorts map keys and struct fields marshal in
-// declaration order, so the field order below is the canonical order.
+// omitted. It builds a map[string]any so encoding/json sorts every level by
+// key. Attrs values must be maps, slices, or scalars for that guarantee to
+// hold. A struct in Attrs would marshal in field-declaration order and break
+// the canonical form, so callers never put one there.
 func canonical(e Event) ([]byte, error) {
 	m := map[string]any{
 		"seq":     e.Seq,

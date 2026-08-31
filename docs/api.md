@@ -167,9 +167,10 @@ output is ever recorded. Each `hash` is the sha256 of the event's canonical
 form; `prev` chains to the previous event. Verify the chain with
 `moat audit verify`.
 
-On startup, `moatd` verifies the audit log file and will not start if a
-complete (non-final) line is corrupt or tampered. Run `moat audit verify -dir
-<auditdir>` to find the bad file, then move it aside and restart.
+On startup `moatd` verifies the audit log file. It does not start when a
+complete line before the end is corrupt or changed. A crash-truncated final
+line is tolerated. To recover, run `moat audit verify -dir <auditdir>` to find
+the bad file, then move that file aside and restart `moatd`.
 
 ### `GET /v1/sandboxes/{id}/report`
 

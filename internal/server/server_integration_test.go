@@ -559,6 +559,13 @@ func TestAuditReadFilters(t *testing.T) {
 	if winN < 2 {
 		t.Fatalf("since=-1h returned %d events, want >= 2", winN)
 	}
+
+	// A malformed time window is a 400, not a silent full-log read.
+	bad := do(t, ts, "GET", "/v1/audit?since=notatime", "s3", "")
+	bad.Body.Close()
+	if bad.StatusCode != 400 {
+		t.Fatalf("since=notatime = %d, want 400", bad.StatusCode)
+	}
 }
 
 func TestSecretFirewall(t *testing.T) {

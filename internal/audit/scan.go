@@ -20,9 +20,9 @@ func listFiles(dir string) ([]string, error) {
 	return m, nil
 }
 
-// scanFile reads every event in one file. The bool is false when the last line
-// was truncated (a crash mid-write). Such a line is dropped. A bad line before
-// the end means the file is corrupt and scanFile returns an error.
+// scanFile reads every event in one file. The bool is false when a crash cut
+// the last line mid-write. scanFile drops that line. A bad line before the end
+// means the file is corrupt, and scanFile returns an error.
 func scanFile(path string) ([]Event, bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
