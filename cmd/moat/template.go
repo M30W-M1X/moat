@@ -19,6 +19,8 @@ func runTemplate(args []string) int {
 		return templateList()
 	case "import":
 		return templateImport(args[1:])
+	case "show":
+		return templateShow(args[1:])
 	case "-h", "--help", "help":
 		fmt.Fprint(os.Stderr, `moat template - rootfs templates a sandbox can start from
 
@@ -50,8 +52,22 @@ func templateList() int {
 		state = "ready"
 	}
 	fmt.Printf("%-10s %-8s kernel=%s rootfs=%s\n", "default", state, kernel, rootfs)
+
+	for _, e := range loadSidecars(art) {
+		st := "not built"
+		if fileExists(e.RootFS) {
+			st = "ready"
+		}
+		src := e.Source
+		if src == "" {
+			src = "-"
+		}
+		fmt.Printf("%-10s %-8s rootfs=%s source=%s\n", e.Name, st, e.RootFS, src)
+	}
+
 	fmt.Println()
 	fmt.Println("Build the default images with:  make images")
+	fmt.Println("Import a container image with:  moat template import <ref>")
 	fmt.Println("Add more templates in the daemon -config file (docs/moatd.example.json).")
 	return 0
 }
