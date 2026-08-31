@@ -1,0 +1,7 @@
+bin/guest-agent: go1.27.0
+	path	github.com/M30W-M1X/moat/guest/agent
+	mod	github.com/M30W-M1X/moat	(devel)
+	dep	google.golang.org/grpc	v1.71.0	h1:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=
+	dep	google.golang.org/protobuf	v1.36.5	h1:yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy=
+	build	-trimpath=true
+	build	CGO_ENABLED=0
