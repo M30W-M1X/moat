@@ -564,6 +564,34 @@ It prints `reproducible: OK` or the first failing assertion.
 4. `cp build/artifacts/images.lock images.lock` and commit.
 5. Re-sign `images.lock.sig` at release time.
 
+### 5.7 Extra userlands — `build/templates/`
+
+The default rootfs is the reference image and the only one in `images.lock`.
+For a language runtime, a build toolchain, or a demo shell, add a
+**template**: a directory under `build/templates/<name>/` with a `Dockerfile`
+and a `template.env`.
+
+`build/build-template.sh <name>` runs `podman build`, exports the userland
+the same rootless way as `build-rootfs.sh` (`podman export | tar -x`, no loop
+mount), adds `/sbin/guest-agent`, normalises file times to
+`SOURCE_DATE_EPOCH`, and writes `build/artifacts/<name>-rootfs.ext4` with a
+fixed UUID and hash seed. It records the installed packages in
+`build/templates/<name>/packages.manifest`.
+
+```sh
+make template NAME=python        # copy build/templates/_skeleton to build/templates/python
+make template-image NAME=python  # build build/artifacts/python-rootfs.ext4
+make demo-image                  # the dev-shell toolchain image
+make minimal-image               # the small test image
+```
+
+Templates are byte-stable **within a day**. `apk add` resolves against the
+live Alpine index, so builds weeks apart can differ. That is why templates
+are not pinned in `images.lock`. `moatd` picks a template by the `rootfs`
+path in each `moatd.json` entry; a client selects one with
+`{"template": "<name>"}` on `POST /v1/sandboxes`. See
+`build/templates/README.md`.
+
 ---
 
 ## 6. Building and testing
@@ -591,7 +619,10 @@ It prints `reproducible: OK` or the first failing assertion.
 | `make images-verify` | rebuild the rootfs and SBOM, assert byte-for-byte reproducible |
 | `make test` | `go test ./...` — unit tests, no VM, fast |
 | `make test-integration` | `go test -tags integration` — boots real microVMs, needs `/dev/kvm` and `make images` |
+| `make test-integration-fast` | the same suite against the small `minimal` rootfs, no `make images` |
 | `make test-net` | network isolation test, runs rootless in a user + net namespace |
+| `make template NAME=x` / `make template-image NAME=x` | scaffold and build a rootfs template |
+| `make demo-image` / `make minimal-image` | build the `dev-shell` and `minimal` template images |
 | `make proto` | regenerate `gen/` from `proto/` (needs `make tools` once) |
 | `make dist` | assemble `dist/moat_<ver>_linux_amd64.tar.gz` + `checksums.txt` |
 | `make serve` | run `moatd` locally (`MOAT_TOKENS=id:secret make serve`) |
@@ -605,13 +636,16 @@ It prints `reproducible: OK` or the first failing assertion.
   `internal/vm`, `internal/pool`, `internal/server`. Boots real microVMs. It
   runs `make images` first. It `t.Skip`s when `/dev/kvm` or the images are
   absent. On a box with KVM it takes roughly 60 to 90 seconds.
+  `make test-integration-fast` runs the same suite against the small
+  `minimal` template rootfs (`MOAT_TEST_ROOTFS`), skipping `make images`.
 - **Network** (`-tags netint`, `make test-net`): builds a real per-VM network
   and checks isolation from inside the guest. Runs unprivileged inside
   `unshare --user --map-root-user --mount --net`.
 
-The `internal/server` integration helpers boot from a **private sparse copy**
-of the rootfs (`copyRootFS`), so a test cannot mutate the shared
-`build/artifacts/rootfs.ext4` (Gotcha `G-19`).
+A cold boot attaches the rootfs read-write, so `coldBoot` (and the warm
+pool) give every sandbox a **private sparse copy** of the template rootfs in
+its run directory, removed on destroy. Sandboxes never share one ext4 file
+(Gotcha `G-19`).
 
 ### 6.4 Regenerating protobuf
 
@@ -708,6 +742,15 @@ looks.
 `*SecretBlockedError` on `409`), `GetFile`, `Audit`, and `Report`. It does
 not import `internal/audit` or `internal/server` — it is a plain HTTP
 client.
+
+### 7.5 The demo — `demo/run.sh`
+
+`demo/run.sh` is a scripted, self-checking walk-through: it starts `moatd`,
+creates sandboxes over the HTTP API with the `dev-shell` template, runs a
+real Go build in one, copies the binary out, and checks each isolation
+property (own kernel, private rootfs, secret firewall, hash-chained audit).
+It needs `/dev/kvm`, `curl`, `jq`, and `make demo-image` once. It exits
+non-zero on the first failed check. `demo/README.md` has the step table.
 
 ---
 

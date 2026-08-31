@@ -5,6 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -60,7 +64,11 @@ func (s *Sandbox) destroy() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if s.inst != nil {
+		runDir := s.inst.Machine.RunDir
 		_ = s.inst.Stop(ctx)
+		if runDir != "" {
+			_ = os.RemoveAll(runDir)
+		}
 	}
 	if s.net != nil {
 		netconf.Destroy(*s.net)
@@ -148,6 +156,35 @@ func newSandboxID() string {
 	return "sb-" + hex.EncodeToString(b)
 }
 
+// copyTemplateRootFS writes a private copy of a template rootfs for one
+// sandbox. It keeps the copy sparse with cp when cp is present. It falls back
+// to a plain byte copy.
+func copyTemplateRootFS(src, dst string) error {
+	if err := exec.Command("cp", "--sparse=always", src, dst).Run(); err == nil {
+		return nil
+	}
+	_ = os.Remove(dst)
+
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
 // coldBoot starts a sandbox that is not backed by the warm pool, optionally
 // with an isolated network.
 func coldBoot(ctx context.Context, s *Server, tpl Template, id string, networked bool) (*vm.Instance, *agentclient.Client, *netconf.Plan, error) {
@@ -156,7 +193,28 @@ func coldBoot(ctx context.Context, s *Server, tpl Template, id string, networked
 		return nil, nil, nil, err
 	}
 	m.KernelImagePath = tpl.Kernel
-	m.RootFSPath = tpl.RootFS
+
+	// A sandbox attaches its rootfs as read-write. Give each sandbox a
+	// private copy of the template so two sandboxes never share one file.
+	// The warm pool makes the same copy for its members.
+	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
+		return nil, nil, nil, fmt.Errorf("run dir: %w", err)
+	}
+	rootfs := filepath.Join(m.RunDir, "rootfs.ext4")
+	if err := copyTemplateRootFS(tpl.RootFS, rootfs); err != nil {
+		return nil, nil, nil, fmt.Errorf("copy rootfs: %w", err)
+	}
+	m.RootFSPath = rootfs
+
+	// Remove the run directory and the rootfs copy if the start fails. A
+	// success clears this flag.
+	started := false
+	defer func() {
+		if !started {
+			_ = os.RemoveAll(m.RunDir)
+		}
+	}()
+
 	m.VCPUs = tpl.VCPUs
 	m.MemMiB = tpl.MemMiB
 	m.Limits = tpl.Limits
@@ -207,6 +265,7 @@ func coldBoot(ctx context.Context, s *Server, tpl Template, id string, networked
 		}
 		return nil, nil, nil, fmt.Errorf("agent not ready: %w", err)
 	}
+	started = true
 	return inst, cli, plan, nil
 }
 

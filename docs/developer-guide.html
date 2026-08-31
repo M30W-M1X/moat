@@ -906,6 +906,24 @@
         <li><code>cp build/artifacts/images.lock images.lock</code> and commit.</li>
         <li>Re-sign <code>images.lock.sig</code> at release time.</li>
       </ol>
+      <h4>Extra userlands — <code>build/templates/</code></h4>
+      <p>The default rootfs is the reference image and the only one in
+      <code>images.lock</code>. For a language runtime or a demo shell, add a
+      <strong>template</strong>: a <code>build/templates/&lt;name&gt;/</code> directory with a
+      <code>Dockerfile</code> and a <code>template.env</code>.
+      <code>build/build-template.sh</code> runs <code>podman build</code>, then the same
+      rootless export + timestamp-normalise + <code>mkfs.ext4</code> path as
+      <code>build-rootfs.sh</code>, and writes
+      <code>build/artifacts/&lt;name&gt;-rootfs.ext4</code>.</p>
+      <pre><code>make template NAME=python        # copy build/templates/_skeleton
+make template-image NAME=python  # build build/artifacts/python-rootfs.ext4
+make demo-image                  # the dev-shell toolchain image
+make minimal-image               # the small test image</code></pre>
+      <p>Templates are byte-stable within a day only — <code>apk add</code> tracks the live
+      Alpine index — so they are not pinned in <code>images.lock</code>. <code>moatd</code>
+      selects one by the <code>rootfs</code> path in each <code>moatd.json</code> template
+      entry; a client asks for it with <code>{"template":"&lt;name&gt;"}</code>. See
+      <code>build/templates/README.md</code>.</p>
     </section>
 
     <!-- ========================================================= 12 -->
@@ -932,14 +950,17 @@
           <tr><td><code>make images-verify</code></td><td>rebuild + assert byte-for-byte reproducible</td></tr>
           <tr><td><code>make test</code></td><td><code>go test ./...</code> — unit, no VM, fast (the gate)</td></tr>
           <tr><td><code>make test-integration</code></td><td><code>-tags integration</code> — boots real microVMs; needs <code>/dev/kvm</code> + <code>make images</code></td></tr>
+          <tr><td><code>make test-integration-fast</code></td><td>the same suite against the small <code>minimal</code> rootfs; skips <code>make images</code></td></tr>
           <tr><td><code>make test-net</code></td><td>network isolation test, rootless in a user+net namespace</td></tr>
+          <tr><td><code>make template-image NAME=x</code> / <code>make demo-image</code></td><td>build a rootfs template (<code>build/templates/</code>)</td></tr>
           <tr><td><code>make proto</code></td><td>regenerate <code>gen/</code> from <code>proto/</code></td></tr>
           <tr><td><code>make dist</code></td><td>assemble <code>dist/moat_&lt;ver&gt;_linux_amd64.tar.gz</code> + checksums</td></tr>
         </tbody>
       </table>
-      <p>Integration helpers boot from a <strong>private sparse copy</strong> of the rootfs
-      (<code>copyRootFS</code>), so a test cannot mutate the shared
-      <code>build/artifacts/rootfs.ext4</code> (<code>G-19</code>).</p>
+      <p>A cold boot attaches the rootfs read-write, so <code>coldBoot</code> and the warm
+      pool give every sandbox a <strong>private sparse copy</strong> of the template rootfs
+      in its run directory, removed on destroy. Sandboxes never share one ext4 file
+      (<code>G-19</code>).</p>
     </section>
 
     <!-- ========================================================= 13 -->
@@ -989,6 +1010,15 @@ curl -s $H -XDELETE localhost:8080/v1/sandboxes/$id</code></pre>
       — <code>Create</code>, <code>List</code>, <code>Destroy</code>, <code>Exec</code>,
       <code>PutFile</code> (<code>*SecretBlockedError</code> on <code>409</code>),
       <code>GetFile</code>, <code>Audit</code>, <code>Report</code>.</p>
+
+      <h3>The demo — <code>demo/run.sh</code></h3>
+      <p>A scripted, self-checking walk-through: it starts <code>moatd</code>, creates
+      sandboxes over the HTTP API with the <code>dev-shell</code> template, runs a real Go
+      build in one, copies the binary out, and checks each isolation property (own
+      kernel, private rootfs, secret firewall, hash-chained audit). Needs
+      <code>/dev/kvm</code>, <code>curl</code>, <code>jq</code>, and <code>make demo-image</code>
+      once. It exits non-zero on the first failed check. Step table in
+      <code>demo/README.md</code>.</p>
     </section>
 
     <!-- ========================================================= 14 -->

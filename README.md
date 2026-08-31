@@ -163,6 +163,20 @@ make test             # fast unit tests
 make test-integration # boots real microVMs, drives the agent (needs /dev/kvm)
 ```
 
+## Demo
+
+```sh
+make demo-image       # build the dev-shell rootfs template (once, a few minutes)
+make kernel           # fetch the pinned vmlinux (once)
+./demo/run.sh         # scripted, self-checking end-to-end walk-through
+```
+
+`./demo/run.sh` starts `moatd`, creates sandboxes over the HTTP API, runs a
+real Go build in one, and checks each isolation property — own kernel,
+private rootfs, secret firewall, hash-chained audit. See
+[`demo/README.md`](demo/README.md). Extra rootfs templates live in
+[`build/templates/`](build/templates/README.md).
+
 ## `moat run` flags
 
 ```
@@ -209,7 +223,8 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/audit` | append-only, hash-chained audit log; writer, reader, per-sandbox report |
 | `internal/imagelock` | load and verify images.lock; the moatd startup image check |
 | `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
-| `build/` | `fetch-kernel.sh`, `build-rootfs.sh` |
+| `build/` | `fetch-kernel.sh`, `build-rootfs.sh`, `build-template.sh`, `templates/` |
+| `demo/` | `run.sh` — scripted end-to-end isolation walk-through, and its sample workload |
 | `run/`, `build/artifacts/` | per-VM runtime state and VM images (gitignored) |
 
 ## Not yet (see roadmap in `CLAUDE.md`)

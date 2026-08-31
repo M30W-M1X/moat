@@ -23,7 +23,7 @@ BASE_IMAGE           ?= docker.io/library/alpine@sha256:c64c687cbea9300178b30c95
 SOURCE_DATE_EPOCH    ?= 1788134400
 export SOURCE_DATE_EPOCH
 
-.PHONY: all build daemon mcp uffd agent images kernel rootfs sbom lock images-verify proto tools demo run serve dist clean fmt vet test test-integration tidy
+.PHONY: all build daemon mcp uffd agent images kernel rootfs sbom lock images-verify proto tools demo run serve dist clean fmt vet test test-integration test-integration-fast tidy template template-image demo-image minimal-image
 
 all: build daemon mcp uffd agent
 
@@ -118,6 +118,31 @@ test:
 test-integration: images
 	$(GO) test -tags integration -v -timeout 20m \
 		./internal/agentclient ./internal/vm ./internal/pool ./internal/server
+
+## run the integration suite against the small minimal rootfs (quicker copies)
+test-integration-fast: build daemon agent kernel minimal-image
+	MOAT_TEST_ROOTFS="$(abspath $(ARTIFACTS)/minimal-rootfs.ext4)" $(GO) test -tags integration -v -timeout 20m \
+		./internal/agentclient ./internal/vm ./internal/pool ./internal/server
+
+## copy build/templates/_skeleton to a new template: make template NAME=python
+template:
+	@test -n "$(NAME)" || { echo "usage: make template NAME=<name>" >&2; exit 1; }
+	@test ! -e "build/templates/$(NAME)" || { echo "build/templates/$(NAME) already exists" >&2; exit 1; }
+	cp -r build/templates/_skeleton "build/templates/$(NAME)"
+	@echo "created build/templates/$(NAME). Edit Dockerfile and template.env, then: make template-image NAME=$(NAME)"
+
+## build a rootfs from build/templates/<NAME>: make template-image NAME=python
+template-image: agent
+	@test -n "$(NAME)" || { echo "usage: make template-image NAME=<name>" >&2; exit 1; }
+	build/build-template.sh "$(NAME)" "$(BIN)/guest-agent"
+
+## build the broad dev-shell rootfs for the demo (build/artifacts/dev-shell-rootfs.ext4)
+demo-image:
+	$(MAKE) template-image NAME=dev-shell
+
+## build the small minimal rootfs for the test suite (build/artifacts/minimal-rootfs.ext4)
+minimal-image:
+	$(MAKE) template-image NAME=minimal
 
 ## build a real per-VM network and check isolation from inside the guest.
 ## Runs unprivileged inside a user+net namespace.

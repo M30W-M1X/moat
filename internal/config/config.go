@@ -100,10 +100,18 @@ func NewMachine(id string) (Machine, error) {
 	}
 	runDir := filepath.Join(run, id)
 
+	// MOAT_TEST_ROOTFS points the default rootfs at another image. The test
+	// suite sets it to run against the small minimal rootfs. Production does
+	// not set it.
+	rootfs := filepath.Join(art, "rootfs.ext4")
+	if p := os.Getenv("MOAT_TEST_ROOTFS"); p != "" {
+		rootfs = p
+	}
+
 	return Machine{
 		ID:              id,
 		KernelImagePath: filepath.Join(art, "vmlinux"),
-		RootFSPath:      filepath.Join(art, "rootfs.ext4"),
+		RootFSPath:      rootfs,
 		KernelArgs:      DefaultKernelArgs,
 		VCPUs:           1,
 		MemMiB:          256,
