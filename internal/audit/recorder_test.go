@@ -377,3 +377,60 @@ func TestSetMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestSetMetricsConcurrent swaps the metrics sink while writers run. Run it
+// with -race to prove the swap does not race the readers.
+func TestSetMetricsConcurrent(t *testing.T) {
+	log := logrus.New()
+	log.SetLevel(logrus.FatalLevel) // a tight Record loop overruns the queue
+	r, err := New(Config{Dir: t.TempDir(), MaxFileMB: 8, MaxTotalMB: 64,
+		MaxAge: time.Hour, FsyncBatch: 8, FsyncInterval: 50 * time.Millisecond,
+		Metrics: NopMetrics(), Log: log})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				r.SetMetrics(&countMetrics{Metrics: NopMetrics()})
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				r.Record(Event{Type: TypeExec})
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				_ = r.RecordSync(context.Background(), Event{Type: TypeFileGet})
+			}
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	close(done)
+	wg.Wait()
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

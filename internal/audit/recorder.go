@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -97,10 +98,22 @@ type Recorder struct {
 
 	idx *index
 
+	// metrics holds the current sink. SetMetrics swaps it atomically, so a
+	// serving goroutine never reads a torn value.
+	metrics atomic.Pointer[Metrics]
+
 	queue    chan Event
 	writerWG sync.WaitGroup
 	closed   chan struct{}
 	closeOne sync.Once
+}
+
+// m returns the current metrics sink. It never returns nil.
+func (r *Recorder) m() Metrics {
+	if p := r.metrics.Load(); p != nil {
+		return *p
+	}
+	return NopMetrics()
 }
 
 // New opens the log in cfg.Dir. An empty Dir returns a disabled Recorder whose
@@ -108,7 +121,9 @@ type Recorder struct {
 func New(cfg Config) (*Recorder, error) {
 	cfg.setDefaults()
 	if cfg.Dir == "" {
-		return &Recorder{cfg: cfg, enabled: false}, nil
+		d := &Recorder{cfg: cfg, enabled: false}
+		d.metrics.Store(&cfg.Metrics)
+		return d, nil
 	}
 	if err := os.MkdirAll(cfg.Dir, 0o700); err != nil {
 		return nil, fmt.Errorf("audit dir: %w", err)
@@ -121,6 +136,7 @@ func New(cfg Config) (*Recorder, error) {
 		queue:   make(chan Event, 8192),
 		closed:  make(chan struct{}),
 	}
+	r.metrics.Store(&cfg.Metrics)
 	if err := r.recover(); err != nil {
 		return nil, err
 	}
@@ -135,14 +151,12 @@ func New(cfg Config) (*Recorder, error) {
 // Enabled reports whether the recorder writes anything.
 func (r *Recorder) Enabled() bool { return r.enabled }
 
-// SetMetrics replaces the metrics sink. Call it once, before heavy traffic.
+// SetMetrics replaces the metrics sink. It is safe to call at any time.
 func (r *Recorder) SetMetrics(m Metrics) {
 	if m == nil {
 		m = NopMetrics()
 	}
-	r.mu.Lock()
-	r.cfg.Metrics = m
-	r.mu.Unlock()
+	r.metrics.Store(&m)
 }
 
 // RecordSync assigns the envelope fields, appends the event, and fsyncs before
@@ -160,12 +174,12 @@ func (r *Recorder) RecordSync(ctx context.Context, e Event) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	err := r.appendLocked(&e, true)
-	r.cfg.Metrics.WriteObserved("sync", time.Since(start).Seconds())
+	r.m().WriteObserved("sync", time.Since(start).Seconds())
 	if err != nil {
-		r.cfg.Metrics.Recorded(e.Type, "error")
+		r.m().Recorded(e.Type, "error")
 		return err
 	}
-	r.cfg.Metrics.Recorded(e.Type, "ok")
+	r.m().Recorded(e.Type, "ok")
 	return nil
 }
 
@@ -286,20 +300,20 @@ func (r *Recorder) Record(e Event) {
 	select {
 	case <-r.closed:
 		// The writer has stopped. Drop the event and meter it.
-		r.cfg.Metrics.Dropped()
+		r.m().Dropped()
 		return
 	default:
 	}
 	select {
 	case r.queue <- e:
-		r.cfg.Metrics.QueueDepth(len(r.queue))
+		r.m().QueueDepth(len(r.queue))
 	default:
-		r.cfg.Metrics.Dropped()
+		r.m().Dropped()
 		r.cfg.Log.WithField("type", e.Type).Error("audit event dropped: async queue full")
 	}
 }
 
-// writeLoop drains the async queue, batching fsyncs.
+// writeLoop drains the async queue. It groups the fsync calls into batches.
 func (r *Recorder) writeLoop() {
 	defer r.writerWG.Done()
 	ticker := time.NewTicker(r.cfg.FsyncInterval)
@@ -314,7 +328,7 @@ func (r *Recorder) writeLoop() {
 			if err := r.f.Sync(); err != nil {
 				// A batched fsync failed. Count one drop so an operator sees
 				// the durability problem. A later good sync covers the bytes.
-				r.cfg.Metrics.Dropped()
+				r.m().Dropped()
 				r.cfg.Log.WithError(err).Error("audit batch fsync failed")
 			}
 		}
@@ -364,15 +378,15 @@ func (r *Recorder) writeOne(e Event) {
 	r.mu.Lock()
 	err := r.appendLocked(&e, false)
 	r.mu.Unlock()
-	r.cfg.Metrics.WriteObserved("async", time.Since(start).Seconds())
+	r.m().WriteObserved("async", time.Since(start).Seconds())
 	if err != nil {
-		r.cfg.Metrics.Dropped()
-		r.cfg.Metrics.Recorded(e.Type, "error")
+		r.m().Dropped()
+		r.m().Recorded(e.Type, "error")
 		r.cfg.Log.WithError(err).WithField("type", e.Type).Error("audit async write failed")
 		return
 	}
-	r.cfg.Metrics.Recorded(e.Type, "ok")
-	r.cfg.Metrics.QueueDepth(len(r.queue))
+	r.m().Recorded(e.Type, "ok")
+	r.m().QueueDepth(len(r.queue))
 }
 
 // recover scans existing files for the highest seq and the chain tip, and
