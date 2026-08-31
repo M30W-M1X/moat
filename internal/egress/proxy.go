@@ -168,10 +168,12 @@ func (p *Proxy) decide(r *http.Request, host string, via string) bool {
 	return ok
 }
 
-// recordEgress writes one egress audit event. It records an allow event async
-// and a deny event synchronously. The proxy resolves the sandbox and the token
-// from the client IP. An unknown client IP goes to the "client_ip" attribute
-// and the envelope sandbox and token stay empty. The event holds metadata only.
+// recordEgress writes one egress audit event. It records both an allow and a
+// deny event on the async path. A guest controls the connection rate, so a
+// per-connection fsync would let the guest flood every audit writer. The proxy
+// resolves the sandbox and the token from the client IP. An unknown client IP
+// goes to the "client_ip" attribute and the envelope sandbox and token stay
+// empty. The event holds metadata only.
 func (p *Proxy) recordEgress(r *http.Request, host string, allowed bool, via string) {
 	if p.audit == nil || !p.audit.Enabled() {
 		return
@@ -209,11 +211,10 @@ func (p *Proxy) recordEgress(r *http.Request, host string, allowed bool, via str
 	ev := audit.Event{Sandbox: sandbox, Token: token, Attrs: attrs}
 	if allowed {
 		ev.Type = audit.TypeEgressAllow
-		p.audit.Record(ev)
-		return
+	} else {
+		ev.Type = audit.TypeEgressDeny
 	}
-	ev.Type = audit.TypeEgressDeny
-	_ = p.audit.RecordSync(r.Context(), ev)
+	p.audit.Record(ev)
 }
 
 func pipe(a, b net.Conn) {
