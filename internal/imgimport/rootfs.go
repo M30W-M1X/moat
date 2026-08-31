@@ -70,7 +70,9 @@ func assembleRootfs(root, agentPath, outPath, label string, sourceDateEpoch, siz
 		_ = os.MkdirAll(filepath.Join(root, "etc"), 0o755)
 		_ = os.WriteFile(passwd, []byte("root:x:0:0:root:/root:/bin/sh\n"), 0o644)
 	}
-	if _, err := os.Stat(filepath.Join(root, "bin", "sh")); err != nil {
+	// Lstat, not Stat: /bin/sh is a symlink to busybox in many images, and its
+	// target does not resolve outside the guest.
+	if _, err := os.Lstat(filepath.Join(root, "bin", "sh")); err != nil {
 		warnings = append(warnings, "the image has no /bin/sh, so only absolute-path execs work")
 	}
 

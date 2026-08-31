@@ -26,6 +26,24 @@ type templateEntry struct {
 
 var nameRe = regexp.MustCompile(`^[a-z0-9-]+$`)
 
+// parseInterspersed parses fs and collects positional arguments even when they
+// come before or between flags. The Go flag package stops at the first
+// positional, so this reparses the tail after each one.
+func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, bool) {
+	var positionals []string
+	rest := args
+	for {
+		if err := fs.Parse(rest); err != nil {
+			return nil, false
+		}
+		if fs.NArg() == 0 {
+			return positionals, true
+		}
+		positionals = append(positionals, fs.Arg(0))
+		rest = fs.Args()[1:]
+	}
+}
+
 // deriveName picks a template name from an image reference.
 func deriveName(ref string) (string, error) {
 	s := ref
@@ -57,16 +75,17 @@ func templateImport(args []string) int {
 	cfgPath := fs.String("config", "", "append the template entry to this moatd.json")
 	dryRun := fs.Bool("dry-run", false, "print the plan and do nothing")
 	asJSON := fs.Bool("json", false, "print the result as JSON")
-	if err := fs.Parse(args); err != nil {
+	positionals, ok := parseInterspersed(fs, args)
+	if !ok {
 		return 2
 	}
 
 	var src imgimport.Source
 	switch {
-	case *archive != "":
+	case *archive != "" && len(positionals) == 0:
 		src.Archive = *archive
-	case fs.NArg() == 1:
-		src.Ref = fs.Arg(0)
+	case *archive == "" && len(positionals) == 1:
+		src.Ref = positionals[0]
 	default:
 		fmt.Fprintln(os.Stderr, "usage: moat template import <image-ref> [flags]   (or --from-archive FILE)")
 		return 2

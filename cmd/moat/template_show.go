@@ -35,14 +35,12 @@ func templateShow(args []string) int {
 	dataDir := fs.String("data", config.ArtifactsDir(), "directory that holds <name>.template.json")
 	cfgPath := fs.String("config", "", "also look in this moatd.json")
 	asJSON := fs.Bool("json", false, "print JSON")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if fs.NArg() != 1 {
+	positionals, ok := parseInterspersed(fs, args)
+	if !ok || len(positionals) != 1 {
 		fmt.Fprintln(os.Stderr, "usage: moat template show <name>")
 		return 2
 	}
-	want := fs.Arg(0)
+	want := positionals[0]
 
 	for _, e := range loadSidecars(*dataDir) {
 		if e.Name == want {
