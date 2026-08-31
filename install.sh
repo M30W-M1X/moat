@@ -129,7 +129,7 @@ for b in moat moatd moat-mcp moat-uffd; do
 	run "install -m 0755 '$STAGE/bin/$b' '$PREFIX/$b'"
 done
 run "install -m 0755 '$STAGE/share/guest-agent' '$DATA/guest-agent'"
-for f in vmlinux rootfs.ext4; do
+for f in vmlinux rootfs.ext4 images.lock sbom.cdx.json; do
 	if [ -f "$STAGE/share/$f" ]; then
 		run "install -m 0644 '$STAGE/share/$f' '$DATA/$f'"
 	else

@@ -1,4 +1,5 @@
 {
+  "image_verify": "enforce",
   "audit": {
     "dir": "/var/lib/moat/audit",
     "max_file_mb": 128,

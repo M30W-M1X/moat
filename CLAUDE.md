@@ -89,7 +89,11 @@ for VM lifecycle, never "boot" / "tear down").
   limiters on the rootfs and the network interface.
 - **Storage:** shared read-only `rootfs.ext4` + per-VM ephemeral CoW scratch disk;
   files move over vsock only (no virtio-fs / NFS).
-- **Image pipeline:** `Dockerfile` → `docker export` → mounted `mkfs.ext4` → inject agent.
+- **Image pipeline:** pinned base image `@sha256` → `podman export` →
+  re-stamped tree → `mkfs.ext4 -d` with a fixed UUID and hash seed → inject
+  the agent. Deterministic on one toolchain. `build/gen-images-lock.sh` writes
+  `images.lock`; `go run ./build/sbomgen` writes a CycloneDX SBOM; `moatd`
+  verifies both at startup.
   Kernel: uncompressed `vmlinux` (LTS 6.1/6.6), `CONFIG_MODULES=n`.
 - **Host:** bare metal for prod (Equinix / Hetzner / AWS `*.metal`); GCP nested virt for dev.
 - **GPU:** out of scope for Firecracker (no VFIO). If needed later, a parallel gVisor /

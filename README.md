@@ -52,6 +52,12 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
   `GET /v1/sandboxes/{id}/report`, and `moat audit {tail,query,report,verify}`.
   Per-token read scope with `audit_read: "all"`. On by default; disable with
   `-audit-dir off`. `internal/audit`.
+- **Reproducible images (M2)** — `make images` builds a byte-identical
+  `rootfs.ext4` on one toolchain, pins the kernel by sha256, and writes
+  `images.lock` plus a CycloneDX `sbom.cdx.json`. `moatd` verifies the kernel
+  and rootfs against `images.lock` at startup and fails closed on a mismatch
+  (`image_verify=enforce`, the default). `make images-verify` proves the
+  rebuild. `internal/imagelock`.
 
 ### Phase 1: smoke test
 
@@ -197,6 +203,7 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 | `internal/secretscan` | ingress credential scanner (vendored Gitleaks rules) |
 | `internal/egress` | CONNECT/HTTP forward proxy with a domain allow/deny policy |
 | `internal/audit` | append-only, hash-chained audit log; writer, reader, per-sandbox report |
+| `internal/imagelock` | load and verify images.lock; the moatd startup image check |
 | `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
 | `build/` | `fetch-kernel.sh`, `build-rootfs.sh` |
 | `run/`, `build/artifacts/` | per-VM runtime state and VM images (gitignored) |

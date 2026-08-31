@@ -17,6 +17,8 @@ vmlinux-*
 
 # Go
 /vendor/
+# stray binary if someone runs `go build ./build/sbomgen/` from the repo root
+/sbomgen
 
 # Editor / OS
 .DS_Store

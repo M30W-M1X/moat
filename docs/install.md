@@ -63,6 +63,40 @@ VERSION=v0.1.0 make dist
 `checksums.txt` with cosign and attach both, plus the signature, to a GitHub
 release.
 
+## Verifying the image
+
+The release ships `images.lock` and `sbom.cdx.json` beside `vmlinux` and
+`rootfs.ext4`. `images.lock` records the sha256 of each file plus the base
+image digest, the kernel snapshot, and the SBOM digest.
+
+Check the images by hand:
+
+```sh
+cd /var/lib/moat
+python3 - <<'PY' | sha256sum -c -
+import json
+d = json.load(open("images.lock"))
+for k in ("kernel", "rootfs", "sbom"):
+    print(d[k]["sha256"], "", d[k]["path"])
+PY
+```
+
+`moatd` runs the same check at startup. In the default `enforce` mode it does
+not serve a template whose kernel or rootfs does not match `images.lock`. When
+the release also ships `images.lock.sig`, set `cosign_identity` (or
+`MOAT_COSIGN_IDENTITY`) and `moatd` verifies the signature too. `moat doctor`
+prints an `image-lock` line for the local images.
+
+Rebuild the rootfs yourself and confirm it matches:
+
+```sh
+make images && make images-verify
+```
+
+This is byte-for-byte reproducible on one toolchain (the same `e2fsprogs`,
+`podman`, `go`, and `tar`). On a different toolchain the package set and the
+SBOM still match, but the ext4 byte layout can differ.
+
 ## Uninstall
 
 Remove `moat*` from the binary directory, the data directory, `moatd.json`, and

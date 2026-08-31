@@ -172,6 +172,14 @@ complete line before the end is corrupt or changed. A crash-truncated final
 line is tolerated. To recover, run `moat audit verify -dir <auditdir>` to find
 the bad file, then move that file aside and restart `moatd`.
 
+`daemon.start` also carries an `images` array — one entry per template with
+`kernel_sha256`, `rootfs_sha256`, `sbom_sha256`, `verified`, and `signed`.
+`moatd` computes these at startup from `images.lock` beside each template's
+rootfs. In the default `enforce` mode a digest mismatch drops that template,
+and `moatd` exits non-zero when no template is left. Set `image_verify` to
+`warn` or `off`, or `MOAT_IMAGE_VERIFY`, to change that. A missing `images.lock`
+is a warning in every mode.
+
 ### `GET /v1/sandboxes/{id}/report`
 
 A JSON rollup of one sandbox's activity, built from the audit log. Works after

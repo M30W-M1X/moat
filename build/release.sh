@@ -36,6 +36,15 @@ else
 	echo "  images not built — the installer will fetch them separately"
 fi
 
+for f in images.lock sbom.cdx.json; do
+	if [ -f "$ROOT/build/artifacts/$f" ]; then
+		cp "$ROOT/build/artifacts/$f" "$STAGE/share/$f"
+	fi
+done
+if [ ! -f "$STAGE/share/images.lock" ] && [ -f "$ROOT/images.lock" ]; then
+	cp "$ROOT/images.lock" "$STAGE/share/images.lock"
+fi
+
 echo "  tar + checksums"
 tar -C "$DIST" -czf "$DIST/moat_${VERSION}_${OS}_${ARCH}.tar.gz" "$(basename "$STAGE")"
 ( cd "$DIST" && sha256sum "moat_${VERSION}_${OS}_${ARCH}.tar.gz" > checksums.txt )
