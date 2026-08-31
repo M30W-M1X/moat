@@ -17,19 +17,25 @@ func runTemplate(args []string) int {
 	switch sub {
 	case "list":
 		return templateList()
+	case "import":
+		return templateImport(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprint(os.Stderr, `moat template - inspect the rootfs templates a sandbox can start from
+		fmt.Fprint(os.Stderr, `moat template - rootfs templates a sandbox can start from
 
 usage:
-  moat template list     show the bundled template and where to add more
+  moat template list              show the templates this host knows
+  moat template import <ref>      import an OCI image as a template
+  moat template import --from-archive FILE
+  moat template show <name>       print one template's detail
 
-A template is a kernel plus a rootfs image. The daemon reads extra templates
-from its -config file (see docs/moatd.example.json). Downloadable per-language
-templates (moat template pull python, ...) are planned.
+A template is a kernel plus a rootfs. The daemon reads templates from its
+-config file (see docs/moatd.example.json). "moat template import" builds a
+rootfs from a container image and records the image ENV, WORKDIR, and
+ENTRYPOINT as exec defaults.
 `)
 		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "moat template: unknown subcommand %q (try: list)\n", sub)
+		fmt.Fprintf(os.Stderr, "moat template: unknown subcommand %q (try: list, import, show)\n", sub)
 		return 2
 	}
 }
