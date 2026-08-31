@@ -21,3 +21,9 @@ vmlinux-*
 # Editor / OS
 .DS_Store
 *.swp
+
+# impeccable local review + decision artifacts (config.json is tracked)
+/.impeccable/review/
+/.impeccable/questions/
+/.impeccable/build/
+/.impeccable/mocks/
