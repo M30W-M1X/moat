@@ -91,6 +91,20 @@ func TestLoadConfigAudit(t *testing.T) {
 	}
 }
 
+func TestConfigImageVerifyValidation(t *testing.T) {
+	base := `{"templates":[{"name":"default"}],"tokens":[{"id":"a","secret":"b"}]`
+	good := writeTemp(t, base+`,"image_verify":"warn"}`)
+	if lc, err := loadConfigFile(good, "k", "r"); err != nil {
+		t.Fatalf("image_verify=warn should load: %v", err)
+	} else if lc.ImageVerify != "warn" {
+		t.Fatalf("ImageVerify = %q, want warn", lc.ImageVerify)
+	}
+	bad := writeTemp(t, base+`,"image_verify":"loud"}`)
+	if _, err := loadConfigFile(bad, "k", "r"); err == nil {
+		t.Fatal("image_verify=loud should be rejected")
+	}
+}
+
 func TestLoadConfigFileErrors(t *testing.T) {
 	cases := map[string]string{
 		"no templates":         `{"tokens":[{"id":"a","secret":"b"}]}`,

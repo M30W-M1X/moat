@@ -17,10 +17,13 @@ import (
 // the auth tokens, the per-token policy, and optional server defaults. Flags
 // still set anything the file leaves at its zero value.
 type fileConfig struct {
-	Templates []fileTemplate `json:"templates"`
-	Tokens    []fileToken    `json:"tokens"`
-	Defaults  fileDefaults   `json:"defaults"`
-	Audit     *fileAudit     `json:"audit"`
+	Templates      []fileTemplate `json:"templates"`
+	Tokens         []fileToken    `json:"tokens"`
+	Defaults       fileDefaults   `json:"defaults"`
+	Audit          *fileAudit     `json:"audit"`
+	ImageVerify    string         `json:"image_verify"`
+	CosignIdentity string         `json:"cosign_identity"`
+	CosignIssuer   string         `json:"cosign_issuer"`
 }
 
 // fileAudit is the on-disk shape of the optional "audit" block. An empty "dir"
@@ -83,6 +86,10 @@ type loadedConfig struct {
 	Uplink       string
 	Audit        *loadedAudit
 	ConfigSHA256 string // hex sha256 of the raw file
+
+	ImageVerify    string
+	CosignIdentity string
+	CosignIssuer   string
 }
 
 // loadedAudit is the parsed "audit" block. Set reports that the file had the
@@ -184,6 +191,15 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 			}
 		}
 	}
+
+	switch fc.ImageVerify {
+	case "", "enforce", "warn", "off":
+		out.ImageVerify = fc.ImageVerify
+	default:
+		return out, fmt.Errorf("%s: image_verify must be enforce, warn, or off", path)
+	}
+	out.CosignIdentity = fc.CosignIdentity
+	out.CosignIssuer = fc.CosignIssuer
 
 	d := fc.Defaults
 	out.GlobalMax, out.TokenMax, out.Pool = d.GlobalMax, d.TokenMax, d.Pool

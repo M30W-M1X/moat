@@ -58,6 +58,9 @@ func main() {
 	egressDeny := flag.String("egress-deny", "", "comma list of denied egress domains")
 	egressTransparent := flag.String("egress-transparent", "", "listen address for the transparent egress proxy; forces guest 80/443 through it")
 	auditDir := flag.String("audit-dir", "", `audit log directory ("" = default, "off" disables)`)
+	imageVerify := flag.String("image-verify", "", `image check: "enforce" (default), "warn", or "off"`)
+	cosignIdentity := flag.String("cosign-identity", "", "cosign certificate identity for images.lock.sig")
+	cosignIssuer := flag.String("cosign-issuer", "", "cosign OIDC issuer for images.lock.sig")
 	secretScan := flag.Bool("secret-scan", true, "screen files, env, and stdin for credentials on the way into a sandbox")
 	secretRedact := flag.Bool("secret-redact", false, "replace a detected secret with a marker instead of a 409")
 	jsonLog := flag.Bool("json-log", true, "emit structured JSON logs")
@@ -66,6 +69,20 @@ func main() {
 	log := logrus.New()
 	if *jsonLog {
 		log.SetFormatter(&logrus.JSONFormatter{})
+	}
+
+	// image_verify precedence: flag, then env, then config file, then default.
+	imgVerify := *imageVerify
+	if imgVerify == "" {
+		imgVerify = os.Getenv("MOAT_IMAGE_VERIFY")
+	}
+	cosID := *cosignIdentity
+	if cosID == "" {
+		cosID = os.Getenv("MOAT_COSIGN_IDENTITY")
+	}
+	cosIss := *cosignIssuer
+	if cosIss == "" {
+		cosIss = os.Getenv("MOAT_COSIGN_ISSUER")
 	}
 
 	dm, err := config.NewMachine("default-template")
@@ -96,6 +113,15 @@ func main() {
 		cfg.Policies = fc.Policies
 		cfg.ConfigSHA256 = fc.ConfigSHA256
 		loadedAuditFromFile = fc.Audit
+		if imgVerify == "" {
+			imgVerify = fc.ImageVerify
+		}
+		if cosID == "" {
+			cosID = fc.CosignIdentity
+		}
+		if cosIss == "" {
+			cosIss = fc.CosignIssuer
+		}
 		// A non-zero value in the file's defaults block wins over the flag.
 		cfg.GlobalMax = orInt(fc.GlobalMax, cfg.GlobalMax)
 		cfg.TokenMax = orInt(fc.TokenMax, cfg.TokenMax)
@@ -130,6 +156,15 @@ func main() {
 			NetBW:  *netBW,
 		}}
 	}
+
+	switch imgVerify {
+	case "", "enforce", "warn", "off":
+	default:
+		log.Fatalf("image-verify must be enforce, warn, or off, got %q", imgVerify)
+	}
+	cfg.ImageVerify = imgVerify
+	cfg.CosignIdentity = cosID
+	cfg.CosignIssuer = cosIss
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
