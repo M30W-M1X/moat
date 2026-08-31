@@ -512,7 +512,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	id := newSandboxID()
 	start := time.Now()
 	sb := &Sandbox{ID: id, Template: name, TokenID: tid, CreatedAt: start,
-		ExpiresAt: start.Add(ttl), Networked: req.Networked}
+		ExpiresAt: start.Add(ttl), Networked: req.Networked, tpl: tpl}
 
 	source := "cold"
 	if !req.Networked && s.pool != nil {
@@ -690,10 +690,6 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad JSON body: "+err.Error())
 		return
 	}
-	if len(req.Argv) == 0 {
-		writeErr(w, http.StatusBadRequest, "argv is required")
-		return
-	}
 	stdin, err := base64.StdEncoding.DecodeString(req.Stdin)
 	if req.Stdin != "" && err != nil {
 		writeErr(w, http.StatusBadRequest, "stdin must be base64")
@@ -736,17 +732,22 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Fold the sandbox template's exec defaults under the request. A request
+	// value always wins.
+	argv, env, dir, argvSource, err := mergeExec(sb.tpl, req)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	// Networked sandboxes must send outbound HTTP through the egress proxy so
 	// the domain policy applies. The server sets this; a caller cannot override.
 	if sb.net != nil && s.cfg.EgressPort > 0 {
-		if req.Env == nil {
-			req.Env = map[string]string{}
-		}
 		proxy := fmt.Sprintf("http://%s:%d", sb.net.VethHostIP, s.cfg.EgressPort)
 		for _, k := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
-			req.Env[k] = proxy
+			env[k] = proxy
 		}
-		req.Env["NO_PROXY"] = "localhost,127.0.0.1"
+		env["NO_PROXY"] = "localhost,127.0.0.1"
 	}
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
@@ -760,9 +761,9 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	send := func(v any) { _ = enc.Encode(v); flush() }
 
 	res, err := sb.client().Exec(r.Context(), agentclient.ExecOptions{
-		Argv:    req.Argv,
-		Env:     req.Env,
-		Dir:     req.Dir,
+		Argv:    argv,
+		Env:     env,
+		Dir:     dir,
 		Stdin:   stdin,
 		TTY:     req.TTY,
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond,
@@ -777,9 +778,9 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		s.m.execTotal.WithLabelValues(outcome).Inc()
 	}
 
-	argv := clampArgv(req.Argv, 4096)
-	envKeys := make([]string, 0, len(req.Env))
-	for k := range req.Env {
+	loggedArgv := clampArgv(argv, 4096)
+	envKeys := make([]string, 0, len(env))
+	for k := range env {
 		if k == "HTTP_PROXY" || k == "HTTPS_PROXY" || k == "http_proxy" || k == "https_proxy" || k == "NO_PROXY" {
 			continue // the server injects these proxy variables, they are not caller data
 		}
@@ -787,7 +788,8 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(envKeys)
 	execAttrs := map[string]any{
-		"argv": argv, "env_keys": envKeys, "dir": req.Dir, "tty": req.TTY,
+		"argv": loggedArgv, "argv_source": argvSource, "env_keys": envKeys,
+		"dir": dir, "tty": req.TTY,
 		"dur_ms": time.Since(start).Milliseconds(),
 	}
 	if err != nil {

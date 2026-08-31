@@ -1027,3 +1027,110 @@ func TestImageVerifyNoLockStarts(t *testing.T) {
 	defer cancel()
 	srv.Shutdown(sc)
 }
+
+// collectExec streams an exec NDJSON response and returns stdout+stderr joined
+// and the exit code (-999 when no exit frame came back).
+func collectExec(t *testing.T, resp *http.Response) (string, int) {
+	t.Helper()
+	var out string
+	code := -999
+	sc := bufio.NewScanner(resp.Body)
+	for sc.Scan() {
+		var ev map[string]any
+		if err := json.Unmarshal(sc.Bytes(), &ev); err != nil {
+			t.Fatalf("bad NDJSON frame %q: %v", sc.Text(), err)
+		}
+		switch ev["stream"] {
+		case "stdout", "stderr":
+			d, _ := base64.StdEncoding.DecodeString(ev["data"].(string))
+			out += string(d)
+		case "exit":
+			code = int(ev["code"].(float64))
+		}
+	}
+	resp.Body.Close()
+	return out, code
+}
+
+func startServerWithTemplate(t *testing.T, tpl server.Template) (*httptest.Server, string) {
+	t.Helper()
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		t.Skip("no /dev/kvm")
+	}
+	m, err := config.NewMachine("srvtest-tmpldef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Validate(); err != nil {
+		t.Skipf("images missing (run: make images): %v", err)
+	}
+	tpl.Kernel = m.KernelImagePath
+	tpl.RootFS = copyRootFS(t, m.RootFSPath)
+	if tpl.VCPUs == 0 {
+		tpl.VCPUs = 1
+	}
+	if tpl.MemMiB == 0 {
+		tpl.MemMiB = 256
+	}
+	log := logrus.New()
+	log.SetLevel(logrus.WarnLevel)
+	srv, err := server.New(server.Config{
+		Templates: []server.Template{tpl},
+		Tokens:    map[string]string{"t1": "secret1"},
+	}, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(func() {
+		ts.Close()
+		sc, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		srv.Shutdown(sc)
+	})
+	return ts, "secret1"
+}
+
+func TestExecTemplateDefaults(t *testing.T) {
+	ts, token := startServerWithTemplate(t, server.Template{
+		Name:        "default",
+		Env:         map[string]string{"MOAT_TMPL_VAR": "hello"},
+		Dir:         "/tmp",
+		DefaultArgv: []string{"echo", "default-cmd"},
+	})
+
+	resp := do(t, ts, "POST", "/v1/sandboxes", token, `{"ttl_seconds":120}`)
+	if resp.StatusCode != 201 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create = %d: %s", resp.StatusCode, b)
+	}
+	var sb struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&sb)
+	resp.Body.Close()
+	t.Cleanup(func() { do(t, ts, "DELETE", "/v1/sandboxes/"+sb.ID, token, "").Body.Close() })
+
+	// no dir, no argv override -> runs in /tmp and sees the template env
+	out, code := collectExec(t, do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", token,
+		`{"argv":["sh","-c","pwd; echo $MOAT_TMPL_VAR"]}`))
+	if code != 0 || !strings.Contains(out, "/tmp") || !strings.Contains(out, "hello") {
+		t.Fatalf("template defaults not applied: code=%d out=%q", code, out)
+	}
+
+	// request dir and env win
+	out, _ = collectExec(t, do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", token,
+		`{"argv":["sh","-c","pwd; echo $MOAT_TMPL_VAR"],"dir":"/","env":{"MOAT_TMPL_VAR":"override"}}`))
+	if !strings.Contains(out, "override") || strings.Contains(out, "/tmp") {
+		t.Fatalf("request values did not win: out=%q", out)
+	}
+
+	// empty argv -> the template default runs
+	out, code = collectExec(t, do(t, ts, "POST", "/v1/sandboxes/"+sb.ID+"/exec", token, `{}`))
+	if code != 0 || !strings.Contains(out, "default-cmd") {
+		t.Fatalf("default_argv did not run: code=%d out=%q", code, out)
+	}
+}
