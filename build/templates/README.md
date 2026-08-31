@@ -28,6 +28,26 @@ make minimal-image             # build the minimal image
 
 `make template-image` depends on `make agent`, so the guest agent is fresh.
 
+## Import an existing image
+
+`moat template import` turns any linux/amd64 container image into a
+template. No Dockerfile.
+
+```sh
+moat template import python:3.12            # pull and build
+moat template import --from-archive img.tar # a docker-save or OCI archive
+moat template import ghcr.io/org/app:v2 --name app --config moatd.json
+```
+
+It records the image `@sha256` digest and carries the image's `ENV`,
+`WORKDIR`, and `ENTRYPOINT` forward: `moatd` applies them as exec
+defaults, and a request value always wins. Without `--config` it writes
+`<data>/<name>.template.json` and prints the snippet to paste into
+`moatd.json`. See `moat template show <name>`.
+
+Imported templates are linux/amd64 only and are not pinned in
+`images.lock`.
+
 ## How the build works
 
 1. `podman build` runs your `Dockerfile`.

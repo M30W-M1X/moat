@@ -592,6 +592,19 @@ path in each `moatd.json` entry; a client selects one with
 `{"template": "<name>"}` on `POST /v1/sandboxes`. See
 `build/templates/README.md`.
 
+### 5.8 Import an existing image — `moat template import`
+
+`moat template import <ref>` (or `--from-archive <file>`) builds a
+template rootfs straight from a container image: `podman pull` /
+`podman load` → record the `@sha256` digest → read the image config →
+`podman export` → inject `/sbin/guest-agent` → auto-size →
+`mkfs.ext4 -d`. The pipeline is `internal/imgimport`. The image's
+`ENV` / `WORKDIR` / `ENTRYPOINT` become the template's `env` /
+`workdir` / `default_argv` (§7). linux/amd64 only. Not in
+`images.lock` — the `source` digest is the record. Without `--config`
+the command writes `<data>/<name>.template.json` and prints the
+`moatd.json` snippet.
+
 ---
 
 ## 6. Building and testing
@@ -668,7 +681,9 @@ pass. Commit `gen/` with the proto change.
 | `moat bench` | warm-pool acquire and release benchmark |
 | `moat reap` | kill Firecracker processes a crash left behind |
 | `moat doctor` | preflight KVM, firecracker, cgroup delegation, nft, userfaultfd, images, `images.lock` |
-| `moat template list` | show the configured template and where to add more |
+| `moat template list` | show the templates this host knows |
+| `moat template import <ref>` | build a template from a container image (`--from-archive`, `--name`, `--config`, `--dry-run`) |
+| `moat template show <name>` | print a template's rootfs, source digest, and exec defaults |
 | `moat audit {tail,query,report,verify}` | read the audit log, offline (`-dir`) or over the API |
 
 `moat run` flags: `-env KEY=VALUE` (repeatable), `-put LOCAL:REMOTE`,
@@ -683,6 +698,14 @@ moat run -net -env GOFLAGS=-mod=mod -put ./main.go:/work/main.go \
   -get /work/out.bin:./out.bin -timeout 60s -- \
   sh -c 'cd /work && go build -o out.bin ./main.go'
 ```
+
+**Template exec defaults.** `moatd` applies a template's `env` and
+`workdir` to every `exec` in a sandbox from that template, and runs
+`default_argv` when a request sends no `argv`. A request `env` key,
+`dir`, or `argv` always wins. `moat template import` fills these from
+the image config; `moat template show <name>` prints them. The exec
+audit event records `argv_source` (`request` or `template_default`)
+and the union of template and request env-key names.
 
 ### 7.2 The HTTP API
 
@@ -936,7 +959,8 @@ namespace path, or the audit writer.
   members.
 - **A gRPC northbound surface** alongside the REST API is planned.
 - **A downloadable template registry** (`moat template pull python`) is a
-  deferred CDN job.
+  deferred CDN job. `moat template import <ref>` already covers the common
+  case — any registry image or archive becomes a template (§5.8).
 - **`make images-verify` in CI** — the repo has no CI yet. The target is the
   exact check a CI job would run.
 - **Signing `images.lock` in an automated release** is manual today.

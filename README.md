@@ -177,6 +177,11 @@ private rootfs, secret firewall, hash-chained audit. See
 [`demo/README.md`](demo/README.md). Extra rootfs templates live in
 [`build/templates/`](build/templates/README.md).
 
+Import any linux/amd64 container as a template with
+`moat template import python:3.12` — it carries the image's
+`ENV` / `WORKDIR` / `ENTRYPOINT` forward as exec defaults (a request
+value always wins).
+
 ## `moat run` flags
 
 ```

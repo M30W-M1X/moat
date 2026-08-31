@@ -924,6 +924,21 @@ make minimal-image               # the small test image</code></pre>
       selects one by the <code>rootfs</code> path in each <code>moatd.json</code> template
       entry; a client asks for it with <code>{"template":"&lt;name&gt;"}</code>. See
       <code>build/templates/README.md</code>.</p>
+
+      <h4>Import an existing image — <code>moat template import</code></h4>
+      <p><code>moat template import &lt;ref&gt;</code> (or <code>--from-archive &lt;file&gt;</code>)
+      builds a template rootfs straight from a container image:
+      <code>podman pull</code> / <code>podman load</code> → record the <code>@sha256</code>
+      digest → read the image config → <code>podman export</code> → inject
+      <code>/sbin/guest-agent</code> → auto-size → <code>mkfs.ext4 -d</code>. The
+      pipeline is <code>internal/imgimport</code>. The image's <code>ENV</code> /
+      <code>WORKDIR</code> / <code>ENTRYPOINT</code> become the template's
+      <code>env</code> / <code>workdir</code> / <code>default_argv</code>, which
+      <code>moatd</code> applies to every <code>exec</code> — a request value always wins.
+      linux/amd64 only. Not in <code>images.lock</code>; the <code>source</code> digest is
+      the record. Without <code>--config</code> the command writes
+      <code>&lt;data&gt;/&lt;name&gt;.template.json</code> and prints the
+      <code>moatd.json</code> snippet.</p>
     </section>
 
     <!-- ========================================================= 12 -->
@@ -976,12 +991,21 @@ make minimal-image               # the small test image</code></pre>
           <tr><td><code>moat bench</code></td><td>warm-pool acquire / release benchmark</td></tr>
           <tr><td><code>moat reap</code></td><td>kill Firecracker processes a crash left behind</td></tr>
           <tr><td><code>moat doctor</code></td><td>preflight KVM, firecracker, cgroup delegation, nft, userfaultfd, images, <code>images.lock</code></td></tr>
-          <tr><td><code>moat template list</code></td><td>show the configured template</td></tr>
+          <tr><td><code>moat template list</code></td><td>show the templates this host knows</td></tr>
+          <tr><td><code>moat template import &lt;ref&gt;</code></td><td>build a template from a container image (<code>--from-archive</code>, <code>--name</code>, <code>--config</code>)</td></tr>
+          <tr><td><code>moat template show &lt;name&gt;</code></td><td>print a template's rootfs, digest, and exec defaults</td></tr>
           <tr><td><code>moat audit {tail,query,report,verify}</code></td><td>read the audit log, offline (<code>-dir</code>) or over the API</td></tr>
         </tbody>
       </table>
       <pre><code>moat run -net -put ./main.go:/work/main.go -get /work/out:./out -timeout 60s -- \
   sh -c 'cd /work &amp;&amp; go build -o out ./main.go'</code></pre>
+      <p><strong>Template exec defaults.</strong> <code>moatd</code> applies a template's
+      <code>env</code> and <code>workdir</code> to every <code>exec</code> in a sandbox from
+      that template, and runs <code>default_argv</code> when a request sends no
+      <code>argv</code>. A request <code>env</code> key, <code>dir</code>, or <code>argv</code>
+      always wins. <code>moat template import</code> fills these from the image config;
+      the exec audit event records <code>argv_source</code> and the union of template and
+      request env-key names.</p>
 
       <h3>The HTTP API — a walkthrough</h3>
       <pre><code>MOAT_TOKENS=ci:s3cr3t moatd -pool 4
@@ -1159,7 +1183,8 @@ moat_pool_ready</code></pre>
           members.</li>
         <li><strong>A gRPC northbound surface</strong> alongside REST is planned.</li>
         <li><strong>A template registry</strong> (<code>moat template pull python</code>)
-          is a deferred CDN job.</li>
+          is a deferred CDN job. <code>moat template import &lt;ref&gt;</code> already
+          covers the common case.</li>
         <li><strong>CI</strong> — the repo has none yet. <code>make images-verify</code> is
           the exact check a CI job would run.</li>
         <li><strong>Signing <code>images.lock</code></strong> in an automated release is
