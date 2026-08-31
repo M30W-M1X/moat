@@ -8,9 +8,7 @@ GO         ?= go
 BIN        := bin
 ARTIFACTS  := build/artifacts
 GOFLAGS    ?=
-ROOTFS_SIZE ?= 256M
 export GOTOOLCHAIN ?= local
-export ROOTFS_SIZE
 
 KERNEL  := $(ARTIFACTS)/vmlinux
 ROOTFS  := $(ARTIFACTS)/rootfs.ext4
