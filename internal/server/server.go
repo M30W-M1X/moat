@@ -592,6 +592,10 @@ type ingressDecision struct {
 	action   string // clean, allow, redact, block
 	content  []byte // the bytes to use (redacted when action == "redact")
 	findings []secretscan.Finding
+	// recErr holds the RecordSync error for an allow or a redact decision.
+	// A non-nil value means flagged content has no durable audit record.
+	// The caller must fail the request closed.
+	recErr error
 }
 
 // screen runs the secret firewall over data. name is the target (a guest path,
@@ -635,11 +639,17 @@ func (s *Server) screen(tid, name string, data []byte, allowReq bool) ingressDec
 	case "redact":
 		auditType = audit.TypeSecretRedact
 	}
-	_ = s.audit.RecordSync(context.Background(), audit.Event{
+	recErr := s.audit.RecordSync(context.Background(), audit.Event{
 		Type: auditType, Token: tid,
 		Attrs: map[string]any{"target": name, "rules": list, "findings": len(fs)},
 	})
-	return ingressDecision{action: action, content: content, findings: fs}
+	return ingressDecision{action: action, content: content, findings: fs, recErr: recErr}
+}
+
+// auditUnrecorded reports whether an allow or a redact decision passed content
+// with no durable audit record. The caller must refuse the request.
+func (d ingressDecision) auditUnrecorded() bool {
+	return (d.action == "allow" || d.action == "redact") && d.recErr != nil
 }
 
 // writeSecretBlock writes the 409 for blocked ingress content.
@@ -684,6 +694,10 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 				writeSecretBlock(w, "env var "+k, d.findings)
 				return
 			}
+			if d.auditUnrecorded() {
+				writeErr(w, http.StatusServiceUnavailable, "audit write failed — request refused")
+				return
+			}
 			if d.action == "redact" {
 				req.Env[k] = strings.TrimPrefix(string(d.content), k+"=")
 			}
@@ -692,6 +706,10 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 			d := s.screen(tid, "stdin", stdin, req.AllowSecrets)
 			if d.action == "block" {
 				writeSecretBlock(w, "stdin", d.findings)
+				return
+			}
+			if d.auditUnrecorded() {
+				writeErr(w, http.StatusServiceUnavailable, "audit write failed — request refused")
 				return
 			}
 			if d.action == "redact" {
@@ -821,6 +839,10 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 		scanAction = d.action
 		if d.action == "block" {
 			writeSecretBlock(w, path, d.findings)
+			return
+		}
+		if d.auditUnrecorded() {
+			writeErr(w, http.StatusServiceUnavailable, "audit write failed — request refused")
 			return
 		}
 		body = bytes.NewReader(d.content)
