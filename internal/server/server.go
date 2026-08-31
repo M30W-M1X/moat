@@ -68,6 +68,15 @@ type Config struct {
 	// ConfigSHA256 is the hex sha256 of the loaded moatd.json, or "" when the
 	// daemon started from flags only. The daemon.start audit event records it.
 	ConfigSHA256 string
+
+	// ImageVerify controls the startup image check: "enforce" (default),
+	// "warn", or "off". A missing images.lock is treated as "warn" in every
+	// mode.
+	ImageVerify string
+	// CosignIdentity and CosignIssuer, when set, make the check also verify
+	// images.lock.sig with `cosign verify-blob`.
+	CosignIdentity string
+	CosignIssuer   string
 }
 
 // TokenPolicy narrows what one token may do. A zero field falls back to the
@@ -118,6 +127,8 @@ type Server struct {
 	m       *metrics
 	promReg *prometheus.Registry
 	audit   *audit.Recorder
+
+	imageResults []imageResult // per-template image-verification outcome
 
 	baseCtx     context.Context // sandbox lifetime; set by Start
 	startedAt   time.Time       // set by Start, for the daemon.stop uptime
@@ -175,6 +186,12 @@ func New(cfg Config, log *logrus.Logger) (*Server, error) {
 	for _, t := range cfg.Templates {
 		s.tmpl[t.Name] = t
 	}
+
+	imgRes, err := verifyImages(cfg, log)
+	if err != nil {
+		return nil, err
+	}
+	s.imageResults = imgRes
 
 	s.maxUp = cfg.MaxUploadBytes
 	if s.maxUp <= 0 {
@@ -237,6 +254,7 @@ func (s *Server) Start(ctx context.Context) error {
 			"secret_scan":   !s.cfg.SecretScanOff,
 			"egress":        s.cfg.EgressPort > 0,
 			"config_sha256": s.cfg.ConfigSHA256,
+			"images":        imageResultsAttr(s.imageResults),
 		},
 	})
 	go s.janitor()

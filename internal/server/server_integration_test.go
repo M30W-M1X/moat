@@ -6,13 +6,17 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -24,6 +28,20 @@ import (
 	"github.com/M30W-M1X/moat/internal/config"
 	"github.com/M30W-M1X/moat/internal/server"
 )
+
+// copyRootFS returns a per-test sparse copy of src. A cold-boot sandbox
+// attaches the rootfs read-write, so a shared build/artifacts/rootfs.ext4 would
+// drift between tests and trip the images.lock check. A private copy keeps each
+// test isolated and leaves no images.lock beside it.
+func copyRootFS(t *testing.T, src string) string {
+	t.Helper()
+	dst := filepath.Join(t.TempDir(), "rootfs.ext4")
+	out, err := exec.Command("cp", "--sparse=always", src, dst).CombinedOutput()
+	if err != nil {
+		t.Fatalf("copy rootfs: %v: %s", err, out)
+	}
+	return dst
+}
 
 func startServer(t *testing.T, poolSize, tokenMax int) (*httptest.Server, string) {
 	t.Helper()
@@ -42,7 +60,7 @@ func startServer(t *testing.T, poolSize, tokenMax int) (*httptest.Server, string
 	log.SetLevel(logrus.WarnLevel)
 	srv, err := server.New(server.Config{
 		Templates: []server.Template{{
-			Name: "default", Kernel: m.KernelImagePath, RootFS: m.RootFSPath, VCPUs: 1, MemMiB: 256,
+			Name: "default", Kernel: m.KernelImagePath, RootFS: copyRootFS(t, m.RootFSPath), VCPUs: 1, MemMiB: 256,
 		}},
 		Tokens:   map[string]string{"t1": "secret1", "t2": "secret2"},
 		PoolSize: poolSize,
@@ -84,7 +102,7 @@ func startServerWithAudit(t *testing.T, auditDir string) (*httptest.Server, stri
 		t.Fatal(err)
 	}
 	srv, err := server.New(server.Config{
-		Templates: []server.Template{{Name: "default", Kernel: m.KernelImagePath, RootFS: m.RootFSPath, VCPUs: 1, MemMiB: 256}},
+		Templates: []server.Template{{Name: "default", Kernel: m.KernelImagePath, RootFS: copyRootFS(t, m.RootFSPath), VCPUs: 1, MemMiB: 256}},
 		Tokens:    map[string]string{"t1": "secret1", "secops": "s3", "stranger": "s4"},
 		Policies:  map[string]server.TokenPolicy{"secops": {AuditRead: "all"}},
 		TokenMax:  4,
@@ -698,7 +716,7 @@ func startServerAuditSyncToggle(t *testing.T, dir string, tokens map[string]stri
 		t.Fatal(err)
 	}
 	srv, err := server.New(server.Config{
-		Templates: []server.Template{{Name: "default", Kernel: m.KernelImagePath, RootFS: m.RootFSPath, VCPUs: 1, MemMiB: 256}},
+		Templates: []server.Template{{Name: "default", Kernel: m.KernelImagePath, RootFS: copyRootFS(t, m.RootFSPath), VCPUs: 1, MemMiB: 256}},
 		Tokens:    tokens,
 		Policies:  policies,
 		TokenMax:  tokenMax,
@@ -882,4 +900,130 @@ func TestAuditBlockedFilePutRecorded(t *testing.T) {
 	if !found {
 		t.Fatalf("report files do not list the blocked write: %+v", r.Files)
 	}
+}
+
+// --- image verification (Task 7) ---------------------------------------------
+
+func imgSHA256File(t *testing.T, path string) string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// writeImagesLock writes a minimal valid images.lock beside rootfsPath whose
+// digests match the real files.
+func writeImagesLock(t *testing.T, kernelPath, rootfsPath string) string {
+	t.Helper()
+	ksum := imgSHA256File(t, kernelPath)
+	rsum := imgSHA256File(t, rootfsPath)
+	body := `{
+  "schema": "moat.images.lock/v1",
+  "source_date_epoch": 1788134400,
+  "kernel": {"path":"vmlinux","sha256":"` + ksum + `","ci_snapshot":"s","version":"6.1.182","source":"http://x"},
+  "rootfs": {"path":"rootfs.ext4","sha256":"` + rsum + `","size_bytes":1,"base_image":"alpine@sha256:x","fs_uuid":"u","mkfs_version":"m"},
+  "sbom": {"path":"sbom.cdx.json","sha256":"deadbeef"},
+  "guest_agent": {"sha256":"a","go":"go1.27.0"},
+  "generated_by":"t","generated_at":"2026-08-31T00:00:00Z"
+}`
+	p := filepath.Join(filepath.Dir(rootfsPath), "images.lock")
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(p) })
+	return p
+}
+
+// copyImagesToTemp copies the real kernel and rootfs into a fresh dir so a test
+// can place an images.lock beside them without touching build/artifacts.
+func copyImagesToTemp(t *testing.T) (kernel, rootfs string) {
+	t.Helper()
+	m, err := config.NewMachine("imgverify-tpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Validate(); err != nil {
+		t.Skipf("images missing: %v", err)
+	}
+	dir := t.TempDir()
+	kernel = filepath.Join(dir, "vmlinux")
+	rootfs = filepath.Join(dir, "rootfs.ext4")
+	for _, c := range []struct{ src, dst string }{
+		{m.KernelImagePath, kernel}, {m.RootFSPath, rootfs},
+	} {
+		b, err := os.ReadFile(c.src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(c.dst, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return kernel, rootfs
+}
+
+func startServerImageVerify(t *testing.T, mode, kernel, rootfs string) (*server.Server, error) {
+	t.Helper()
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+	return server.New(server.Config{
+		Templates:   []server.Template{{Name: "default", Kernel: kernel, RootFS: rootfs, VCPUs: 1, MemMiB: 256}},
+		Tokens:      map[string]string{"t1": "s1"},
+		ImageVerify: mode,
+		Version:     "test",
+	}, log)
+}
+
+func TestImageVerifyEnforcePasses(t *testing.T) {
+	kernel, rootfs := copyImagesToTemp(t)
+	writeImagesLock(t, kernel, rootfs)
+	srv, err := startServerImageVerify(t, "enforce", kernel, rootfs)
+	if err != nil {
+		t.Fatalf("enforce with a matching lock must start: %v", err)
+	}
+	t.Cleanup(func() {
+		sc, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		srv.Shutdown(sc)
+	})
+}
+
+func TestImageVerifyMismatchRefuses(t *testing.T) {
+	kernel, rootfs := copyImagesToTemp(t)
+	writeImagesLock(t, kernel, rootfs)
+	f, err := os.OpenFile(rootfs, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("tamper")
+	f.Close()
+
+	if _, err := startServerImageVerify(t, "enforce", kernel, rootfs); err == nil {
+		t.Fatal("enforce with a digest mismatch must refuse to start")
+	}
+	srv, err := startServerImageVerify(t, "warn", kernel, rootfs)
+	if err != nil {
+		t.Fatalf("warn mode must start on a mismatch: %v", err)
+	}
+	sc, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	srv.Shutdown(sc)
+}
+
+func TestImageVerifyNoLockStarts(t *testing.T) {
+	kernel, rootfs := copyImagesToTemp(t)
+	srv, err := startServerImageVerify(t, "enforce", kernel, rootfs)
+	if err != nil {
+		t.Fatalf("a missing lock must not stop startup: %v", err)
+	}
+	sc, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	srv.Shutdown(sc)
 }
