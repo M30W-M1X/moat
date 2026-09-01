@@ -16,6 +16,7 @@ a build toolchain, a demo shell.
 | `_skeleton` | Copy this to start a new template. Not built on its own. | — | — |
 | `minimal` | Alpine base plus `ca-certificates`. Fast boot for the test suite. | ~10 MiB userland, 64 MiB ext4 | `make minimal-image` |
 | `dev-shell` | Python, Node, Go, C toolchain, CLI tools. Demo and manual testing. | ~400 MiB userland, 1 GiB ext4 | `make demo-image` |
+| `rhel9` | RHEL 9 UBI base plus git, python3, and common CLI tools. glibc. | ~330 MiB userland, 1 GiB ext4 | `make template-image NAME=rhel9` |
 
 ## Commands
 
@@ -69,8 +70,9 @@ policy can limit which templates a token may use.
 The build fixes the filesystem UUID, the directory hash seed, and every
 file time. Two builds on one day produce the same ext4 file.
 
-Builds weeks apart can differ. `apk add` resolves against the live Alpine
-index, and package versions move. For that reason templates are **not**
-pinned in `images.lock`. The `packages.manifest` file that the build writes
-next to each template records the exact package versions from the last
-build. Commit it so a reviewer sees the change.
+Builds weeks apart can differ. `apk add` and `dnf install` resolve against
+live distribution repos, and package versions move. For that reason
+templates are **not** pinned in `images.lock`. The `packages.manifest` file
+that the build writes next to each template records the exact package
+versions from the last build (apk and rpm are supported). Commit it so a
+reviewer sees the change.

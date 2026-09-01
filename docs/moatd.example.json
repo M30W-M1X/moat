@@ -35,6 +35,14 @@
       "mem_max_mib": 1024
     },
     {
+      "name": "rhel9",
+      "kernel": "/var/lib/moat/vmlinux",
+      "rootfs": "/var/lib/moat/rhel9-rootfs.ext4",
+      "source": "registry.access.redhat.com/ubi9/ubi@sha256:f405b019ad4f6ebf9097b636e83b363b1f11afe26557b7896fabff954b65a1b8",
+      "vcpus": 2,
+      "mem_mib": 512
+    },
+    {
       "name": "python",
       "kernel": "/var/lib/moat/vmlinux",
       "rootfs": "/var/lib/moat/python-rootfs.ext4",

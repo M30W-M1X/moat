@@ -68,16 +68,31 @@ cid="$(podman create "$tag" /bin/true)"
 podman export "$cid" | tar -C "$root" -xf -
 podman rm -f "$cid" >/dev/null
 
+# Hardened bases (UBI, distroless) ship unreadable files like /etc/gshadow
+# (mode 0000) and read-only directories like /usr/sbin. Give the owner read,
+# write, and directory traversal so the agent install, the timestamp pass,
+# `mkfs.ext4 -d`, and the cleanup all work. Regular files stay non-executable.
+chmod -R u+rwX "$root"
+
 echo "installing guest agent as /sbin/guest-agent ..."
 install -Dm0755 "$AGENT" "$root/sbin/guest-agent"
 mkdir -p "$root/proc" "$root/sys" "$root/dev" "$root/tmp" "$root/run" "$root/work"
 printf 'root:x:0:0:root:/root:/bin/sh\n' > "$root/etc/passwd" 2>/dev/null || true
 
-# Record the installed Alpine packages next to the template. This file is a
-# reference for review. It is not an input to the build.
+# Record the installed packages next to the template. This file is a
+# reference for review. It is not an input to the build. apk and rpm are
+# supported. Other package managers write no manifest.
 if [[ -f "$root/lib/apk/db/installed" ]]; then
   awk -F: '/^P:/{p=$2} /^V:/{print p" "$2}' "$root/lib/apk/db/installed" | sort > "$TDIR/packages.manifest"
   echo "wrote $TDIR/packages.manifest ($(wc -l < "$TDIR/packages.manifest") packages)"
+elif [[ -d "$root/var/lib/rpm" ]] && command -v rpm >/dev/null; then
+  if rpm -qa --root "$root" --dbpath /var/lib/rpm --qf '%{NAME} %{VERSION}-%{RELEASE}\n' 2>/dev/null \
+      | sort > "$TDIR/packages.manifest" && [[ -s "$TDIR/packages.manifest" ]]; then
+    echo "wrote $TDIR/packages.manifest ($(wc -l < "$TDIR/packages.manifest") packages)"
+  else
+    rm -f "$TDIR/packages.manifest"
+    echo "WARN: could not read the rpm database, no packages.manifest" >&2
+  fi
 fi
 
 echo "normalising timestamps to $SOURCE_DATE_EPOCH ..."
