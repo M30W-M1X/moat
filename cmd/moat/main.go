@@ -5,6 +5,7 @@
 //	moat snapshot / restore    write and load a full VM snapshot
 //	moat bench                 measure warm-pool acquire latency
 //	moat reap                  remove microVMs left behind by a crash
+//	moat version               print the build version
 package main
 
 import (
@@ -21,6 +22,9 @@ import (
 	"github.com/M30W-M1X/moat/internal/config"
 	"github.com/M30W-M1X/moat/internal/vm"
 )
+
+// version is the build version. The release build sets it with -ldflags -X.
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -46,6 +50,9 @@ func main() {
 		os.Exit(runTemplate(os.Args[2:]))
 	case "audit":
 		os.Exit(runAudit(os.Args[2:]))
+	case "version", "-v", "--version":
+		fmt.Println("moat", version)
+		os.Exit(0)
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -69,6 +76,7 @@ usage:
   moat doctor   check that this host can run Moat
   moat template list   show the rootfs templates a sandbox can use
   moat audit    {tail|query|report|verify}  read the daemon audit log
+  moat version   print the build version
 
 demo flags:
   -id string       machine id (default: demo-<pid>)

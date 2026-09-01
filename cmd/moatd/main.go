@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -64,7 +65,13 @@ func main() {
 	secretScan := flag.Bool("secret-scan", true, "screen files, env, and stdin for credentials on the way into a sandbox")
 	secretRedact := flag.Bool("secret-redact", false, "replace a detected secret with a marker instead of a 409")
 	jsonLog := flag.Bool("json-log", true, "emit structured JSON logs")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("moatd", version)
+		return
+	}
 
 	log := logrus.New()
 	if *jsonLog {

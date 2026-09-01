@@ -34,6 +34,9 @@ const (
 	uffdioZeropage = 0xc020aa04
 )
 
+// version is the build version. The release build sets it with -ldflags -X.
+var version = "dev"
+
 // uffdioCopyReq mirrors struct uffdio_copy.
 type uffdioCopyReq struct {
 	Dst, Src, Len, Mode uint64
@@ -62,7 +65,12 @@ func (m mapping) contains(addr uint64) bool {
 func main() {
 	sockPath := flag.String("socket", "", "unix socket path Firecracker connects to")
 	memPath := flag.String("mem", "", "snapshot memory file")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("moat-uffd", version)
+		return
+	}
 	if *sockPath == "" || *memPath == "" {
 		fmt.Fprintln(os.Stderr, "usage: moat-uffd --socket PATH --mem PATH")
 		os.Exit(2)
