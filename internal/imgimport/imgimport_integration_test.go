@@ -23,7 +23,7 @@ func buildTinyImage(t *testing.T) string {
 	dir := t.TempDir()
 	cf := `FROM docker.io/library/alpine@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e
 ENV MOAT_TEST_ENV=from-image
-WORKDIR /srv
+WORKDIR /workspace/app
 ENTRYPOINT ["/bin/echo"]
 CMD ["hello"]
 `
@@ -65,8 +65,8 @@ func TestImportBuildsRootfsAndReadsConfig(t *testing.T) {
 	if res.Env["MOAT_TEST_ENV"] != "from-image" {
 		t.Errorf("Env = %v, want MOAT_TEST_ENV=from-image", res.Env)
 	}
-	if res.Dir != "/srv" {
-		t.Errorf("Dir = %q, want /srv", res.Dir)
+	if res.Dir != "/workspace/app" {
+		t.Errorf("Dir = %q, want /workspace/app", res.Dir)
 	}
 	if want := []string{"/bin/echo", "hello"}; strings.Join(res.DefaultArgv, " ") != strings.Join(want, " ") {
 		t.Errorf("DefaultArgv = %v, want %v", res.DefaultArgv, want)
@@ -79,6 +79,12 @@ func TestImportBuildsRootfsAndReadsConfig(t *testing.T) {
 	dbg, err := exec.Command("debugfs", "-R", "stat /sbin/guest-agent", res.RootFSPath).CombinedOutput()
 	if err != nil || strings.Contains(string(dbg), "File not found") {
 		t.Fatalf("guest-agent not in rootfs: %v: %s", err, dbg)
+	}
+	// The WORKDIR must exist on disk even though a bare WORKDIR does not
+	// always create it.
+	wd, err := exec.Command("debugfs", "-R", "stat /workspace/app", res.RootFSPath).CombinedOutput()
+	if err != nil || strings.Contains(string(wd), "File not found") {
+		t.Fatalf("workdir /workspace/app not in rootfs: %v: %s", err, wd)
 	}
 }
 
@@ -95,7 +101,7 @@ func TestImportFromArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Dir != "/srv" {
-		t.Errorf("Dir = %q, want /srv", res.Dir)
+	if res.Dir != "/workspace/app" {
+		t.Errorf("Dir = %q, want /workspace/app", res.Dir)
 	}
 }

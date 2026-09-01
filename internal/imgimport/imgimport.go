@@ -97,6 +97,15 @@ func Import(ctx context.Context, src Source, opts Options) (*Result, error) {
 		return nil, err
 	}
 
+	// A bare WORKDIR sets image metadata but does not always create the
+	// directory on disk. moatd sets it as the exec working directory, so it
+	// must exist. Join under root and clean, so ".." cannot escape.
+	if res.Dir != "" {
+		if err := os.MkdirAll(filepath.Join(root, filepath.Clean("/"+res.Dir)), 0o755); err != nil {
+			return nil, fmt.Errorf("create workdir %s: %w", res.Dir, err)
+		}
+	}
+
 	if b, err := os.ReadFile(filepath.Join(root, "lib", "apk", "db", "installed")); err == nil {
 		res.PackagesManifest = b
 	} else if b, err := os.ReadFile(filepath.Join(root, "var", "lib", "dpkg", "status")); err == nil {
