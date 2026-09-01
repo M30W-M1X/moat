@@ -4,11 +4,12 @@
 # It starts moatd, creates sandboxes over the HTTP API, runs real work in
 # one, and checks the isolation properties: a separate microVM kernel, a
 # private rootfs per sandbox, the ingress secret firewall, and the
-# hash-chained audit log. Every check asserts. The script exits non-zero on
-# the first failure.
+# hash-chained audit log. It also imports a container image as a template
+# and shows the image ENV / WORKDIR / ENTRYPOINT applied as exec defaults.
+# Every check asserts. The script exits non-zero on the first failure.
 #
-# Needs: /dev/kvm, curl, jq, a built moatd and moat (make daemon build), a
-# kernel (make kernel), and the dev-shell image (make demo-image).
+# Needs: /dev/kvm, curl, jq, podman, a built moatd and moat, a kernel
+# (make kernel), and the dev-shell image (make demo-image).
 #
 # Network isolation and resource caps need a real root host. This script
 # reports those steps and skips them when it runs rootless.
@@ -43,7 +44,7 @@ fail() {
 # ----- preflight ------------------------------------------------------------
 hdr "Preflight"
 [ -r /dev/kvm ] || { echo "no readable /dev/kvm — this host cannot run microVMs" >&2; exit 1; }
-for c in curl jq base64; do
+for c in curl jq base64 podman; do
   command -v "$c" >/dev/null || { echo "missing: $c" >&2; exit 1; }
 done
 [ -f build/artifacts/vmlinux ] || { echo "no build/artifacts/vmlinux — run: make kernel" >&2; exit 1; }
@@ -75,6 +76,7 @@ BASE="http://127.0.0.1:$PORT"
 AUTH="Authorization: Bearer $SECRET"
 SANDBOXES=()
 
+IMPORT_TAG="moat-demo-import:latest"
 cleanup() {
   for id in "${SANDBOXES[@]:-}"; do
     [ -n "$id" ] || continue
@@ -82,24 +84,45 @@ cleanup() {
   done
   [ -n "${MOATD_PID:-}" ] && kill "$MOATD_PID" 2>/dev/null || true
   [ -n "${MOATD_PID:-}" ] && wait "$MOATD_PID" 2>/dev/null || true
+  podman rmi -f "$IMPORT_TAG" >/dev/null 2>&1 || true
   rm -rf "$SCRATCH"
 }
 trap cleanup EXIT
 
+# A small image with a distinctive config, to import as a template.
+info "building a demo image for 'moat template import' ..."
+podman build -q -t "$IMPORT_TAG" -f - "$SCRATCH" >/dev/null <<'EOF'
+FROM docker.io/library/alpine@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e
+ENV APP_ENV=production LOG_LEVEL=info
+WORKDIR /workspace
+ENTRYPOINT ["/bin/echo"]
+CMD ["ready"]
+EOF
+
+# The daemon reads a config file: the dev-shell template plus the token.
+cat >"$SCRATCH/moatd.json" <<EOF
+{
+  "image_verify": "off",
+  "audit": { "dir": "$AUDIT" },
+  "templates": [
+    { "name": "dev-shell", "kernel": "$ROOT/build/artifacts/vmlinux",
+      "rootfs": "$ROOT/$IMG", "vcpus": 2, "mem_mib": 1024 }
+  ],
+  "tokens": [ { "id": "demo", "secret": "$SECRET" } ]
+}
+EOF
+
+# Import the image and append it to the config as the "demo-import" template.
+info "moat template import $IMPORT_TAG --name demo-import"
+./bin/moat template import "$IMPORT_TAG" --name demo-import \
+  --data "$SCRATCH" --agent "$ROOT/bin/guest-agent" --config "$SCRATCH/moatd.json" \
+  2>&1 | sed 's/^/   | /'
+
 info "moatd on $BASE   audit dir $AUDIT"
-./bin/moatd \
-  -addr "127.0.0.1:$PORT" \
-  -tokens "demo:$SECRET" \
-  -kernel "$ROOT/build/artifacts/vmlinux" \
-  -rootfs "$ROOT/$IMG" \
-  -vcpus 2 -mem 1024 \
-  -pool 0 \
-  -audit-dir "$AUDIT" \
-  -image-verify off \
-  -json-log=false \
+./bin/moatd -config "$SCRATCH/moatd.json" -addr "127.0.0.1:$PORT" -json-log=false \
   >"$SCRATCH/moatd.log" 2>&1 &
 MOATD_PID=$!
-info "the demo image has no images.lock, so it starts moatd with -image-verify off"
+info "the images have no images.lock, so the config sets image_verify=off"
 
 ready=""
 for _ in $(seq 1 40); do
@@ -124,20 +147,25 @@ sb_create() {
   printf '%s' "$id"
 }
 
-# sb_exec <id> <arg>...  -> prints guest stdout+stderr, returns the guest exit code
-sb_exec() {
-  local id=$1; shift
-  local argv resp code
-  argv=$(printf '%s\n' "$@" | jq -R . | jq -s -c .)
+# sb_exec_body <id> <json-body>  -> prints guest stdout+stderr, returns exit code
+sb_exec_body() {
+  local id=$1 body=$2 resp code
   resp="$SCRATCH/exec.$RANDOM.ndjson"
-  api -X POST -H 'Content-Type: application/json' \
-    -d "{\"argv\":$argv,\"timeout_ms\":120000}" \
+  api -X POST -H 'Content-Type: application/json' -d "$body" \
     "$BASE/v1/sandboxes/$id/exec" >"$resp"
   while IFS= read -r d; do [ -n "$d" ] && printf '%s' "$d" | base64 -d; done \
     < <(jq -r 'select(.stream=="stdout" or .stream=="stderr") | .data' "$resp")
   code=$(jq -r 'select(.stream=="exit") | .code' "$resp")
   rm -f "$resp"
   return "${code:-1}"
+}
+
+# sb_exec <id> <arg>...  -> prints guest stdout+stderr, returns the guest exit code
+sb_exec() {
+  local id=$1; shift
+  local argv
+  argv=$(printf '%s\n' "$@" | jq -R . | jq -s -c .)
+  sb_exec_body "$id" "{\"argv\":$argv,\"timeout_ms\":120000}"
 }
 
 # ----- create a sandbox ----------------------------------------------------
@@ -229,6 +257,34 @@ else
 fi
 curl -sS -X DELETE -H "$AUTH" "$BASE/v1/sandboxes/$C" >/dev/null
 SANDBOXES=("${SANDBOXES[@]/$C/}")
+
+# ----- imported container template ---------------------------------
+hdr "A container image, imported as a template"
+info "the demo-import template came from '$IMPORT_TAG' at startup:"
+./bin/moat template show demo-import --data "$SCRATCH" --config "$SCRATCH/moatd.json" 2>/dev/null \
+  | sed 's/^/   | /' || true
+D=$(sb_create '{"template":"demo-import","ttl_seconds":300}')
+info "sandbox $D on template demo-import"
+
+# no argv -> moatd runs the image's ENTRYPOINT + CMD
+dflt=$(sb_exec_body "$D" '{}') || true
+[ "$dflt" = "ready" ] && pass "an exec with no argv runs the image default (ENTRYPOINT + CMD)" \
+  || fail "default_argv did not run: got '$dflt'"
+
+# the image ENV and WORKDIR apply to every exec
+applied=$(sb_exec "$D" sh -c 'printf "%s %s/%s" "$(pwd)" "$APP_ENV" "$LOG_LEVEL"') || true
+[ "$applied" = "/workspace production/info" ] \
+  && pass "the image WORKDIR and ENV apply as exec defaults ($applied)" \
+  || fail "image defaults not applied: got '$applied'"
+
+# a request value always wins over the template default
+override=$(sb_exec_body "$D" '{"argv":["sh","-c","printf \"%s %s\" \"$(pwd)\" \"$APP_ENV\""],"dir":"/tmp","env":{"APP_ENV":"staging"}}') || true
+[ "$override" = "/tmp staging" ] \
+  && pass "a request dir and env override the template ($override)" \
+  || fail "request did not win: got '$override'"
+
+curl -sS -X DELETE -H "$AUTH" "$BASE/v1/sandboxes/$D" >/dev/null
+SANDBOXES=("${SANDBOXES[@]/$D/}")
 
 # ----- network + caps (root only) ------------------------------------
 hdr "Network isolation and resource caps"
