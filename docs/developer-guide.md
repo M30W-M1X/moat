@@ -768,12 +768,14 @@ client.
 
 ### 7.5 The demo — `demo/run.sh`
 
-`demo/run.sh` is a scripted, self-checking walk-through: it starts `moatd`,
-creates sandboxes over the HTTP API with the `dev-shell` template, runs a
-real Go build in one, copies the binary out, and checks each isolation
-property (own kernel, private rootfs, secret firewall, hash-chained audit).
-It needs `/dev/kvm`, `curl`, `jq`, and `make demo-image` once. It exits
-non-zero on the first failed check. `demo/README.md` has the step table.
+`demo/run.sh` is a scripted, self-checking walk-through: it starts `moatd`
+with a template store (`dev-shell`, `rhel9`, and an imported container),
+creates sandboxes over the HTTP API, runs a real Go build in one, copies
+the binary out, runs a RHEL 9 sandbox, and checks each isolation property
+(own kernel, private rootfs, secret firewall, hash-chained audit,
+imported-image exec defaults). It needs `/dev/kvm`, `curl`, `jq`, and
+`podman`. It exits non-zero on the first failed check. `demo/README.md`
+has the step table.
 
 ---
 

@@ -1036,13 +1036,14 @@ curl -s $H -XDELETE localhost:8080/v1/sandboxes/$id</code></pre>
       <code>GetFile</code>, <code>Audit</code>, <code>Report</code>.</p>
 
       <h3>The demo — <code>demo/run.sh</code></h3>
-      <p>A scripted, self-checking walk-through: it starts <code>moatd</code>, creates
-      sandboxes over the HTTP API with the <code>dev-shell</code> template, runs a real Go
-      build in one, copies the binary out, and checks each isolation property (own
-      kernel, private rootfs, secret firewall, hash-chained audit). Needs
-      <code>/dev/kvm</code>, <code>curl</code>, <code>jq</code>, and <code>make demo-image</code>
-      once. It exits non-zero on the first failed check. Step table in
-      <code>demo/README.md</code>.</p>
+      <p>A scripted, self-checking walk-through: it starts <code>moatd</code> with a
+      template store (<code>dev-shell</code>, <code>rhel9</code>, and an imported
+      container), creates sandboxes over the HTTP API, runs a real Go build in one,
+      copies the binary out, runs a RHEL 9 sandbox, and checks each isolation property
+      (own kernel, private rootfs, secret firewall, hash-chained audit,
+      imported-image exec defaults). Needs <code>/dev/kvm</code>, <code>curl</code>,
+      <code>jq</code>, and <code>podman</code>. It exits non-zero on the first failed
+      check. Step table in <code>demo/README.md</code>.</p>
     </section>
 
     <!-- ========================================================= 14 -->

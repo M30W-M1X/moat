@@ -53,6 +53,15 @@ if [ ! -f "$IMG" ]; then
   info "building the dev-shell image (make demo-image) ..."
   make demo-image >/dev/null
 fi
+RHEL9_IMG="build/artifacts/rhel9-rootfs.ext4"
+HAVE_RHEL9=""
+if [ -f "$RHEL9_IMG" ]; then
+  HAVE_RHEL9=1
+elif make template-image NAME=rhel9 >/dev/null 2>&1; then
+  HAVE_RHEL9=1
+else
+  info "rhel9 image unavailable (Red Hat registry unreachable?) — that step will be skipped"
+fi
 info "building moatd and moat ..."
 make daemon build agent >/dev/null
 pass "host ready — $(uname -sr), rootfs $(du -h "$IMG" | cut -f1)"
@@ -111,6 +120,13 @@ cat >"$SCRATCH/moatd.json" <<EOF
   "tokens": [ { "id": "demo", "secret": "$SECRET" } ]
 }
 EOF
+
+# Add the rhel9 template to the store when its image is built.
+if [ -n "$HAVE_RHEL9" ]; then
+  jq --arg k "$ROOT/build/artifacts/vmlinux" --arg r "$ROOT/$RHEL9_IMG" \
+    '.templates += [{"name":"rhel9","kernel":$k,"rootfs":$r,"vcpus":2,"mem_mib":512}]' \
+    "$SCRATCH/moatd.json" >"$SCRATCH/moatd.json.tmp" && mv "$SCRATCH/moatd.json.tmp" "$SCRATCH/moatd.json"
+fi
 
 # Import the image and append it to the config as the "demo-import" template.
 info "moat template import $IMPORT_TAG --name demo-import"
@@ -257,6 +273,29 @@ else
 fi
 curl -sS -X DELETE -H "$AUTH" "$BASE/v1/sandboxes/$C" >/dev/null
 SANDBOXES=("${SANDBOXES[@]/$C/}")
+
+# ----- the template store ------------------------------------------
+hdr "The template store"
+info "moatd offers these templates (from its -config file):"
+jq -r '.templates[] | "   | " + .name + "  " + (.source // "built from build/templates/")' "$SCRATCH/moatd.json"
+if [ -n "$HAVE_RHEL9" ]; then
+  R=$(sb_create '{"template":"rhel9","ttl_seconds":300}')
+  info "sandbox $R on template rhel9"
+  rel=$(sb_exec "$R" cat /etc/redhat-release) || true
+  case "$rel" in
+    "Red Hat Enterprise Linux release 9"*)
+      pass "the rhel9 sandbox reports: $rel" ;;
+    *)
+      fail "rhel9 sandbox did not report RHEL 9: '$rel'" ;;
+  esac
+  tools=$(sb_exec "$R" sh -c 'command -v dnf >/dev/null && echo "dnf $(dnf --version 2>/dev/null | head -1)"; python3 --version 2>&1') || true
+  printf '%s\n' "$tools" | sed 's/^/   | /'
+  info "the default template (dev-shell) is Alpine / musl — same kernel, same API, different distro"
+  curl -sS -X DELETE -H "$AUTH" "$BASE/v1/sandboxes/$R" >/dev/null
+  SANDBOXES=("${SANDBOXES[@]/$R/}")
+else
+  skip "rhel9 sandbox: image not built (run: make template-image NAME=rhel9)"
+fi
 
 # ----- imported container template ---------------------------------
 hdr "A container image, imported as a template"

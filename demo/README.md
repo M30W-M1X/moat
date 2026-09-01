@@ -26,6 +26,7 @@ itself. It exits non-zero on the first failed check.
 | Ingress secret firewall | a credential in an upload is blocked | `PUT` returns `409`, the file is absent in the guest |
 | One microVM per task | each sandbox has a private rootfs | sandbox B cannot read sandbox A's file |
 | Sandboxes are ephemeral | a destroyed sandbox leaves nothing | a fresh sandbox has an empty `/work` |
+| The template store | pick a userland per sandbox | a `rhel9` sandbox reports `Red Hat Enterprise Linux release 9`, has `dnf` + `python3`; the default is Alpine/musl — same kernel, same API |
 | Import a container as a template | `moat template import` builds a rootfs from an OCI image | the image `ENTRYPOINT`/`CMD` runs on an argv-less exec; `WORKDIR` and `ENV` apply; a request value wins |
 | Network isolation and caps | netns + nftables + cgroups | reported; run only as root |
 | The audit trail | every crossing is one hash-chained record | `moat audit verify` passes |
@@ -41,10 +42,12 @@ binary out. Swap in your own project to demo a different workload.
 
 ## Under the hood
 
-At startup the script builds a small image, runs `moat template import` to
-append a `demo-import` template to a generated `moatd.json`, and starts
-`moatd -config`. The dev-shell steps use the default template; step 10 uses
-`demo-import`.
+At startup the script builds the `dev-shell` and `rhel9` template images,
+runs `moat template import` to append a `demo-import` template to a
+generated `moatd.json`, and starts `moatd -config` with all three. The
+dev-shell steps use the default template; "The template store" step runs a
+`rhel9` sandbox; the last template step uses `demo-import`. The `rhel9`
+step skips itself when the Red Hat registry is unreachable.
 
 The script uses only `curl` against the documented API (`docs/api.md`), plus
 `moat template import` / `moat template show`. Read it top to bottom for a
