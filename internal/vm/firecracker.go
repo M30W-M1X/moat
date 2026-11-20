@@ -58,9 +58,18 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 		DriveID:      firecracker.String("rootfs"),
 		PathOnHost:   firecracker.String(m.RootFSPath),
 		IsRootDevice: firecracker.Bool(true),
-		IsReadOnly:   firecracker.Bool(false),
+		IsReadOnly:   firecracker.Bool(m.ReadOnlyRoot),
 		RateLimiter:  bandwidthLimiter(m.DiskBWBytesPerSec),
 	}}
+	if m.ScratchPath != "" {
+		cfg.Drives = append(cfg.Drives, models.Drive{
+			DriveID:      firecracker.String("scratch"),
+			PathOnHost:   firecracker.String(m.ScratchPath),
+			IsRootDevice: firecracker.Bool(false),
+			IsReadOnly:   firecracker.Bool(false),
+			RateLimiter:  bandwidthLimiter(m.DiskBWBytesPerSec),
+		})
+	}
 	if m.Net != nil && m.NetBWBytesPerSec > 0 {
 		cfg.NetworkInterfaces[0].InRateLimiter = bandwidthLimiter(m.NetBWBytesPerSec)
 		cfg.NetworkInterfaces[0].OutRateLimiter = bandwidthLimiter(m.NetBWBytesPerSec)
@@ -72,6 +81,9 @@ func Boot(ctx context.Context, m config.Machine, log *logrus.Logger) (*Instance,
 	}
 
 	kernelArgs := m.KernelArgs
+	if m.ReadOnlyRoot && m.ScratchPath != "" {
+		kernelArgs += " moat.overlay=1"
+	}
 	if m.Net != nil {
 		kernelArgs += " " + m.Net.KernelIPArg()
 	}

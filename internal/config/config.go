@@ -34,6 +34,13 @@ type Machine struct {
 	// RootFSPath is a raw ext4 image. Firecracker attaches it as the root block
 	// device.
 	RootFSPath string
+	// ReadOnlyRoot attaches the root block device read-only. Pair it with
+	// ScratchPath so the guest agent mounts a writable overlayfs on startup.
+	ReadOnlyRoot bool
+	// ScratchPath is an optional per-VM writable ext4 image attached as
+	// /dev/vdb. The guest agent mounts it as the overlayfs upper layer when
+	// ReadOnlyRoot is true.
+	ScratchPath string
 	// KernelArgs is the guest kernel command line.
 	KernelArgs string
 

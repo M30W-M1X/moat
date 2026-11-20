@@ -13,8 +13,10 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 	"syscall"
 
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 
 	agentv1 "github.com/M30W-M1X/moat/gen/agent/v1"
@@ -26,10 +28,23 @@ const vsockPort = 5252
 
 func main() {
 	isPID1 := os.Getpid() == 1
+	if !isPID1 && len(os.Args) == 3 && os.Args[1] == "--set-time" {
+		if err := setClockRealtime(os.Args[2]); err != nil {
+			fmt.Fprintf(os.Stderr, "guest-agent: set time: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	logf("guest-agent starting (pid=%d, pid1=%v, goarch=%s)", os.Getpid(), isPID1, runtime.GOARCH)
 
 	if isPID1 {
 		mountPseudoFS()
+		if hasOverlayArg("/proc/cmdline") {
+			if err := mountOverlayRoot(); err != nil {
+				logf("warn: mount overlay root: %v", err)
+			}
+		}
 		ensureBaseEnv()
 		ensureResolvConf()
 		startZombieReaper()
@@ -122,4 +137,15 @@ func haltForever(reason string) {
 
 func logf(format string, args ...any) {
 	fmt.Fprintf(os.Stdout, "guest-agent: "+format+"\n", args...)
+}
+
+// setClockRealtime updates CLOCK_REALTIME to the given Unix nanoseconds string.
+// The host calls this after a snapshot restore so TLS certificate checks pass.
+func setClockRealtime(unixNanoStr string) error {
+	ns, err := strconv.ParseInt(unixNanoStr, 10, 64)
+	if err != nil || ns <= 0 {
+		return fmt.Errorf("invalid unix nano timestamp %q", unixNanoStr)
+	}
+	ts := unix.NsecToTimespec(ns)
+	return unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
 }

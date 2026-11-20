@@ -3,6 +3,7 @@ package vm
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -43,5 +44,22 @@ func TestCopyRootFS(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("copied bytes differ: got %d bytes, want %d", len(got), len(want))
+	}
+}
+
+func TestCreateScratchExt4(t *testing.T) {
+	if _, err := exec.LookPath("mkfs.ext4"); err != nil {
+		t.Skip("mkfs.ext4 not on PATH")
+	}
+	p := filepath.Join(t.TempDir(), "scratch.ext4")
+	if err := CreateScratchExt4(p, 16); err != nil {
+		t.Fatalf("CreateScratchExt4: %v", err)
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != 16<<20 {
+		t.Fatalf("size = %d, want %d", fi.Size(), 16<<20)
 	}
 }

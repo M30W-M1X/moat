@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"google.golang.org/grpc"
@@ -55,6 +56,24 @@ func (c *Client) Close() error { return c.conn.Close() }
 // Info returns basic facts about the guest and the agent.
 func (c *Client) Info(ctx context.Context) (*agentv1.InfoResponse, error) {
 	return c.rpc.Info(ctx, &agentv1.InfoRequest{})
+}
+
+// SyncClock sets the guest wall clock to the current host time. Call it right
+// after a snapshot restore so TLS certificate checks do not fail on a skewed
+// clock.
+func (c *Client) SyncClock(ctx context.Context) error {
+	now := strconv.FormatInt(time.Now().UnixNano(), 10)
+	res, err := c.Exec(ctx, ExecOptions{
+		Argv:    []string{"/sbin/guest-agent", "--set-time", now},
+		Timeout: 2 * time.Second,
+	}, nil, nil)
+	if err != nil {
+		return fmt.Errorf("sync guest clock: %w", err)
+	}
+	if res.Code != 0 {
+		return fmt.Errorf("sync guest clock exited with code %d", res.Code)
+	}
+	return nil
 }
 
 // WaitReady calls Info again and again until the agent answers or ctx ends.

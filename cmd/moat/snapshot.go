@@ -108,6 +108,9 @@ func writeDiffSnapshot(ctx context.Context, m config.Machine, dir, cmd string, l
 		stopMachine(inst, cli, log)
 		return 1
 	}
+	if err := cli.SyncClock(rc); err != nil {
+		log.WithError(err).Warn("guest clock resync failed")
+	}
 	cancel()
 
 	res, err := cli.Exec(ctx, agentclient.ExecOptions{Argv: []string{"sh", "-c", cmd}}, os.Stdout, os.Stderr)
@@ -188,6 +191,9 @@ func runRestore(args []string) int {
 	if err := cli.WaitReady(rc); err != nil {
 		log.WithError(err).Error("agent not ready after restore")
 		return 1
+	}
+	if err := cli.SyncClock(rc); err != nil {
+		log.WithError(err).Warn("guest clock resync failed")
 	}
 	log.WithField("elapsed", time.Since(t0).Round(time.Millisecond)).Info("restored, agent ready")
 

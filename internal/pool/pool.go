@@ -34,6 +34,16 @@ type Options struct {
 	// IdleTimeout force-releases a lease when the caller has not called
 	// Lease.Touch for this long. 0 means no limit.
 	IdleTimeout time.Duration
+	// SnapshotDir, when set, starts pool members from a snapshot in this
+	// directory instead of a cold start, and resyncs the guest clock.
+	SnapshotDir string
+	// UseUFFD selects the userfaultfd memory backend when SnapshotDir is set.
+	UseUFFD bool
+	// UFFDBin sets the moat-uffd binary path. Empty searches PATH.
+	UFFDBin string
+	// ScratchMiB sets the ephemeral scratch disk size in MiB when base sets
+	// ReadOnlyRoot. 0 defaults to 512 MiB.
+	ScratchMiB int64
 }
 
 // Pool holds warm, running microVMs and reaps leases that outlive their limits.
@@ -255,7 +265,16 @@ func (p *Pool) grow(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	inst, err := vm.Boot(ctx, m, p.log)
+	var inst *vm.Instance
+	if p.opt.SnapshotDir != "" {
+		if p.opt.UseUFFD {
+			inst, err = vm.RestoreUFFD(ctx, m, p.opt.SnapshotDir, p.opt.UFFDBin, p.log)
+		} else {
+			inst, err = vm.Restore(ctx, m, p.opt.SnapshotDir, p.log)
+		}
+	} else {
+		inst, err = vm.Boot(ctx, m, p.log)
+	}
 	if err != nil {
 		_ = os.RemoveAll(m.RunDir)
 		return err
@@ -269,6 +288,11 @@ func (p *Pool) grow(ctx context.Context) error {
 	}
 	readyCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	err = cli.WaitReady(readyCtx)
+	if err == nil && p.opt.SnapshotDir != "" {
+		if serr := cli.SyncClock(readyCtx); serr != nil {
+			p.log.WithError(serr).Warn("guest clock resync failed")
+		}
+	}
 	cancel()
 	if err != nil {
 		cli.Close()
@@ -319,10 +343,24 @@ func (p *Pool) member() (config.Machine, error) {
 	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
 		return config.Machine{}, err
 	}
-	rootfs := filepath.Join(m.RunDir, "rootfs.ext4")
-	if err := vm.CopyRootFS(p.base.RootFSPath, rootfs); err != nil {
-		return config.Machine{}, fmt.Errorf("copy rootfs: %w", err)
+	if p.base.ReadOnlyRoot {
+		m.ReadOnlyRoot = true
+		m.RootFSPath = p.base.RootFSPath
+		scratch := filepath.Join(m.RunDir, "scratch.ext4")
+		if err := vm.CreateScratchExt4(scratch, p.opt.ScratchMiB); err != nil {
+			_ = os.RemoveAll(m.RunDir)
+			return config.Machine{}, err
+		}
+		m.ScratchPath = scratch
+	} else if p.opt.SnapshotDir == "" {
+		rootfs := filepath.Join(m.RunDir, "rootfs.ext4")
+		if err := vm.CopyRootFS(p.base.RootFSPath, rootfs); err != nil {
+			_ = os.RemoveAll(m.RunDir)
+			return config.Machine{}, fmt.Errorf("copy rootfs: %w", err)
+		}
+		m.RootFSPath = rootfs
+	} else {
+		m.RootFSPath = p.base.RootFSPath
 	}
-	m.RootFSPath = rootfs
 	return m, nil
 }
