@@ -260,3 +260,14 @@ func TestBuildTLSConfigValidation(t *testing.T) {
 		t.Fatalf("tls without client CA = (%+v, %v)", cfg, err)
 	}
 }
+
+func TestExampleConfigLoads(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "moatd.example.json")
+	lc, err := loadConfigFile(path, "/k", "/r")
+	if err != nil {
+		t.Fatalf("loadConfigFile(%s): %v", path, err)
+	}
+	if len(lc.Templates) == 0 || len(lc.Tokens) == 0 {
+		t.Fatalf("example config missing templates or tokens")
+	}
+}

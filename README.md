@@ -234,4 +234,4 @@ Exit code: the guest process exit code; `124` on timeout; `128+signal` on a sign
 
 ## Not yet (see roadmap in `CLAUDE.md`)
 
-a snapshot-templated pool (P4), a gRPC surface (P5).
+a gRPC northbound surface (P5).

@@ -99,5 +99,9 @@ SBOM still match, but the ext4 byte layout can differ.
 
 ## Uninstall
 
-Remove `moat*` from the binary directory, the data directory, `moatd.json`, and
-the systemd unit. A `moat uninstall` command is planned.
+```sh
+moat uninstall                # removes system install (/usr/local/bin, /var/lib/moat, /etc/moat, unit)
+moat uninstall --user         # removes user install (~/.local/bin, ~/.local/share/moat, ~/.config/moat)
+moat uninstall --keep-data    # keeps images and audit logs
+moat uninstall --dry-run      # prints the removal plan without changing files
+```

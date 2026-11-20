@@ -51,6 +51,8 @@ func main() {
 		os.Exit(runTemplate(os.Args[2:]))
 	case "audit":
 		os.Exit(runAudit(os.Args[2:]))
+	case "uninstall":
+		os.Exit(runUninstall(os.Args[2:]))
 	case "version", "-v", "--version":
 		fmt.Println("moat", version)
 		os.Exit(0)
@@ -76,7 +78,8 @@ usage:
   moat reap     [-run-dir DIR]
   moat doctor   check that this host can run Moat
   moat template list   show the rootfs templates a sandbox can use
-  moat audit    {tail|query|report|verify}  read the daemon audit log
+  moat audit     {tail|query|report|verify}  read the daemon audit log
+  moat uninstall [-user] [-keep-data] [-dry-run]  remove installed Moat files
   moat version   print the build version
 
 demo flags:

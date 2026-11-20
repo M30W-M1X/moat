@@ -9,11 +9,14 @@ command execution, and file transfer.
 MOAT_TOKENS="ci:s3cr3t,dev:hunter2" moatd -addr :8080 -pool 4
 ```
 
-Flags: `-addr`, `-config FILE`, `-tokens id:secret,...` (or `$MOAT_TOKENS`),
+Flags: `-addr`, `-socket`, `-tls-cert`, `-tls-key`, `-tls-client-ca`,
+`-config FILE`, `-tokens id:secret,...` (or `$MOAT_TOKENS`),
 `-pool N`, `-global-max`, `-token-max`, `-default-ttl`, `-max-ttl`, `-kernel`,
 `-rootfs`, `-vcpus`, `-mem`, `-cpu-max`, `-mem-max`, `-pids-max`, `-disk-bw`,
-`-net-bw`, `-net-pool`, `-uplink`, `-egress-addr`, `-egress-allow`,
-`-egress-deny`, `-egress-transparent`, `-secret-scan` (default on),
+`-net-bw`, `-jail`, `-jail-uid`, `-jail-gid`, `-net-pool`, `-uplink`,
+`-egress-addr`, `-egress-allow`, `-egress-deny`, `-egress-transparent`,
+`-strict-egress`, `-audit-dir`, `-audit-webhook`, `-image-verify`,
+`-cosign-identity`, `-cosign-issuer`, `-secret-scan` (default on),
 `-secret-redact`, `-json-log`.
 
 ## Config file
@@ -39,7 +42,21 @@ non-zero value in the file's `defaults` block overrides the matching flag. See
 A token with an empty `templates` list may use any template. `max_concurrent`
 `0` falls back to `token_max`; `max_ttl` empty falls back to `max_ttl`. Add
 `"allow_secret_override": true` to a token to let its requests carry
-secret-flagged content (see below).
+secret-flagged content (see below). Add `"egress_allow"` and `"egress_deny"`
+lists on a token to scope outbound hosts per tenant; global deny rules always
+win over per-token allow rules.
+
+Per-template fields also support `"pool"` (per-template warm pool size),
+`"snapshot_dir"` and `"use_uffd"` (snapshot-templated warm pools), and
+`"read_only_root": true` with `"scratch_mib"` (shared read-only rootfs with a
+sparse ext4 overlayfs upper layer).
+
+Top-level transport fields `"socket"`, `"tls_cert"`, `"tls_key"`, and
+`"tls_client_ca"` enable Unix domain socket listening, TLS 1.2+, and mTLS.
+`defaults.jail`, `defaults.jail_uid`, `defaults.jail_gid` run Firecracker under
+the jailer, and `defaults.strict_egress` sets the sandbox nftables forward
+policy to drop. `audit.webhook_url` (or `-audit-webhook`) forwards each audit
+event asynchronously via JSON POST.
 
 ## Secret firewall
 

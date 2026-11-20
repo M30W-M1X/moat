@@ -3,9 +3,14 @@
 #
 #   systemctl enable --now moatd
 #
-# The daemon needs /dev/kvm. For networked sandboxes (-net) also add:
+# The daemon needs /dev/kvm. For networked sandboxes (-net) or the Firecracker
+# jailer (-jail / defaults.jail), also grant network/sys admin capabilities:
 #   AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN
 #   CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN
+#
+# For local-only access without TCP, set "socket": "/run/moat/moatd.sock" in
+# /etc/moat/moatd.json and pass -addr "" on ExecStart. For remote access, set
+# "tls_cert", "tls_key", and optionally "tls_client_ca" (mTLS) in moatd.json.
 
 [Unit]
 Description=Moat microVM sandbox daemon

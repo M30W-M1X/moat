@@ -36,7 +36,7 @@ else
 	echo "  images not built — the installer will fetch them separately"
 fi
 
-for f in images.lock sbom.cdx.json; do
+for f in images.lock images.lock.sig sbom.cdx.json; do
 	if [ -f "$ROOT/build/artifacts/$f" ]; then
 		cp "$ROOT/build/artifacts/$f" "$STAGE/share/$f"
 	fi
@@ -45,11 +45,32 @@ if [ ! -f "$STAGE/share/images.lock" ] && [ -f "$ROOT/images.lock" ]; then
 	cp "$ROOT/images.lock" "$STAGE/share/images.lock"
 fi
 
+if [ "${SIGN:-0}" = "1" ]; then
+	command -v cosign >/dev/null 2>&1 || { echo "SIGN=1 requires cosign on PATH" >&2; exit 1; }
+	if [ -f "$STAGE/share/images.lock" ] && [ ! -f "$STAGE/share/images.lock.sig" ]; then
+		echo "  sign images.lock"
+		cosign sign-blob --yes \
+			--output-signature "$STAGE/share/images.lock.sig" \
+			--bundle "$STAGE/share/images.lock.bundle" \
+			"$STAGE/share/images.lock"
+	fi
+fi
+
 echo "  tar + checksums"
 tar -C "$DIST" -czf "$DIST/moat_${VERSION}_${OS}_${ARCH}.tar.gz" "$(basename "$STAGE")"
 ( cd "$DIST" && sha256sum "moat_${VERSION}_${OS}_${ARCH}.tar.gz" > checksums.txt )
 
+if [ "${SIGN:-0}" = "1" ]; then
+	echo "  sign checksums.txt"
+	cosign sign-blob --yes \
+		--output-signature "$DIST/checksums.txt.sig" \
+		--bundle "$DIST/checksums.txt.bundle" \
+		"$DIST/checksums.txt"
+fi
+
 echo "done:"
 ls -la "$DIST"
-echo
-echo "sign checksums.txt with:  cosign sign-blob --yes --output-signature dist/checksums.txt.sig dist/checksums.txt"
+if [ "${SIGN:-0}" != "1" ]; then
+	echo
+	echo "sign with:  SIGN=1 VERSION=$VERSION build/release.sh"
+fi

@@ -21,7 +21,9 @@ Start `moatd` first, then point an MCP client at `moat-mcp`:
 }
 ```
 
-`-addr URL` and `-token id:secret` work instead of the environment.
+`-addr URL`, `-socket PATH`, and `-token id:secret` work instead of the
+environment (`MOAT_ADDR`, `MOAT_SOCKET`, `MOAT_TOKEN`). `MOAT_ADDR` also
+accepts `unix:///path/to/moatd.sock`.
 
 ## Tools
 

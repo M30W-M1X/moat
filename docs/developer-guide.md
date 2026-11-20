@@ -136,14 +136,7 @@ rejected.
 
 ### 3.4 Known gaps
 
-- **Cold-boot rootfs is read-write.** `internal/vm.Boot` attaches the root
-  drive with `IsReadOnly: false`, and `coldBoot` in `internal/server` points
-  the machine straight at the template `rootfs.ext4`. Only the warm pool
-  copies the rootfs per member. A non-pooled sandbox therefore writes into
-  the shared template image for the life of that boot. Gotcha `G-19`. The fix
-  (attach the root drive read-only, or copy per sandbox) is a planned
-  VM-driver change.
-- **The jailer path (`-jail`) and real-uplink NAT (`-uplink <iface>`) need a
+- **The jailer path (`-jail` / `defaults.jail`) and real-uplink NAT (`-uplink <iface>`) need a
   real root host** to exercise. They are coded and tested on a root box, not
   in the rootless dev flow.
 - **UFFD restore needs `/dev/userfaultfd`** or
@@ -655,9 +648,12 @@ the command writes `<data>/<name>.template.json` and prints the
   and checks isolation from inside the guest. Runs unprivileged inside
   `unshare --user --map-root-user --mount --net`.
 
-A cold boot attaches the rootfs read-write, so `coldBoot` (and the warm
-pool) give every sandbox a **private sparse copy** of the template rootfs in
-its run directory, removed on destroy. Sandboxes never share one ext4 file
+Every sandbox gets isolated writable storage: by default `coldBoot`, the warm
+pool, and the one-shot CLI commands (`moat run`, `moat demo`, `moat snapshot`)
+create a **private sparse/reflink copy** of the template rootfs in the VM run
+directory and delete it on stop. When a template sets `read_only_root: true`,
+Firecracker attaches the shared template read-only and pairs it with a sparse
+per-VM ext4 scratch disk mounted as an overlayfs upper layer in `guest-agent`
 (Gotcha `G-19`).
 
 ### 6.4 Regenerating protobuf
@@ -955,17 +951,10 @@ namespace path, or the audit writer.
 
 ## 11. Limitations and roadmap
 
-- **Cold-boot rootfs is read-write** (section 3.4, Gotcha `G-19`). Planned
-  fix: attach the root drive read-only, or copy per sandbox.
-- **A snapshot-templated warm pool** is not built. The pool cold-boots its
-  members.
 - **A gRPC northbound surface** alongside the REST API is planned.
 - **A downloadable template registry** (`moat template pull python`) is a
   deferred CDN job. `moat template import <ref>` already covers the common
   case — any registry image or archive becomes a template (§5.8).
-- **`make images-verify` in CI** — the repo has no CI yet. The target is the
-  exact check a CI job would run.
-- **Signing `images.lock` in an automated release** is manual today.
 - **GPU workloads** are out of scope for the Firecracker path (`DD-11`). A
   parallel gVisor or Cloud Hypervisor backend would keep the VM-driver
   interface abstract.

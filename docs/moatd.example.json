@@ -1,5 +1,6 @@
 {
   "image_verify": "enforce",
+  "socket": "/run/moat/moatd.sock",
   "audit": {
     "dir": "/var/lib/moat/audit",
     "max_file_mb": 128,
@@ -13,7 +14,10 @@
       "mem_mib": 256,
       "cpu_max": 0.5,
       "mem_max_mib": 512,
-      "pids_max": 256
+      "pids_max": 256,
+      "pool": 4,
+      "read_only_root": true,
+      "scratch_mib": 512
     },
     {
       "name": "build",
@@ -51,7 +55,8 @@
       "workdir": "/",
       "default_argv": ["python3"],
       "vcpus": 2,
-      "mem_mib": 1024
+      "mem_mib": 1024,
+      "pool": 2
     }
   ],
   "tokens": [
@@ -60,7 +65,8 @@
       "secret": "replace-me-ci",
       "templates": ["default", "build"],
       "max_concurrent": 8,
-      "max_ttl": "30m"
+      "max_ttl": "30m",
+      "egress_allow": ["pypi.org", "files.pythonhosted.org", "github.com"]
     },
     {
       "id": "demo",
@@ -82,6 +88,7 @@
     "token_max": 16,
     "default_ttl": "15m",
     "max_ttl": "1h",
-    "pool": 4
+    "pool": 4,
+    "strict_egress": true
   }
 }
