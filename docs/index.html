@@ -11,77 +11,106 @@
 <title>Moat — hardware-isolated sandboxes for AI agents</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400&family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap">
 <style>
   html,body{margin:0}
   img{max-width:100%}
   [hidden]{display:none!important}
 
-  /* ============ TOKENS — light: process-black ink on cool drafting linen ============ */
+  /* ============ PIXEL CASTLE TOKENS — Day Kingdom (Light) ============ */
   :root{
     color-scheme: light dark;
-    --linen:#e8e5d9;
-    --linen-2:#efece2;
-    --linen-sink:#ddd9ca;
-    --ink:#14160f;
-    --ink-2:#3b3f36;
-    --ink-3:#6a6e60;
-    --rule:#b7b4a1;
-    --rule-2:#9a9884;
-    --alarm:#c8401d;
-    --alarm-ink:#9c2f14;
-    --alarm-wash:#f0ddd0;
-    --water:#1f6f7d;
-    --water-ink:#175059;
-    --water-wash:#d3dedc;
-    --stamp:#b23a17;
+    --linen:#f3ebd6;
+    --linen-2:#fffaf0;
+    --linen-sink:#e3d6b8;
+    --ink:#1b1829;
+    --ink-2:#3b3552;
+    --ink-3:#6b6285;
+    --rule:#1b1829;
+    --rule-2:#564e73;
+    --alarm:#e54826;
+    --alarm-ink:#b32e12;
+    --alarm-wash:#ffe3d8;
+    --water:#2294d6;
+    --water-ink:#115f91;
+    --water-wash:#d6f1ff;
+    --gold:#f2b629;
+    --gold-wash:#fff1c4;
+    --grass:#4ea845;
+    --grass-dark:#367d31;
+    --stone:#c2c7d4;
+    --stone-dark:#8d94a8;
+    --sky-top:#9cd8ff;
+    --sky-bot:#d7f1ff;
+    --stamp:#d9381e;
 
-    --lift:0 1px 1px rgba(20,22,15,.05), 0 10px 26px -16px rgba(20,22,15,.28);
+    --px-shadow:4px 4px 0 var(--ink);
+    --px-shadow-sm:3px 3px 0 var(--ink);
     --maxw:1180px;
-    --gutter:clamp(18px, 4.6vw, 60px);
-    --datum:56px;
+    --gutter:clamp(16px, 4vw, 48px);
 
-    --f-display:"Spectral", "Iowan Old Style", Georgia, "Times New Roman", serif;
-    --f-text:"B612", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --f-pixel:"Press Start 2P", monospace;
+    --f-ui:"Silkscreen", monospace;
+    --f-text:"B612", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     --f-mono:"B612 Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
+
+  /* ============ Night Castle / Torchlit Keep (Dark) ============ */
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --linen:#0e2b3f;
-      --linen-2:#123549;
-      --linen-sink:#0a2434;
-      --ink:#e7eff4;
-      --ink-2:#aec6d3;
-      --ink-3:#7593a3;
-      --rule:#2f5a72;
-      --rule-2:#3f7089;
-      --alarm:#ff7a4d;
-      --alarm-ink:#ff9670;
-      --alarm-wash:#122c3b;
-      --water:#63ccd6;
-      --water-ink:#8fdae1;
-      --water-wash:#0c3540;
-      --stamp:#ff835a;
-      --lift:0 1px 1px rgba(0,0,0,.4), 0 16px 40px -22px rgba(0,0,0,.7);
+      --linen:#141226;
+      --linen-2:#1f1c38;
+      --linen-sink:#100e20;
+      --ink:#f5eedc;
+      --ink-2:#c7c1de;
+      --ink-3:#8f87b0;
+      --rule:#080712;
+      --rule-2:#4c4475;
+      --alarm:#ff6b3d;
+      --alarm-ink:#ff9470;
+      --alarm-wash:#3b1e20;
+      --water:#3cc5ff;
+      --water-ink:#8be2ff;
+      --water-wash:#102b45;
+      --gold:#ffd15c;
+      --gold-wash:#3b2f14;
+      --grass:#3e8c45;
+      --grass-dark:#26592d;
+      --stone:#6a708c;
+      --stone-dark:#464a66;
+      --sky-top:#0d102b;
+      --sky-bot:#1f2454;
+      --stamp:#ff6b3d;
+      --px-shadow:4px 4px 0 #070610;
+      --px-shadow-sm:3px 3px 0 #070610;
     }
   }
   :root[data-theme="dark"]{
-    --linen:#0e2b3f;
-    --linen-2:#123549;
-    --linen-sink:#0a2434;
-    --ink:#e7eff4;
-    --ink-2:#aec6d3;
-    --ink-3:#7593a3;
-    --rule:#2f5a72;
-    --rule-2:#3f7089;
-    --alarm:#ff7a4d;
-    --alarm-ink:#ff9670;
-    --alarm-wash:#122c3b;
-    --water:#63ccd6;
-    --water-ink:#8fdae1;
-    --water-wash:#0c3540;
-    --stamp:#ff835a;
-    --lift:0 1px 1px rgba(0,0,0,.4), 0 16px 40px -22px rgba(0,0,0,.7);
+    --linen:#141226;
+    --linen-2:#1f1c38;
+    --linen-sink:#100e20;
+    --ink:#f5eedc;
+    --ink-2:#c7c1de;
+    --ink-3:#8f87b0;
+    --rule:#080712;
+    --rule-2:#4c4475;
+    --alarm:#ff6b3d;
+    --alarm-ink:#ff9470;
+    --alarm-wash:#3b1e20;
+    --water:#3cc5ff;
+    --water-ink:#8be2ff;
+    --water-wash:#102b45;
+    --gold:#ffd15c;
+    --gold-wash:#3b2f14;
+    --grass:#3e8c45;
+    --grass-dark:#26592d;
+    --stone:#6a708c;
+    --stone-dark:#464a66;
+    --sky-top:#0d102b;
+    --sky-bot:#1f2454;
+    --stamp:#ff6b3d;
+    --px-shadow:4px 4px 0 #070610;
+    --px-shadow-sm:3px 3px 0 #070610;
   }
 
   *,*::before,*::after{box-sizing:border-box}
@@ -89,397 +118,624 @@
   @media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} }
   body{
     background:var(--linen);
+    background-image:radial-gradient(var(--linen-sink) 1.5px, transparent 1.5px);
+    background-size:16px 16px;
     color:var(--ink);
     font-family:var(--f-text);
     font-size:16px;
-    line-height:1.6;
-    -webkit-font-smoothing:antialiased;
+    line-height:1.62;
     overflow-x:hidden;
-    scrollbar-color:var(--rule-2) transparent;
   }
   ::selection{background:var(--alarm); color:#fff}
-  ::-webkit-scrollbar{width:11px; height:11px}
-  ::-webkit-scrollbar-thumb{background:var(--rule-2); border:3px solid var(--linen); border-radius:0}
-  ::-webkit-scrollbar-track{background:transparent}
-  :focus-visible{outline:2px solid var(--water); outline-offset:2px}
+  :focus-visible{outline:3px solid var(--gold); outline-offset:2px}
 
-  h1,h2,h3,h4{font-family:var(--f-display); font-weight:600; line-height:1.12; letter-spacing:-.018em; text-wrap:balance; margin:0}
+  h1,h2{font-family:var(--f-pixel); font-weight:400; line-height:1.35; margin:0}
+  h3,h4{font-family:var(--f-ui); font-weight:700; line-height:1.25; margin:0}
   p{margin:0; max-width:68ch}
-  a{color:inherit; text-underline-offset:3px; text-decoration-color:var(--rule-2)}
-  a:hover{text-decoration-color:var(--alarm)}
+  a{color:var(--water-ink); text-underline-offset:3px; text-decoration-thickness:2px}
+  a:hover{color:var(--alarm)}
   code,kbd,samp,pre{font-family:var(--f-mono); font-variant-numeric:tabular-nums}
   strong{font-weight:700; color:var(--ink)}
 
   .wrap{max-width:var(--maxw); margin-inline:auto; padding-inline:var(--gutter)}
-
-  /* shared "label" — tracked cockpit type, NEVER stacked as a kicker above a heading */
-  .lab{font-family:var(--f-text); font-weight:700; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-3)}
+  .lab{font-family:var(--f-ui); font-weight:700; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3)}
   .mono{font-family:var(--f-mono)}
-  .amber{color:var(--alarm)}
 
-  /* ============ the sheet: a persistent left datum rule the whole page hangs from ============ */
-  .sheet{position:relative}
-  .sheet::before{
-    content:""; position:absolute; left:calc(var(--gutter) - 1px); top:0; bottom:0; width:1px;
-    background:var(--rule); pointer-events:none;
+  /* ============ Castle battlement divider ============ */
+  section{
+    position:relative;
+    padding-block:clamp(54px, 7vw, 96px);
+    border-top:4px solid var(--rule);
   }
-  @media (max-width:1100px){ .sheet::before{display:none} }
+  section:not(.hero)::before{
+    content:"";
+    position:absolute;
+    top:-12px; left:0; right:0; height:12px;
+    background:repeating-linear-gradient(
+      90deg,
+      var(--linen-2) 0 16px,
+      var(--rule) 16px 20px,
+      transparent 20px 32px,
+      var(--rule) 32px 36px
+    );
+    pointer-events:none;
+  }
+  section > .wrap > h2{
+    font-size:clamp(1.1rem, 2.3vw, 1.55rem);
+    max-width:34ch;
+    color:var(--ink);
+  }
+  section > .wrap > h2 + .lede{
+    color:var(--ink-2);
+    font-size:clamp(.98rem, 1.4vw, 1.08rem);
+    max-width:64ch;
+    margin-top:16px;
+  }
 
-  section{position:relative; padding-block:clamp(58px, 8vw, 110px); border-top:1px solid var(--rule)}
-  section > .wrap > h2{font-size:clamp(1.5rem, 3.3vw, 2.15rem); max-width:22ch}
-  section > .wrap > h2 + .lede{color:var(--ink-2); font-size:clamp(1rem, 1.5vw, 1.12rem); max-width:64ch; margin-top:16px}
+  /* ============ Top Castle Wall Nav ============ */
+  .nav{
+    position:sticky; top:0; z-index:60;
+    background:var(--linen-2);
+    border-bottom:4px solid var(--rule);
+    box-shadow:0 4px 0 rgba(0,0,0,.14);
+  }
+  .nav .wrap{display:flex; align-items:center; gap:18px; height:64px}
+  .brand{
+    display:flex; align-items:center; gap:12px;
+    font-family:var(--f-pixel); font-size:14px;
+    text-decoration:none; color:var(--ink);
+  }
+  .brand svg{width:32px; height:32px; display:block; shape-rendering:crispEdges}
+  .nav nav{display:flex; gap:16px; margin-left:auto; align-items:center}
+  .nav nav a{
+    font-family:var(--f-ui); font-size:12px; text-decoration:none;
+    color:var(--ink-2); font-weight:700; text-transform:uppercase;
+  }
+  .nav nav a:hover{color:var(--alarm)}
+  .nav .navcta{
+    font-family:var(--f-ui); font-size:12px;
+    background:var(--alarm); color:#fff;
+    border:3px solid var(--rule); padding:6px 12px;
+    box-shadow:var(--px-shadow-sm);
+  }
+  .nav .navcta:hover{background:var(--alarm-ink); color:#fff; transform:translate(2px,2px); box-shadow:1px 1px 0 var(--rule)}
+  .themebtn{
+    background:var(--gold-wash); border:3px solid var(--rule); color:var(--ink);
+    width:38px; height:34px; cursor:pointer; font-family:var(--f-ui); font-size:14px;
+    display:grid; place-items:center; box-shadow:var(--px-shadow-sm);
+  }
+  .themebtn:hover{transform:translate(1px,1px); box-shadow:2px 2px 0 var(--rule)}
+  @media (max-width:860px){ .nav nav a:not(.navcta):not(.themebtn){display:none} }
 
-  /* section margin annotation — vertical, in the gutter, drawing marginalia (not a kicker) */
-  .mk{position:absolute; left:calc(var(--gutter) - 1px); top:clamp(58px,8vw,110px);
-    writing-mode:vertical-rl; transform:translateX(-50%) rotate(180deg);
-    font-family:var(--f-text); font-weight:700; font-size:10px; letter-spacing:.34em; text-transform:uppercase;
-    color:var(--ink-3); background:var(--linen); padding-block:10px; pointer-events:none}
-  .mk::after{content:""; position:absolute; left:50%; bottom:-14px; width:1px; height:10px; background:var(--rule-2); transform:translateX(-50%)}
-  @media (max-width:1100px){ .mk{display:none} }
-
-  /* ============ nav ============ */
-  .nav{position:sticky; top:0; z-index:60; background:color-mix(in srgb, var(--linen) 90%, transparent);
-    backdrop-filter:blur(6px); border-bottom:1px solid var(--rule)}
-  .nav .wrap{display:flex; align-items:center; gap:20px; height:58px}
-  .brand{display:flex; align-items:center; gap:11px; font-family:var(--f-mono); font-weight:700;
-    letter-spacing:.06em; text-decoration:none; font-size:15px; color:var(--ink)}
-  .brand svg{width:24px; height:24px; display:block; overflow:visible}
-  .nav nav{display:flex; gap:22px; margin-left:auto; align-items:center}
-  .nav nav a{font-size:13px; text-decoration:none; color:var(--ink-2); font-weight:700;
-    letter-spacing:.04em; text-transform:uppercase}
-  .nav nav a:hover{color:var(--ink)}
-  .nav .navcta{font-family:var(--f-mono); font-size:12px; letter-spacing:.06em; text-transform:none;
-    border:1px solid var(--alarm); color:var(--alarm); padding:7px 13px}
-  .nav .navcta:hover{background:var(--alarm); color:#fff}
-  .themebtn{background:none; border:1px solid var(--rule-2); color:var(--ink-2); width:34px; height:32px;
-    cursor:pointer; font-size:13px; display:grid; place-items:center; font-family:var(--f-mono)}
-  .themebtn:hover{color:var(--ink); border-color:var(--ink)}
-  @media (max-width:820px){ .nav nav a:not(.navcta):not(.themebtn){display:none} }
-
-  /* ============ hero — the plan of the work ============ */
-  .hero{border-top:none; padding-block:clamp(20px,3.2vw,40px) clamp(40px,6vw,72px)}
+  /* ============ HERO: PIXEL CASTLE KEEP ============ */
+  .hero{border-top:none; padding-block:clamp(24px,3vw,42px) clamp(44px,6vw,74px)}
   .hero .frame{
-    border:1px solid var(--rule-2); position:relative; background:var(--linen);
+    border:4px solid var(--rule);
+    background:var(--linen-2);
+    box-shadow:6px 6px 0 var(--rule);
   }
-  .hero .frame::before,.hero .frame::after{
-    content:""; position:absolute; width:11px; height:11px; border:1px solid var(--rule-2);
-  }
-  .hero .frame::before{top:-1px; left:-1px; border-right:none; border-bottom:none}
-  .hero .frame::after{bottom:-1px; right:-1px; border-left:none; border-top:none}
-  .hero .grid{display:grid; grid-template-columns:1.32fr 1fr; }
-  .hero .plan-col{border-right:1px solid var(--rule); padding:clamp(10px,1.8vw,20px); min-width:0}
+  .hero .grid{display:grid; grid-template-columns:1.32fr 1fr}
+  .hero .plan-col{border-right:4px solid var(--rule); padding:clamp(14px,2vw,22px); min-width:0}
   .hero .side-col{display:flex; flex-direction:column; min-width:0}
 
-  #plan{width:100%; height:auto; display:block}
-  #plan text{font-family:var(--f-mono); fill:var(--ink-2)}
+  .castle-stage{
+    border:3px solid var(--rule);
+    background:linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bot) 68%, var(--grass) 68%, var(--grass-dark) 100%);
+    overflow:hidden;
+    position:relative;
+  }
+  #castle-svg{width:100%; height:auto; display:block; shape-rendering:crispEdges}
 
-  .keepline{margin-top:10px; padding-top:12px; border-top:1px dashed var(--rule-2)}
-  .keepline h1{font-size:clamp(1.9rem, 3.9vw, 3.15rem); font-weight:700; letter-spacing:-.02em}
-  .keepline h1 .b{color:var(--alarm); display:block}
-  .keepline p{margin-top:14px; color:var(--ink-2); font-size:clamp(.98rem,1.35vw,1.06rem); max-width:46ch}
+  .keepline{margin-top:18px; padding-top:16px; border-top:3px dashed var(--rule-2)}
+  .keepline h1{font-size:clamp(1.25rem, 2.5vw, 1.95rem); color:var(--ink)}
+  .keepline h1 .b{color:var(--alarm); display:block; margin-top:8px}
+  .keepline p{margin-top:14px; color:var(--ink-2); font-size:clamp(.95rem,1.25vw,1.03rem); max-width:50ch}
 
-  /* threat trace controls — the defensive schedule, live */
-  .trace{padding:clamp(14px,2vw,20px); border-bottom:1px solid var(--rule); flex:0 0 auto}
-  .trace .lab{display:block; margin-bottom:10px}
-  .trace .btns{display:flex; flex-wrap:wrap; gap:6px}
-  .tbtn{font-family:var(--f-mono); font-size:11.5px; letter-spacing:.02em; color:var(--ink-2);
-    background:var(--linen-2); border:1px solid var(--rule-2); padding:6px 9px; cursor:pointer; line-height:1.2}
-  .tbtn:hover{border-color:var(--ink); color:var(--ink)}
-  .tbtn[aria-pressed="true"]{background:var(--alarm); border-color:var(--alarm); color:#fff}
-  .trace .readout{margin-top:12px; font-size:13px; color:var(--ink-2); min-height:3.2em}
-  .trace .readout b{color:var(--alarm); font-family:var(--f-mono); font-weight:700; font-size:11px;
-    letter-spacing:.12em; text-transform:uppercase; display:block; margin-bottom:3px}
+  /* Attack trace controls */
+  .trace{padding:clamp(14px,2vw,20px); border-bottom:4px solid var(--rule); flex:0 0 auto; background:var(--linen)}
+  .trace .lab{display:block; margin-bottom:10px; color:var(--ink-2)}
+  .trace .btns{display:flex; flex-wrap:wrap; gap:8px}
+  .tbtn{
+    font-family:var(--f-ui); font-size:11px; color:var(--ink);
+    background:var(--linen-2); border:3px solid var(--rule);
+    padding:6px 9px; cursor:pointer; line-height:1.2;
+    box-shadow:2px 2px 0 var(--rule);
+  }
+  .tbtn:hover{background:var(--gold-wash); transform:translate(1px,1px); box-shadow:1px 1px 0 var(--rule)}
+  .tbtn[aria-pressed="true"]{background:var(--alarm); color:#fff; transform:translate(2px,2px); box-shadow:none}
+  .trace .readout{
+    margin-top:14px; font-size:13.5px; color:var(--ink-2);
+    background:var(--linen-2); border:3px solid var(--rule); padding:10px 12px;
+    min-height:4.4em;
+  }
+  .trace .readout b{
+    color:var(--alarm); font-family:var(--f-ui); font-weight:700; font-size:11px;
+    letter-spacing:.06em; text-transform:uppercase; display:block; margin-bottom:4px;
+  }
 
-  /* field report — the real terminal, framed as a drawing inset */
-  .report{flex:1 1 auto; display:flex; flex-direction:column; min-height:0}
-  .report .cap{display:flex; align-items:center; gap:9px; padding:9px 14px; border-bottom:1px solid var(--rule);
-    font-family:var(--f-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3)}
-  .report .cap .dot{width:7px; height:7px; background:var(--alarm); flex:0 0 auto}
-  .report .body{padding:14px 15px 16px; font-family:var(--f-mono); font-size:12px; line-height:1.72;
-    white-space:pre-wrap; word-break:break-word; overflow-x:auto; flex:1 1 auto; min-height:230px}
-  .report .u{color:var(--water-ink)}
-  .report .m{color:var(--ink-3)}
-  .report .tag{color:var(--ink-2)}
-  .report .b{color:var(--ink)}
-  .report .hot{color:var(--alarm)}
-  .report .cur{display:inline-block; width:7px; height:1.05em; translate:0 2px; background:var(--water);
-    animation:blink 1.05s step-end infinite}
-  @keyframes blink{50%{opacity:0}}
+  /* Terminal field report */
+  .report{flex:1 1 auto; display:flex; flex-direction:column; min-height:0; background:#141226; color:#f5eedc}
+  .report .cap{
+    display:flex; align-items:center; gap:9px; padding:9px 14px;
+    border-bottom:3px solid #070610; background:#231f42;
+    font-family:var(--f-ui); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:#ffd15c;
+  }
+  .report .cap .dot{width:10px; height:10px; background:#ff6b3d; border:2px solid #070610; flex:0 0 auto}
+  .report .body{
+    padding:14px 15px 16px; font-family:var(--f-mono); font-size:12px; line-height:1.72;
+    white-space:pre-wrap; word-break:break-word; overflow-x:auto; flex:1 1 auto; min-height:220px;
+  }
+  .report .u{color:#6ce0ff}
+  .report .m{color:#9a92ba}
+  .report .tag{color:#ffd15c}
+  .report .b{color:#f5eedc}
+  .report .hot{color:#ff6b3d; font-weight:700}
 
-  /* the cartouche — install command engraved in the title block */
-  .cartouche{border-top:1px solid var(--rule); padding:clamp(14px,2vw,20px); background:var(--linen-2)}
-  .cartouche .lab{display:block; margin-bottom:9px}
-  .cmd{display:flex; align-items:flex-start; gap:10px; border:1px solid var(--alarm); background:var(--linen);
-    padding:10px 12px}
-  .cmd .p,.cmd .copy{margin-top:1px}
-  .cmd .p{color:var(--water); user-select:none; font-family:var(--f-mono)}
-  .cmd code{flex:1; min-width:0; font-size:12.5px; color:var(--ink); white-space:normal; word-break:break-all; line-height:1.55}
-  .copy{font-family:var(--f-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
-    color:var(--alarm); background:none; border:1px solid var(--alarm); padding:5px 8px; cursor:pointer; flex:0 0 auto}
-  .copy:hover{background:var(--alarm); color:#fff}
-  .copy.ok{color:var(--water); border-color:var(--water)}
-  .cartouche .note{margin-top:9px; font-size:11.5px; color:var(--ink-3); font-family:var(--f-mono)}
+  /* Install cartouche */
+  .cartouche{border-top:4px solid var(--rule); padding:clamp(14px,2vw,20px); background:var(--gold-wash)}
+  .cartouche .lab{display:block; margin-bottom:9px; color:var(--ink)}
+  .cmd{
+    display:flex; align-items:flex-start; gap:10px;
+    border:3px solid var(--rule); background:var(--linen-2);
+    padding:10px 12px; box-shadow:var(--px-shadow-sm);
+  }
+  .cmd .p{color:var(--alarm); user-select:none; font-family:var(--f-mono); font-weight:700}
+  .cmd code{flex:1; min-width:0; font-size:12px; color:var(--ink); white-space:normal; word-break:break-all; line-height:1.55}
+  .copy{
+    font-family:var(--f-ui); font-size:10px; text-transform:uppercase;
+    color:#fff; background:var(--alarm); border:3px solid var(--rule);
+    padding:5px 9px; cursor:pointer; flex:0 0 auto; box-shadow:2px 2px 0 var(--rule);
+  }
+  .copy:hover{background:var(--alarm-ink); transform:translate(1px,1px); box-shadow:1px 1px 0 var(--rule)}
+  .copy.ok{background:var(--grass); color:#fff}
+  .cartouche .note{margin-top:10px; font-size:12px; color:var(--ink-2); font-family:var(--f-mono)}
 
   @media (max-width:960px){
     .hero .grid{grid-template-columns:1fr}
-    .hero .plan-col{border-right:none; border-bottom:1px solid var(--rule)}
-    .report .body{min-height:200px}
+    .hero .plan-col{border-right:none; border-bottom:4px solid var(--rule)}
+    .report .body{min-height:190px}
   }
 
-  /* ============ generic drawing blocks ============ */
-  .plate{background:var(--linen-2); border:1px solid var(--rule); padding:22px; position:relative}
-  .plate .tick{position:absolute; top:-1px; left:-1px; width:9px; height:9px; border-top:1px solid var(--rule-2); border-left:1px solid var(--rule-2)}
-  .plate h3{font-size:1.05rem; margin-bottom:8px; font-family:var(--f-display); font-weight:600}
-  .plate p{color:var(--ink-2); font-size:.92rem}
-  .plate .k{display:block; margin-bottom:12px}
+  /* ============ Pixel RPG Dialog Boxes ============ */
+  .plate{
+    background:var(--linen-2); border:4px solid var(--rule); padding:22px;
+    box-shadow:var(--px-shadow); position:relative;
+  }
+  .plate h3{font-size:1rem; margin-bottom:8px; color:var(--ink)}
+  .plate p{color:var(--ink-2); font-size:.93rem}
+  .plate .k{display:inline-block; margin-bottom:10px; background:var(--gold-wash); border:2px solid var(--rule); padding:2px 7px; color:var(--ink)}
 
-  .cols{display:grid; gap:18px; margin-top:40px}
+  .cols{display:grid; gap:22px; margin-top:36px}
   .c2{grid-template-columns:repeat(2,1fr)}
   .c3{grid-template-columns:repeat(3,1fr)}
   @media (max-width:820px){ .c2,.c3{grid-template-columns:1fr} }
 
-  /* ---- site survey: three ground conditions as mini plans ---- */
-  .survey{display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:40px}
+  /* Survey cards */
+  .survey{display:grid; grid-template-columns:repeat(3,1fr); gap:22px; margin-top:36px}
   @media (max-width:820px){ .survey{grid-template-columns:1fr} }
-  .cond{border:1px solid var(--rule); background:var(--linen-2); padding:20px; display:flex; flex-direction:column; gap:12px}
-  .cond svg{width:100%; height:96px; display:block}
-  .cond .k{display:block}
-  .cond h3{font-size:1rem; font-family:var(--f-display); font-weight:600}
-  .cond p{font-size:.9rem; color:var(--ink-2)}
-  .cond--risk{border-color:color-mix(in srgb, var(--alarm) 42%, var(--rule))}
-  .cond--risk .k{color:var(--alarm)}
+  .cond{
+    border:4px solid var(--rule); background:var(--linen-2); padding:20px;
+    display:flex; flex-direction:column; gap:12px; box-shadow:var(--px-shadow);
+  }
+  .cond svg{width:100%; height:104px; display:block; shape-rendering:crispEdges; border:3px solid var(--rule); background:var(--linen)}
+  .cond .k{display:inline-block; align-self:flex-start; padding:2px 7px; border:2px solid var(--rule); background:var(--alarm-wash); color:var(--alarm-ink)}
+  .cond h3{font-size:1rem}
+  .cond p{font-size:.92rem; color:var(--ink-2)}
 
-  /* ---- section / elevation cut ---- */
-  .cutwrap{display:grid; grid-template-columns:1.7fr .9fr; gap:30px; margin-top:40px; align-items:start}
+  /* Section cutaway */
+  .cutwrap{display:grid; grid-template-columns:1.6fr 1fr; gap:28px; margin-top:36px; align-items:start}
   @media (max-width:900px){ .cutwrap{grid-template-columns:1fr} }
-  .cut{border:1px solid var(--rule); background:var(--linen-2); padding:16px}
-  .cut svg{width:100%; height:auto; display:block}
-  .cut .cap{font-family:var(--f-mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:10px}
-  .cutnote{font-size:.92rem; color:var(--ink-2)}
+  .cut{border:4px solid var(--rule); background:var(--linen-2); padding:16px; box-shadow:var(--px-shadow)}
+  .cut svg{width:100%; height:auto; display:block; shape-rendering:crispEdges; border:3px solid var(--rule)}
+  .cut .cap{font-family:var(--f-ui); font-size:11px; color:var(--ink-3); margin-bottom:10px; text-transform:uppercase}
+  .cutnote{font-size:.94rem; color:var(--ink-2); background:var(--linen-2); border:4px solid var(--rule); padding:20px; box-shadow:var(--px-shadow)}
   .cutnote p + p{margin-top:14px}
 
-  /* ---- legend ledger: the seven guarantees ---- */
-  .legend{margin-top:40px; border:1px solid var(--rule); background:var(--linen-2)}
-  .legend .row{display:grid; grid-template-columns:44px 130px 1fr; gap:16px; align-items:baseline;
-    padding:16px 18px; border-bottom:1px solid var(--rule)}
+  /* Legend ledger */
+  .legend{margin-top:36px; border:4px solid var(--rule); background:var(--linen-2); box-shadow:var(--px-shadow)}
+  .legend .row{
+    display:grid; grid-template-columns:52px 175px 1fr; gap:16px; align-items:center;
+    padding:16px 18px; border-bottom:3px solid var(--rule);
+  }
   .legend .row:last-child{border-bottom:none}
-  .legend .key{font-family:var(--f-mono); font-weight:700; color:var(--alarm); font-size:14px}
-  .legend .term{font-family:var(--f-display); font-weight:600; font-size:1rem; color:var(--ink)}
+  .legend .key{
+    font-family:var(--f-pixel); font-size:12px; color:#fff; background:var(--alarm);
+    border:3px solid var(--rule); width:36px; height:36px; display:grid; place-items:center;
+    box-shadow:2px 2px 0 var(--rule);
+  }
+  .legend .term{font-family:var(--f-ui); font-weight:700; font-size:.95rem; color:var(--ink)}
   .legend .def{color:var(--ink-2); font-size:.92rem}
   @media (max-width:680px){
-    .legend .row{grid-template-columns:44px 1fr; row-gap:4px}
+    .legend .row{grid-template-columns:46px 1fr; row-gap:6px}
     .legend .def{grid-column:1 / -1}
   }
 
-  /* ---- order of works: the loop ---- */
-  .works{margin-top:40px; display:grid; gap:12px; counter-reset:w}
-  .work{display:grid; grid-template-columns:40px 1fr; gap:16px; border:1px solid var(--rule); background:var(--linen-2); padding:18px 20px}
-  .work .no{font-family:var(--f-display); font-weight:700; font-size:1.5rem; color:var(--alarm); line-height:1}
-  .work h3{font-size:.98rem; font-family:var(--f-text); font-weight:700; margin-bottom:8px}
-  .work pre{margin:0; background:var(--linen); border:1px solid var(--rule); padding:11px 12px;
-    font-size:12px; line-height:1.65; overflow-x:auto; color:var(--ink)}
-  .work pre .rtn{color:var(--ink-3)}
-  .work pre .blk{color:var(--alarm)}
+  /* Order of works */
+  .works{margin-top:36px; display:grid; gap:14px}
+  .work{
+    display:grid; grid-template-columns:48px 1fr; gap:16px;
+    border:4px solid var(--rule); background:var(--linen-2); padding:18px 20px;
+    box-shadow:var(--px-shadow);
+  }
+  .work .no{
+    font-family:var(--f-pixel); font-size:14px; color:var(--ink); background:var(--gold);
+    border:3px solid var(--rule); width:40px; height:40px; display:grid; place-items:center;
+    box-shadow:2px 2px 0 var(--rule);
+  }
+  .work h3{font-size:.96rem; margin-bottom:10px}
+  .work pre{
+    margin:0; background:#141226; color:#f5eedc; border:3px solid var(--rule);
+    padding:12px 14px; font-size:12px; line-height:1.65; overflow-x:auto;
+  }
+  .work pre .rtn{color:#8be2ff}
+  .work pre .blk{color:#ff6b3d}
 
-  /* ---- notes / code blocks ---- */
-  .codeblock{margin-top:24px; border:1px solid var(--rule); background:var(--linen-2)}
-  .codeblock .h{display:flex; align-items:center; justify-content:space-between; padding:9px 13px;
-    border-bottom:1px solid var(--rule); font-family:var(--f-mono); font-size:10.5px; letter-spacing:.1em;
-    text-transform:uppercase; color:var(--ink-3)}
-  .codeblock pre{margin:0; padding:15px; font-size:12.5px; overflow-x:auto; color:var(--ink); line-height:1.7}
+  /* Code blocks */
+  .codeblock{margin-top:26px; border:4px solid var(--rule); background:#141226; box-shadow:var(--px-shadow)}
+  .codeblock .h{
+    display:flex; align-items:center; justify-content:space-between; padding:9px 14px;
+    border-bottom:3px solid var(--rule); background:#231f42;
+    font-family:var(--f-ui); font-size:11px; text-transform:uppercase; color:#ffd15c;
+  }
+  .codeblock pre{margin:0; padding:16px; font-size:12.5px; overflow-x:auto; color:#f5eedc; line-height:1.7}
 
-  /* ---- defensive schedule: threat table ---- */
-  .scroll{overflow-x:auto; margin-top:36px; border:1px solid var(--rule)}
-  table{border-collapse:collapse; width:100%; min-width:600px; font-size:.9rem}
-  caption{text-align:left; padding:14px 16px; font-family:var(--f-mono); font-size:10.5px;
-    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); border-bottom:1px solid var(--rule)}
-  th,td{text-align:left; padding:14px 16px; border-bottom:1px solid var(--rule); vertical-align:top}
-  thead th{font-family:var(--f-mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
-    color:var(--ink-3); background:var(--linen-sink); font-weight:700}
+  /* Threat table */
+  .scroll{overflow-x:auto; margin-top:36px; border:4px solid var(--rule); background:var(--linen-2); box-shadow:var(--px-shadow)}
+  table{border-collapse:collapse; width:100%; min-width:600px; font-size:.92rem}
+  caption{
+    text-align:left; padding:12px 16px; font-family:var(--f-ui); font-size:11px;
+    text-transform:uppercase; color:var(--ink); background:var(--gold-wash);
+    border-bottom:3px solid var(--rule);
+  }
+  th,td{text-align:left; padding:14px 16px; border-bottom:3px solid var(--rule); vertical-align:top}
+  thead th{
+    font-family:var(--f-ui); font-size:11px; text-transform:uppercase;
+    color:var(--ink); background:var(--linen-sink); font-weight:700;
+  }
   tbody tr:last-child td{border-bottom:none}
-  tbody tr:hover{background:color-mix(in srgb, var(--alarm) 7%, transparent)}
+  tbody tr:hover{background:var(--water-wash)}
   td.thr{font-weight:700; color:var(--ink); width:36%}
 
-  /* ---- instrument readings: benchmarks ---- */
-  .readings{margin-top:40px; border:1px solid var(--rule); background:var(--linen-2);
-    display:grid; grid-template-columns:repeat(4,1fr)}
+  /* Benchmarks */
+  .readings{
+    margin-top:36px; border:4px solid var(--rule); background:var(--linen-2);
+    display:grid; grid-template-columns:repeat(4,1fr); box-shadow:var(--px-shadow);
+  }
   @media (max-width:820px){ .readings{grid-template-columns:repeat(2,1fr)} }
-  .reading{padding:22px; border-right:1px solid var(--rule); border-bottom:1px solid var(--rule)}
+  .reading{padding:22px; border-right:3px solid var(--rule); border-bottom:3px solid var(--rule)}
   .reading:nth-child(4n){border-right:none}
-  .reading:nth-last-child(-n+1){border-bottom:none}
+  .reading:nth-last-child(-n+4){border-bottom:none}
   @media (max-width:820px){
     .reading:nth-child(2n){border-right:none}
+    .reading:nth-last-child(-n+4){border-bottom:3px solid var(--rule)}
     .reading:nth-last-child(-n+2){border-bottom:none}
   }
-  .reading .v{font-family:var(--f-mono); font-weight:700; font-size:clamp(1.4rem,3vw,1.9rem); color:var(--ink); letter-spacing:-.01em}
-  .reading .v .u{font-size:.9rem; color:var(--ink-3); margin-left:3px}
-  .reading .l{margin-top:8px; font-size:.82rem; color:var(--ink-2)}
+  .reading .v{font-family:var(--f-pixel); font-size:clamp(1.1rem,2.3vw,1.5rem); color:var(--alarm)}
+  .reading .v .u{font-size:.7rem; color:var(--water-ink); margin-left:4px}
+  .reading .l{margin-top:10px; font-size:.84rem; color:var(--ink-2)}
   .fineprint{margin-top:16px; font-size:11.5px; color:var(--ink-3); font-family:var(--f-mono)}
 
-  /* ---- works schedule: roadmap ---- */
-  .schedule{margin-top:40px; display:grid; gap:0; border:1px solid var(--rule)}
-  .entry{padding:22px 24px; border-bottom:1px solid var(--rule); position:relative}
+  /* Roadmap schedule */
+  .schedule{margin-top:36px; display:grid; gap:0; border:4px solid var(--rule); background:var(--linen-2); box-shadow:var(--px-shadow)}
+  .entry{padding:22px 24px; border-bottom:4px solid var(--rule)}
   .entry:last-child{border-bottom:none}
-  .entry.planned{background:repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb,var(--ink) 4%, transparent) 7px 8px)}
-  .entry .top{display:flex; flex-wrap:wrap; align-items:baseline; gap:12px}
-  .entry .id{font-family:var(--f-mono); font-weight:700; font-size:13px; color:var(--alarm)}
-  .entry h3{font-size:1.05rem; font-family:var(--f-display); font-weight:600}
+  .entry.planned{background:var(--linen)}
+  .entry .top{display:flex; flex-wrap:wrap; align-items:center; gap:12px}
+  .entry .id{
+    font-family:var(--f-pixel); font-size:11px; color:#fff; background:var(--water-ink);
+    border:2px solid var(--rule); padding:4px 8px;
+  }
+  .entry h3{font-size:1.05rem}
   .entry .est{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); margin-left:auto}
-  .badge{font-family:var(--f-mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase;
-    padding:3px 8px; border:1px solid currentColor}
-  .badge.built{color:var(--water)}
-  .badge.next{color:var(--alarm)}
-  .entry > p{color:var(--ink-2); font-size:.92rem; margin-top:10px}
-  .entry ul{margin:12px 0 0; padding-left:18px; color:var(--ink-2); font-size:.88rem}
+  .badge{
+    font-family:var(--f-ui); font-size:10px; text-transform:uppercase;
+    padding:3px 8px; border:2px solid var(--rule); font-weight:700;
+  }
+  .badge.built{background:var(--grass); color:#fff}
+  .badge.next{background:var(--gold); color:#1b1829}
+  .entry > p{color:var(--ink-2); font-size:.93rem; margin-top:10px}
+  .entry ul{margin:12px 0 0; padding-left:20px; color:var(--ink-2); font-size:.9rem}
   .entry ul li{margin:7px 0}
 
-  /* ---- faq: queries ---- */
-  .faq{margin-top:32px; border-top:1px solid var(--rule)}
-  .faq details{border-bottom:1px solid var(--rule)}
-  .faq summary{cursor:pointer; padding:17px 0; font-family:var(--f-display); font-weight:600; font-size:1.02rem;
-    list-style:none; display:flex; justify-content:space-between; gap:16px; align-items:center}
+  /* FAQ */
+  .faq{margin-top:32px; border:4px solid var(--rule); background:var(--linen-2); box-shadow:var(--px-shadow)}
+  .faq details{border-bottom:3px solid var(--rule); padding-inline:18px}
+  .faq details:last-child{border-bottom:none}
+  .faq summary{
+    cursor:pointer; padding:16px 0; font-family:var(--f-ui); font-weight:700; font-size:.96rem;
+    list-style:none; display:flex; justify-content:space-between; gap:16px; align-items:center;
+  }
   .faq summary::-webkit-details-marker{display:none}
-  .faq summary::after{content:"+"; color:var(--alarm); font-family:var(--f-mono); font-weight:400; font-size:1.1rem}
-  .faq details[open] summary::after{content:"\2212"}
-  .faq details p{color:var(--ink-2); font-size:.92rem; padding:0 0 20px; max-width:72ch}
+  .faq summary::after{
+    content:"+"; color:#fff; background:var(--alarm); border:2px solid var(--rule);
+    width:24px; height:24px; display:grid; place-items:center; font-family:var(--f-mono);
+    font-weight:700; font-size:14px; flex:0 0 auto;
+  }
+  .faq details[open] summary::after{content:"-"; background:var(--water)}
+  .faq details p{color:var(--ink-2); font-size:.93rem; padding:0 0 18px; max-width:72ch}
 
-  /* ---- the stamp: condemned / 0 bytes persisted ---- */
-  .stamp{display:inline-block; border:2px solid var(--stamp); color:var(--stamp);
-    padding:7px 14px 5px; font-family:var(--f-mono); font-weight:700; letter-spacing:.16em;
-    text-transform:uppercase; font-size:12px; transform:rotate(-5deg);
-    box-shadow:inset 0 0 0 1px var(--stamp)}
-
-  /* ---- close ---- */
-  .close{border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); background:var(--linen-2)}
-  .close .wrap{text-align:center; padding-block:clamp(54px,8vw,92px); display:flex; flex-direction:column; align-items:center; gap:18px}
-  .close h2{font-size:clamp(1.5rem,3.4vw,2.15rem)}
-  .close p{color:var(--ink-2); max-width:48ch}
-  .close .actions{display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:6px}
-  .btn{display:inline-flex; align-items:center; gap:8px; font-family:var(--f-text); font-weight:700; font-size:13.5px;
-    letter-spacing:.03em; padding:12px 20px; text-decoration:none; border:1px solid var(--alarm); cursor:pointer}
+  /* Close CTA */
+  .stamp{
+    display:inline-block; border:4px solid var(--rule); background:var(--alarm); color:#fff;
+    padding:8px 14px; font-family:var(--f-pixel); font-size:10px; letter-spacing:.08em;
+    text-transform:uppercase; transform:rotate(-2deg); box-shadow:var(--px-shadow);
+  }
+  .close{border-top:4px solid var(--rule); border-bottom:4px solid var(--rule); background:var(--water-wash)}
+  .close .wrap{text-align:center; padding-block:clamp(54px,8vw,88px); display:flex; flex-direction:column; align-items:center; gap:18px}
+  .close h2{font-size:clamp(1.1rem,2.6vw,1.6rem)}
+  .close p{color:var(--ink-2); max-width:50ch}
+  .close .actions{display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin-top:6px}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px; font-family:var(--f-ui); font-weight:700;
+    font-size:13px; padding:12px 20px; text-decoration:none; border:3px solid var(--rule);
+    box-shadow:var(--px-shadow-sm); cursor:pointer;
+  }
   .btn--primary{background:var(--alarm); color:#fff}
-  .btn--primary:hover{background:var(--alarm-ink); border-color:var(--alarm-ink)}
-  .btn--ghost{color:var(--alarm); background:none}
-  .btn--ghost:hover{background:var(--alarm); color:#fff}
+  .btn--primary:hover{background:var(--alarm-ink); color:#fff; transform:translate(2px,2px); box-shadow:1px 1px 0 var(--rule)}
+  .btn--ghost{color:var(--ink); background:var(--linen-2)}
+  .btn--ghost:hover{background:var(--gold-wash); color:var(--ink); transform:translate(2px,2px); box-shadow:1px 1px 0 var(--rule)}
 
-  /* ---- title block: footer ---- */
+  /* Footer */
   footer{padding-block:40px; font-size:12.5px; color:var(--ink-3)}
-  footer .block{border:1px solid var(--rule); display:grid; grid-template-columns:1.1fr 1fr; }
+  footer .block{border:4px solid var(--rule); background:var(--linen-2); display:grid; grid-template-columns:1.1fr 1fr; box-shadow:var(--px-shadow)}
   @media (max-width:760px){ footer .block{grid-template-columns:1fr} }
   footer .cell{padding:18px 20px}
-  footer .cell + .cell{border-left:1px solid var(--rule)}
-  @media (max-width:760px){ footer .cell + .cell{border-left:none; border-top:1px solid var(--rule)} }
+  footer .cell + .cell{border-left:4px solid var(--rule)}
+  @media (max-width:760px){ footer .cell + .cell{border-left:none; border-top:4px solid var(--rule)} }
   footer .lab{display:block; margin-bottom:8px}
-  footer a{color:var(--ink-2); text-decoration:none; margin-right:16px; font-weight:700; font-size:12px;
-    text-transform:uppercase; letter-spacing:.04em}
-  footer a:hover{color:var(--ink)}
-  footer .disc{margin-top:8px; line-height:1.65; color:var(--ink-3); max-width:60ch}
+  footer a{color:var(--ink); text-decoration:none; margin-right:16px; font-family:var(--f-ui); font-weight:700; font-size:11.5px; text-transform:uppercase}
+  footer a:hover{color:var(--alarm)}
+  footer .disc{margin-top:8px; line-height:1.65; color:var(--ink-2); max-width:60ch}
 
-  /* ---- reveal ---- */
-  .reveal{opacity:0; transform:translateY(9px); transition:opacity .6s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.7,.2,1)}
-  .reveal.in{opacity:1; transform:none}
-
-  /* ---- plan draw-on ---- */
-  .draw{stroke-dasharray:1; stroke-dashoffset:1; transition:stroke-dashoffset 1.15s cubic-bezier(.16,1,.3,1)}
-  .draw.in{stroke-dashoffset:0}
-  .fade{opacity:0; transition:opacity .9s ease}
-  .fade.in{opacity:1}
-  .ring{transition:opacity .35s ease}
-  .ring.dim{opacity:.28}
-  .ring.hot [data-role="edge"]{stroke:var(--alarm); stroke-width:3.4}
-
+  /* Pixel castle SVG animations */
+  .ring{transition:opacity .25s steps(4), filter .25s steps(4)}
+  .ring.dim{opacity:.42}
+  .ring.hot{filter:drop-shadow(0 0 6px var(--gold))}
+  @keyframes waveShift{ 0%,100%{transform:translateX(0)} 50%{transform:translateX(6px)} }
+  @keyframes flagWave{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(2px)} }
+  @keyframes torchFlicker{ 0%,100%{opacity:1} 50%{opacity:.72} }
+  .wave-anim{animation:waveShift 2.2s steps(3) infinite}
+  .flag-anim{animation:flagWave 1.4s steps(2) infinite}
+  .torch-anim{animation:torchFlicker .55s steps(2) infinite}
   @media (prefers-reduced-motion:reduce){
-    .reveal{opacity:1; transform:none; transition:none}
-    .draw{stroke-dashoffset:0; transition:none}
-    .fade{opacity:1; transition:none}
-    .report .cur{animation:none}
+    .wave-anim,.flag-anim,.torch-anim{animation:none}
   }
 </style>
 </head>
 <body>
-<!--
-  DIRECTION CONTRACT · Moat landing page · impeccable new-work · seed 4713fd08
-  THESIS: Moat's isolation model drawn as a working plan of a bastion fort; every ring on the drawing is a shipped control, not decoration. Refuses the dark-hero-plus-neon infra page and the generic feature-card grid.
-  OWN-WORLD: Process-black ink on cool drafting linen; dark theme is a true cyanotype negative. One alarm vermilion for the controls that turn a threat back and for the primary action. Iron-gall blue is the plan's water fill, a drawing convention not an accent. Hachure, stipple, hairline grid, scale bar, legend keyed A-G. Spectral engraved plate titles; B612 (Airbus cockpit) labels and prose; B612 Mono for every measured value and the terminal.
-  STORY: The visitor reads the plan, sees each ring name a real control and what it stops, watches the terminal inset prove containment, reaches the cartouche and copies the install line.
-  FIRST VIEWPORT: Left two-thirds is the fort plan at architectural scale, the keep at centre carrying the hero line, the moat stippled around it, bastions labelled A-G by leader lines. Right third is a live moat run ending "0 bytes persisted", then the trace controls, then the title cartouche with the install command. One section-cut datum rule runs down the whole sheet; a scale bar sits on the plan.
-  FORM: Vauban star-fort plan-view drawing; candidate 6 of 7 on my grounded list; the roll's assignment; seed 4713fd08.
-  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
--->
 
 <header class="nav">
   <div class="wrap">
     <a class="brand" href="#top" aria-label="Moat — home">
-      <svg viewBox="-30 -30 60 60" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round">
-        <polygon points="0,-25 8,-8 26,-8 12,4 17,22 0,12 -17,22 -12,4 -26,-8 -8,-8"></polygon>
-        <circle cx="0" cy="0" r="5" fill="var(--alarm)" stroke="none"></circle>
+      <!-- 16x16 pixel cartoon castle turret icon -->
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2" width="2" height="3" fill="var(--stone)"/>
+        <rect x="6" y="2" width="4" height="3" fill="var(--stone)"/>
+        <rect x="12" y="2" width="2" height="3" fill="var(--stone)"/>
+        <rect x="7" y="0" width="2" height="2" fill="var(--alarm)"/>
+        <rect x="2" y="4" width="12" height="8" fill="var(--stone)"/>
+        <rect x="3" y="5" width="10" height="7" fill="var(--stone-dark)" opacity=".28"/>
+        <rect x="6" y="8" width="4" height="4" fill="#1b1829"/>
+        <rect x="7" y="9" width="2" height="3" fill="var(--gold)"/>
+        <rect x="0" y="12" width="16" height="4" fill="var(--water)"/>
+        <rect x="2" y="13" width="3" height="1" fill="#fff" opacity=".8"/>
+        <rect x="10" y="14" width="4" height="1" fill="#fff" opacity=".8"/>
       </svg>
-      moat
+      MOAT
     </a>
     <nav>
-      <a href="#isolation">Isolation</a>
-      <a href="#schedule">Threat model</a>
-      <a href="#agent">For agents</a>
+      <a href="#isolation">Keep</a>
+      <a href="#schedule">Defenses</a>
+      <a href="#agent">MCP</a>
       <a href="#roadmap">Roadmap</a>
+      <a href="developer-guide.html">Dev Guide</a>
       <a href="#install" class="navcta">Install</a>
-      <button class="themebtn" id="theme" type="button" aria-label="Switch between linen and cyanotype">◐</button>
+      <button class="themebtn" id="theme" type="button" aria-label="Switch between Day Castle and Night Castle">☀</button>
     </nav>
   </div>
 </header>
 
-<main id="top" class="sheet">
+<main id="top">
 
-  <!-- ============ HERO: PLAN OF THE WORK ============ -->
+  <!-- ============ HERO: PIXEL CARTOON CASTLE ============ -->
   <section class="hero">
     <div class="wrap">
       <div class="frame">
         <div class="grid">
 
           <div class="plan-col">
-            <svg id="plan" viewBox="0 0 1180 820" role="img"
-                 aria-label="Plan of a bastion fort. The keep at the centre holds the agent's command. It is ringed by the wall (KVM), the moat (no host route), and the outer works (nftables and the egress proxy). A sally-port checkpoint on the south wall is the ingress secret firewall.">
-              <defs>
-                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M40 0H0V40" fill="none" stroke="var(--rule)" stroke-width="0.6" opacity="0.5"></path>
-                </pattern>
-                <pattern id="stipple" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(12)">
-                  <circle cx="2" cy="2" r="1" fill="var(--water)" opacity="0.55"></circle>
-                  <circle cx="6.5" cy="6" r="0.9" fill="var(--water)" opacity="0.4"></circle>
-                </pattern>
-                <pattern id="hachure" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                  <line x1="0" y1="0" x2="0" y2="10" stroke="var(--rule-2)" stroke-width="1"></line>
-                </pattern>
-              </defs>
-
-              <rect x="0" y="0" width="1180" height="820" fill="url(#grid)"></rect>
-
-              <g id="p-glacis" class="ring"><path data-role="fill" class="fade" d="" fill="url(#hachure)" opacity="0"></path><path data-role="edge" class="draw" d="" fill="none" stroke="var(--rule-2)" stroke-width="1.4"></path></g>
-              <g id="p-moat" class="ring"><path data-role="fill" class="fade" d="" fill="url(#stipple)"></path><path data-role="edge" class="draw" d="" fill="none" stroke="var(--water-ink)" stroke-width="1.6"></path></g>
-              <g id="p-ravelins" class="ring"><path data-role="edge" class="draw" d="" fill="var(--linen-2)" stroke="var(--ink-2)" stroke-width="1.4"></path></g>
-              <g id="p-wall" class="ring"><path data-role="fill" class="fade" d="" fill="var(--linen-2)"></path><path data-role="edge" class="draw" d="" fill="none" stroke="var(--ink)" stroke-width="2.6"></path></g>
-              <g id="p-sally"><rect class="fade" x="0" y="0" width="76" height="30" rx="0" fill="var(--alarm-wash)" stroke="var(--alarm)" stroke-width="2.2"></rect><line class="draw" x1="0" y1="0" x2="0" y2="0" stroke="var(--alarm)" stroke-width="2.4"></line></g>
-              <g id="p-keep" class="ring">
-                <path data-role="edge" class="draw" d="" fill="var(--linen)" stroke="var(--ink)" stroke-width="2.6"></path>
-                <text id="keeplabel" text-anchor="middle" font-size="21" fill="var(--ink-3)">the command</text>
-              </g>
-
-              <g id="p-leaders" fill="var(--ink-2)"></g>
-              <g id="p-trace" fill="none" stroke="var(--alarm)" stroke-width="2.8" stroke-dasharray="8 6"></g>
-              <g id="p-stamp" opacity="0"></g>
-
-              <g id="p-scale" font-size="19">
-                <line x1="70" y1="770" x2="270" y2="770" stroke="var(--ink-2)" stroke-width="1.8"></line>
-                <line x1="70" y1="763" x2="70" y2="777" stroke="var(--ink-2)" stroke-width="1.8"></line>
-                <line x1="170" y1="764" x2="170" y2="776" stroke="var(--ink-2)" stroke-width="1.3"></line>
-                <line x1="270" y1="763" x2="270" y2="777" stroke="var(--ink-2)" stroke-width="1.8"></line>
-                <text x="66" y="798">0</text><text x="118" y="798">defence in depth</text>
-                <g transform="translate(1105,760)">
-                  <line x1="0" y1="20" x2="0" y2="-16" stroke="var(--ink-2)" stroke-width="1.8"></line>
-                  <path d="M0,-21 L6,-7 L-6,-7 Z" fill="var(--ink-2)"></path>
-                  <text x="-6" y="40" font-size="19">N</text>
+            <div class="castle-stage">
+              <svg id="castle-svg" viewBox="0 0 640 420" role="img"
+                   aria-label="16-bit pixel-art cartoon castle surrounded by a sparkling blue moat. The central keep holds the agent command; stone walls represent KVM hardware isolation; the iron portcullis is the secret firewall; the moat blocks host and LAN routes; the outer watchtower is the egress proxy.">
+                <!-- Pixel sky clouds (day) & stars (night) -->
+                <g id="sky-decor">
+                  <g fill="#ffffff" opacity=".9">
+                    <rect x="44" y="36" width="48" height="12"/>
+                    <rect x="56" y="24" width="28" height="12"/>
+                    <rect x="468" y="28" width="60" height="12"/>
+                    <rect x="484" y="16" width="32" height="12"/>
+                    <rect x="176" y="60" width="36" height="8"/>
+                  </g>
+                  <g fill="var(--gold)" opacity=".85">
+                    <rect x="128" y="24" width="4" height="4"/>
+                    <rect x="384" y="20" width="4" height="4"/>
+                    <rect x="572" y="48" width="4" height="4"/>
+                    <rect x="26" y="88" width="4" height="4"/>
+                  </g>
                 </g>
-              </g>
-            </svg>
+
+                <!-- Rolling pixel hills -->
+                <rect x="0" y="276" width="640" height="144" fill="var(--grass)"/>
+                <rect x="0" y="288" width="640" height="8" fill="var(--grass-dark)" opacity=".45"/>
+                <rect x="0" y="388" width="640" height="32" fill="var(--grass-dark)"/>
+
+                <!-- E: Outer Watchtower & Signpost (Egress Proxy) -->
+                <g id="p-glacis" class="ring">
+                  <!-- Wooden watchtower left -->
+                  <rect x="28" y="220" width="52" height="72" fill="#8b5a2b" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="20" y="208" width="68" height="16" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="24" y="196" width="12" height="12" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="48" y="196" width="12" height="12" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="72" y="196" width="12" height="12" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="46" y="238" width="16" height="22" fill="#1b1829"/>
+                  <!-- Egress flag -->
+                  <g class="flag-anim">
+                    <rect x="52" y="168" width="4" height="28" fill="#1b1829"/>
+                    <rect x="56" y="168" width="24" height="14" fill="var(--gold)" stroke="#1b1829" stroke-width="3"/>
+                  </g>
+                  <!-- Label E -->
+                  <rect x="16" y="302" width="122" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
+                  <text x="24" y="317" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">E</text>
+                  <text x="38" y="317" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">EGRESS PROXY</text>
+                </g>
+
+                <!-- D: Sparkling Cartoon Pixel Moat (No Host Route / NetNS) -->
+                <g id="p-moat" class="ring">
+                  <rect x="88" y="332" width="464" height="58" fill="var(--water)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="92" y="336" width="456" height="10" fill="#126ea8" opacity=".45"/>
+                  <g class="wave-anim" fill="#ffffff" opacity=".82">
+                    <rect x="116" y="352" width="28" height="4"/>
+                    <rect x="192" y="368" width="32" height="4"/>
+                    <rect x="384" y="350" width="30" height="4"/>
+                    <rect x="464" y="366" width="36" height="4"/>
+                    <rect x="276" y="372" width="24" height="4"/>
+                  </g>
+                  <!-- Cute pixel moat gator eyes peeking out -->
+                  <rect x="424" y="358" width="24" height="10" fill="#3a9d40" stroke="#1b1829" stroke-width="3"/>
+                  <rect x="428" y="354" width="6" height="6" fill="#fff" stroke="#1b1829" stroke-width="2"/>
+                  <rect x="438" y="354" width="6" height="6" fill="#fff" stroke="#1b1829" stroke-width="2"/>
+                  <rect x="430" y="356" width="2" height="2" fill="#1b1829"/>
+                  <rect x="440" y="356" width="2" height="2" fill="#1b1829"/>
+                  <!-- Label D -->
+                  <rect x="430" y="394" width="166" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
+                  <text x="438" y="409" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--water-ink)">D</text>
+                  <text x="454" y="409" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">MOAT · NO HOST ROUTE</text>
+                </g>
+
+                <!-- A & F: Stone Curtain Wall + Twin Battlement Towers (KVM + cgroup/rate caps) -->
+                <g id="p-wall" class="ring">
+                  <!-- Island foundation -->
+                  <rect x="132" y="316" width="376" height="20" fill="var(--grass-dark)" stroke="#1b1829" stroke-width="4"/>
+                  <!-- Main stone curtain wall -->
+                  <rect x="156" y="204" width="328" height="114" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <!-- Pixel stone brick texture -->
+                  <g fill="var(--stone-dark)" opacity=".55">
+                    <rect x="176" y="224" width="24" height="10"/>
+                    <rect x="216" y="244" width="24" height="10"/>
+                    <rect x="180" y="272" width="24" height="10"/>
+                    <rect x="420" y="228" width="24" height="10"/>
+                    <rect x="404" y="264" width="24" height="10"/>
+                    <rect x="440" y="288" width="24" height="10"/>
+                  </g>
+                  <!-- Curtain wall battlements -->
+                  <rect x="220" y="190" width="20" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="260" y="190" width="20" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="360" y="190" width="20" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="400" y="190" width="20" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+
+                  <!-- Left Bastion Tower (A: KVM Wall) -->
+                  <rect x="136" y="144" width="76" height="174" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="128" y="128" width="92" height="20" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="132" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="166" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="200" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="164" y="172" width="20" height="32" fill="#1b1829"/>
+                  <rect x="168" y="176" width="12" height="24" fill="var(--gold)" opacity=".8"/>
+                  <!-- Left pennant -->
+                  <g class="flag-anim">
+                    <rect x="172" y="80" width="4" height="34" fill="#1b1829"/>
+                    <rect x="176" y="80" width="28" height="14" fill="var(--alarm)" stroke="#1b1829" stroke-width="3"/>
+                  </g>
+
+                  <!-- Right Bastion Tower (F: cgroup + Rate Caps) -->
+                  <rect x="428" y="144" width="76" height="174" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="420" y="128" width="92" height="20" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="424" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="458" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="492" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="456" y="172" width="20" height="32" fill="#1b1829"/>
+                  <rect x="460" y="176" width="12" height="24" fill="var(--gold)" opacity=".8"/>
+                  <!-- Right pennant -->
+                  <g class="flag-anim">
+                    <rect x="464" y="80" width="4" height="34" fill="#1b1829"/>
+                    <rect x="468" y="80" width="28" height="14" fill="var(--alarm)" stroke="#1b1829" stroke-width="3"/>
+                  </g>
+
+                  <!-- Flickering wall torches -->
+                  <g class="torch-anim">
+                    <rect x="242" y="252" width="6" height="18" fill="#6e421c" stroke="#1b1829" stroke-width="2"/>
+                    <rect x="240" y="238" width="10" height="14" fill="var(--alarm)"/>
+                    <rect x="243" y="242" width="4" height="8" fill="var(--gold)"/>
+
+                    <rect x="392" y="252" width="6" height="18" fill="#6e421c" stroke="#1b1829" stroke-width="2"/>
+                    <rect x="390" y="238" width="10" height="14" fill="var(--alarm)"/>
+                    <rect x="393" y="242" width="4" height="8" fill="var(--gold)"/>
+                  </g>
+
+                  <!-- Labels A & F -->
+                  <rect x="82" y="66" width="118" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
+                  <text x="90" y="81" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">A</text>
+                  <text x="104" y="81" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">KVM WALL</text>
+
+                  <rect x="486" y="156" width="140" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
+                  <text x="494" y="171" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">F</text>
+                  <text x="508" y="171" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">CGROUP CAPS</text>
+                </g>
+
+                <!-- B: Central Keep (The Ephemeral Command VM) -->
+                <g id="p-keep" class="ring">
+                  <rect x="260" y="88" width="120" height="118" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+                  <!-- Pointed pixel royal roof -->
+                  <rect x="252" y="76" width="136" height="14" fill="var(--alarm)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="272" y="60" width="96" height="18" fill="var(--alarm)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="292" y="44" width="56" height="18" fill="var(--alarm)" stroke="#1b1829" stroke-width="4"/>
+                  <rect x="312" y="28" width="16" height="18" fill="var(--gold)" stroke="#1b1829" stroke-width="4"/>
+                  <!-- Keep window holding cute pixel robot agent -->
+                  <rect x="292" y="114" width="56" height="56" fill="#141226" stroke="#1b1829" stroke-width="4"/>
+                  <!-- Pixel robot agent sprite -->
+                  <rect x="306" y="128" width="28" height="22" fill="#8be2ff" stroke="#1b1829" stroke-width="2"/>
+                  <rect x="312" y="134" width="6" height="6" fill="#141226"/>
+                  <rect x="322" y="134" width="6" height="6" fill="#141226"/>
+                  <rect x="318" y="120" width="4" height="8" fill="var(--gold)"/>
+                  <rect x="312" y="150" width="16" height="12" fill="var(--alarm)"/>
+                  <!-- Label B -->
+                  <rect x="246" y="8" width="148" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
+                  <text x="254" y="23" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">B</text>
+                  <text x="268" y="23" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">DISPOSABLE KEEP</text>
+                </g>
+
+                <!-- C: Gatehouse, Portcullis & Drawbridge (Ingress Secret Firewall) -->
+                <g id="p-sally" class="ring">
+                  <!-- Gate arch -->
+                  <rect x="278" y="236" width="84" height="82" fill="#231f42" stroke="#1b1829" stroke-width="4"/>
+                  <!-- Iron portcullis bars -->
+                  <g fill="var(--gold)" stroke="#1b1829" stroke-width="2">
+                    <rect x="292" y="240" width="6" height="74"/>
+                    <rect x="310" y="240" width="6" height="74"/>
+                    <rect x="328" y="240" width="6" height="74"/>
+                    <rect x="346" y="240" width="6" height="74"/>
+                    <rect x="282" y="260" width="76" height="6"/>
+                    <rect x="282" y="286" width="76" height="6"/>
+                  </g>
+                  <!-- Wooden drawbridge across moat -->
+                  <rect x="286" y="316" width="68" height="76" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
+                  <g fill="#7a4c21">
+                    <rect x="290" y="330" width="60" height="4"/>
+                    <rect x="290" y="348" width="60" height="4"/>
+                    <rect x="290" y="366" width="60" height="4"/>
+                    <rect x="290" y="382" width="60" height="4"/>
+                  </g>
+                  <!-- Label C -->
+                  <rect x="196" y="394" width="214" height="22" fill="var(--alarm-wash)" stroke="#1b1829" stroke-width="3"/>
+                  <text x="204" y="409" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">C</text>
+                  <text x="220" y="409" font-family="Silkscreen,monospace" font-size="9.5" fill="#1b1829">GATE · SECRET FIREWALL</text>
+                </g>
+
+                <!-- Dynamic attack projectile + CONDEMNED stamp layer -->
+                <g id="p-trace"></g>
+                <g id="p-stamp" opacity="0"></g>
+              </svg>
+            </div>
 
             <div class="keepline">
               <h1>Give your agent root.<span class="b">Burn the VM.</span></h1>
@@ -488,8 +744,8 @@
           </div>
 
           <div class="side-col">
-            <div class="trace" aria-label="Trace an attack against the plan">
-              <span class="lab">Trace an attack &middot; watch where it stops</span>
+            <div class="trace" aria-label="Trace an attack against the castle">
+              <span class="lab">Siege test &middot; click an attack to watch where it stops</span>
               <div class="btns" id="tracebtns">
                 <button class="tbtn" type="button" data-trace="files" aria-pressed="false">Read host files</button>
                 <button class="tbtn" type="button" data-trace="creds" aria-pressed="false">Steal credentials</button>
@@ -499,7 +755,7 @@
                 <button class="tbtn" type="button" data-trace="escape" aria-pressed="false">Kernel escape</button>
                 <button class="tbtn" type="button" data-trace="state" aria-pressed="false">Leave state behind</button>
               </div>
-              <p class="readout" id="readout" aria-live="polite"><b>The command in the keep</b>Pick an attack. The plan draws its path inward and marks the work that turns it back.</p>
+              <p class="readout" id="readout" aria-live="polite"><b>The agent in the keep</b>Pick an attack. Watch the castle defense that turns it back.</p>
             </div>
 
             <div class="report" aria-label="Recorded moat run session">
@@ -508,7 +764,7 @@
             </div>
 
             <div class="cartouche">
-              <span class="lab">Issued procedure &middot; install on a Linux host with KVM</span>
+              <span class="lab">One-command install &middot; Linux host with KVM</span>
               <div class="cmd">
                 <span class="p">$</span>
                 <code id="installcmd">curl -fsSL https://raw.githubusercontent.com/M30W-M1X/moat/main/install.sh | sh</code>
@@ -525,85 +781,96 @@
 
   <!-- ============ SITE SURVEY ============ -->
   <section id="survey">
-    <span class="mk" aria-hidden="true">Survey</span>
     <div class="wrap">
       <h2>Three places an agent can run code. Two of them can hurt you.</h2>
       <p class="lede">Coding agents now install packages, run generated scripts, and call tools on their own. Where that runs decides what a bad command, or a prompt injection, can reach.</p>
       <div class="survey">
-        <div class="cond cond--risk reveal">
-          <svg viewBox="0 0 200 96" aria-hidden="true" fill="none">
-            <rect x="1" y="1" width="198" height="94" stroke="var(--rule-2)"></rect>
-            <rect x="1" y="1" width="198" height="94" fill="url(#hachure)" opacity="0.5"></rect>
-            <circle cx="100" cy="48" r="13" fill="var(--alarm)"></circle>
-            <path d="M100 48 L20 20 M100 48 L188 24 M100 48 L26 84 M100 48 L182 82" stroke="var(--alarm)" stroke-width="1.6" stroke-dasharray="4 4"></path>
+        <div class="cond">
+          <!-- Pixel art: exposed host cottage on fire -->
+          <svg viewBox="0 0 200 100" aria-hidden="true">
+            <rect x="0" y="72" width="200" height="28" fill="var(--grass)"/>
+            <rect x="64" y="40" width="72" height="36" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+            <rect x="56" y="28" width="88" height="14" fill="var(--alarm)" stroke="#1b1829" stroke-width="4"/>
+            <rect x="90" y="54" width="20" height="22" fill="#1b1829"/>
+            <rect x="148" y="42" width="16" height="16" fill="var(--alarm)"/>
+            <rect x="152" y="34" width="8" height="10" fill="var(--gold)"/>
+            <rect x="32" y="46" width="14" height="14" fill="var(--alarm)"/>
+            <rect x="36" y="38" width="6" height="8" fill="var(--gold)"/>
           </svg>
           <span class="lab k">On the host</span>
           <h3>Full blast radius</h3>
           <p>The command runs as you. It can read <span class="mono">~/.aws</span>, your SSH keys, your browser cookies, and everything you can <span class="mono">rm</span>. One bad tool call is a bad day.</p>
         </div>
-        <div class="cond cond--risk reveal">
-          <svg viewBox="0 0 200 96" aria-hidden="true" fill="none">
-            <rect x="1" y="1" width="198" height="94" stroke="var(--rule-2)"></rect>
-            <line x1="1" y1="60" x2="199" y2="60" stroke="var(--rule-2)"></line>
-            <rect x="70" y="22" width="60" height="30" stroke="var(--alarm)" stroke-width="1.6"></rect>
-            <path d="M100 52 L100 78" stroke="var(--alarm)" stroke-width="2" stroke-dasharray="4 3"></path>
-            <text x="100" y="90" font-family="var(--f-mono)" font-size="9" fill="var(--ink-3)" text-anchor="middle">shared kernel</text>
+        <div class="cond">
+          <!-- Pixel art: container crate over shared kernel basement -->
+          <svg viewBox="0 0 200 100" aria-hidden="true">
+            <rect x="0" y="64" width="200" height="36" fill="var(--alarm-wash)"/>
+            <rect x="0" y="62" width="200" height="4" fill="#1b1829"/>
+            <rect x="64" y="18" width="72" height="44" fill="var(--water-wash)" stroke="#1b1829" stroke-width="4"/>
+            <rect x="96" y="48" width="8" height="32" fill="var(--alarm)"/>
+            <text x="100" y="90" font-family="Silkscreen,monospace" font-size="9" fill="var(--alarm-ink)" text-anchor="middle">SHARED KERNEL</text>
           </svg>
           <span class="lab k">In a container</span>
           <h3>One shared kernel</h3>
           <p>Namespaces are a packaging boundary, not a security one for hostile code. Container escapes are a recurring class of CVE, and a leaked host mount or socket undoes the rest.</p>
         </div>
-        <div class="cond cond--risk reveal">
-          <svg viewBox="0 0 200 96" aria-hidden="true" fill="none">
-            <rect x="1" y="1" width="198" height="94" stroke="var(--rule-2)"></rect>
-            <path d="M28 60 h60 v20 h-60 z" stroke="var(--rule-2)" stroke-width="1.4"></path>
-            <path d="M112 60 h60 v20 h-60 z" stroke="var(--alarm)" stroke-width="1.6"></path>
-            <path d="M88 70 h24" stroke="var(--alarm)" stroke-width="2" stroke-dasharray="3 3"></path>
-            <path d="M118 66 l8 -6 8 6 M122 60 v-14 M100 40 q26 -20 52 0" stroke="var(--alarm)" stroke-width="1.4"></path>
+        <div class="cond">
+          <!-- Pixel art: cloud stealing a scroll -->
+          <svg viewBox="0 0 200 100" aria-hidden="true">
+            <rect x="20" y="56" width="44" height="30" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+            <rect x="122" y="28" width="56" height="22" fill="#fff" stroke="#1b1829" stroke-width="4"/>
+            <rect x="134" y="16" width="32" height="14" fill="#fff" stroke="#1b1829" stroke-width="4"/>
+            <rect x="74" y="54" width="12" height="4" fill="var(--alarm)"/>
+            <rect x="92" y="46" width="12" height="4" fill="var(--alarm)"/>
+            <rect x="108" y="38" width="12" height="4" fill="var(--alarm)"/>
+            <rect x="142" y="62" width="20" height="24" fill="var(--gold)" stroke="#1b1829" stroke-width="3"/>
           </svg>
           <span class="lab k">In someone's cloud</span>
           <h3>Your code leaves the building</h3>
-          <p>Third-party sandboxes send your source, your data, and your prompts to infrastructure you don't control. Plus latency, a bill, and a new place to be breached.</p>
+          <p>Third-party sandboxes send your source, your data, and your prompts to infrastructure you do not control. Plus latency, a bill, and a new place to be breached.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ============ THE SECTION CUT ============ -->
+  <!-- ============ THE KEEP CUTAWAY ============ -->
   <section id="isolation">
-    <span class="mk" aria-hidden="true">Section</span>
     <div class="wrap">
       <h2>One shared kernel is one too many.</h2>
       <p class="lede">Moat runs each task in a real virtual machine on KVM, the same isolation model AWS uses to keep Lambda and Fargate tenants apart. It is started by a seccomp-jailed Firecracker process. The guest gets its own kernel and a disposable disk. Nothing of yours is inside it.</p>
 
       <div class="cutwrap">
-        <div class="cut reveal">
-          <div class="cap">Section A&ndash;A &middot; a command inside a microVM</div>
-          <svg viewBox="0 0 520 300" role="img" aria-label="A section cut through the isolation stack: the host kernel at the base, then KVM hardware virtualization, then the seccomp-jailed Firecracker process, then the guest kernel with its own network namespace and copy-on-write disk, and the agent's command held at the centre.">
-            <line x1="10" y1="286" x2="510" y2="286" stroke="var(--ink-2)" stroke-width="1.6"></line>
-            <line x1="10" y1="286" x2="10" y2="292" stroke="var(--ink-2)"></line><line x1="510" y1="286" x2="510" y2="292" stroke="var(--ink-2)"></line>
-            <text x="20" y="300" font-family="var(--f-mono)" font-size="10" fill="var(--ink-3)">grade line &middot; your machine</text>
+        <div class="cut">
+          <div class="cap">Castle Cross-Section &middot; Hardware Isolation Stack</div>
+          <svg viewBox="0 0 520 308" role="img" aria-label="Pixel-art castle cross-section showing five isolation layers: host kernel bedrock, KVM iron foundation, seccomp-jailed Firecracker vault, guest kernel stone chamber, and the agent command at the top.">
+            <rect x="0" y="0" width="520" height="308" fill="var(--sky-bot)"/>
+            <rect x="0" y="246" width="520" height="62" fill="var(--grass-dark)"/>
 
-            <rect x="20" y="238" width="480" height="44" fill="var(--linen-2)" stroke="var(--rule-2)" stroke-width="1.4"></rect>
-            <text x="34" y="264" font-family="var(--f-mono)" font-size="11" fill="var(--ink-2)">host kernel</text>
+            <!-- Bedrock: Host kernel -->
+            <rect x="18" y="246" width="484" height="46" fill="#464a66" stroke="#1b1829" stroke-width="4"/>
+            <text x="36" y="274" font-family="Silkscreen,monospace" font-size="11" fill="#f5eedc">HOST KERNEL &middot; YOUR MACHINE</text>
 
-            <rect x="52" y="182" width="416" height="52" fill="var(--water-wash)" stroke="var(--water-ink)" stroke-width="1.6"></rect>
-            <text x="66" y="212" font-family="var(--f-mono)" font-size="11" fill="var(--water-ink)">KVM &middot; hardware virtualization</text>
+            <!-- Iron foundation: KVM -->
+            <rect x="46" y="192" width="428" height="50" fill="var(--water)" stroke="#1b1829" stroke-width="4"/>
+            <text x="64" y="222" font-family="Silkscreen,monospace" font-size="11" fill="#fff">KVM &middot; HARDWARE VIRTUALIZATION</text>
 
-            <rect x="60" y="128" width="400" height="50" fill="var(--linen-2)" stroke="var(--water-ink)" stroke-width="1.6"></rect>
-            <text x="74" y="157" font-family="var(--f-mono)" font-size="10" fill="var(--ink-2)">Firecracker VMM &middot; seccomp jail, dropped privileges</text>
+            <!-- Stone Vault: Firecracker Jailer -->
+            <rect x="74" y="138" width="372" height="50" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
+            <text x="92" y="168" font-family="Silkscreen,monospace" font-size="10.5" fill="#1b1829">FIRECRACKER VMM &middot; JAILER + SECCOMP</text>
 
-            <rect x="104" y="74" width="312" height="50" fill="var(--linen-2)" stroke="var(--water-ink)" stroke-width="2"></rect>
-            <text x="118" y="103" font-family="var(--f-mono)" font-size="10.5" fill="var(--ink-2)">guest kernel &middot; own netns &middot; CoW disk</text>
+            <!-- Upper Chamber: Guest Kernel + OverlayFS -->
+            <rect x="106" y="84" width="308" height="50" fill="var(--gold-wash)" stroke="#1b1829" stroke-width="4"/>
+            <text x="122" y="114" font-family="Silkscreen,monospace" font-size="10.5" fill="#1b1829">GUEST KERNEL &middot; NETNS &middot; OVERLAY DISK</text>
 
-            <rect x="150" y="22" width="220" height="44" fill="var(--alarm-wash)" stroke="var(--alarm)" stroke-width="2"></rect>
-            <text x="260" y="42" font-family="var(--f-mono)" font-size="10.5" fill="var(--alarm)" text-anchor="middle">the agent's command</text>
-            <text x="260" y="56" font-family="var(--f-mono)" font-size="9" fill="var(--alarm)" text-anchor="middle" opacity="0.85">blast contained here, then destroyed</text>
+            <!-- Keep Crown: Agent Command -->
+            <rect x="148" y="24" width="224" height="56" fill="var(--alarm)" stroke="#1b1829" stroke-width="4"/>
+            <text x="260" y="48" font-family="Silkscreen,monospace" font-size="11" fill="#fff" text-anchor="middle">THE AGENT COMMAND</text>
+            <text x="260" y="66" font-family="B612 Mono,monospace" font-size="9.5" fill="#fff" text-anchor="middle">contained here, then burned</text>
           </svg>
         </div>
         <div class="cutnote">
-          <p>Each ring is a boundary a hostile command has to cross before it reaches anything of yours, and each one is enforced by the platform, not by policy.</p>
-          <p>For contrast, a container is a shallow cut: the agent's command sits one <span class="mono">namespace</span> away from the same host kernel you are logged into. Same kernel, same attack surface. An escape or a leaked mount lands the attacker on your box.</p>
+          <p>Each stone course is a boundary a hostile command has to cross before it reaches anything of yours, and each one is enforced by hardware and the host kernel, not by policy.</p>
+          <p>For contrast, a container is a shallow fence: the agent's command sits one <span class="mono">namespace</span> away from the same host kernel you are logged into. Same kernel, same attack surface. An escape or a leaked mount lands the attacker on your box.</p>
         </div>
       </div>
     </div>
@@ -611,16 +878,15 @@
 
   <!-- ============ LEGEND ============ -->
   <section id="legend">
-    <span class="mk" aria-hidden="true">Legend</span>
     <div class="wrap">
-      <h2>Seven guarantees, keyed to the plan.</h2>
-      <p class="lede">Every letter on the drawing is a control that ships in the free, self-hosted core. This is the whole boundary.</p>
-      <div class="legend reveal">
+      <h2>Seven guarantees, keyed to the castle.</h2>
+      <p class="lede">Every letter on the castle is a control that ships in the free, self-hosted core. This is the whole boundary.</p>
+      <div class="legend">
         <div class="row"><span class="key">A</span><span class="term">Hardware isolation</span><span class="def">Firecracker + KVM, a separate guest kernel per task. Not namespaces. Container-escape-class kernel bugs do not apply.</span></div>
         <div class="row"><span class="key">B</span><span class="term">Ephemeral by default</span><span class="def">One microVM per task, never reused. Destroyed on exit, TTL, or idle. An orphan reaper cleans up anything a crash leaves running.</span></div>
-        <div class="row"><span class="key">C</span><span class="term">Nothing leaks in</span><span class="def">The host environment is deny-by-default. Every file, env var, and stdin crossing in is scanned for secrets and blocked at the checkpoint.</span></div>
+        <div class="row"><span class="key">C</span><span class="term">Nothing leaks in</span><span class="def">The host environment is deny-by-default. Every file, env var, and stdin crossing in is scanned for secrets and blocked at the gate.</span></div>
         <div class="row"><span class="key">D</span><span class="term">Nothing leaks out</span><span class="def">A per-VM network namespace with no route to the host, to <span class="mono">169.254.169.254</span>, or to your LAN.</span></div>
-        <div class="row"><span class="key">E</span><span class="term">Filtered egress</span><span class="def">Outbound traffic goes only through a domain-allowlisted proxy, transparently redirected so the guest cannot opt out.</span></div>
+        <div class="row"><span class="key">E</span><span class="term">Filtered egress</span><span class="def">Outbound traffic goes only through a domain-allowlisted proxy (global + per-token), transparently redirected with strict <span class="mono">policy drop</span> nftables.</span></div>
         <div class="row"><span class="key">F</span><span class="term">Contained blast</span><span class="def">cgroup v2 CPU, memory, and PID caps on the VMM, plus Firecracker token-bucket rate limiters on the disk and NIC.</span></div>
         <div class="row"><span class="key">G</span><span class="term">Runs on your metal</span><span class="def">Your workstation or your server. Nothing is ever sent anywhere. One command to install.</span></div>
       </div>
@@ -629,34 +895,32 @@
 
   <!-- ============ ORDER OF WORKS ============ -->
   <section id="workflow">
-    <span class="mk" aria-hidden="true">Loop</span>
     <div class="wrap">
       <h2>Create, use, destroy. Then start again from scratch.</h2>
       <p class="lede">The agent never accumulates state. Every task starts in a clean box and ends with the box gone. From a warm pool, a fresh sandbox is ready in about a millisecond.</p>
       <div class="works">
-        <div class="work reveal"><span class="no">1</span><div><h3>Ask for a sandbox</h3><pre>moat_create { "template": "python", "ttl": "10m", "network": "deny" }
+        <div class="work"><span class="no">1</span><div><h3>Ask for a sandbox</h3><pre>moat_create { "template": "python", "ttl_seconds": 600, "network": "deny" }
 <span class="rtn">&rarr; { "id": "sb-7f3a19c4", "expires_at": "2026-08-30T18:40Z" }</span></pre></div></div>
-        <div class="work reveal"><span class="no">2</span><div><h3>Put files in &mdash; they get scanned</h3><pre>moat_write_file { "id": "sb-7f3a19c4", "path": "/work/task.py", "content": "..." }
-<span class="rtn">&rarr; { "bytes": 412, "sha256": "9f2c..." }</span>
-<span class="blk">&rarr; 409 secret_detected: "AWS_SECRET_ACCESS_KEY" at line 4 &mdash; blocked</span></pre></div></div>
-        <div class="work reveal"><span class="no">3</span><div><h3>Run commands, stream the output</h3><pre>moat_exec { "id": "sb-7f3a19c4", "argv": ["python","/work/task.py"], "timeout": "60s" }
-<span class="rtn">&rarr; stdout/stderr streamed &hellip; { "exit": 0, "timed_out": false }</span></pre></div></div>
-        <div class="work reveal"><span class="no">4</span><div><h3>Pull results out</h3><pre>moat_read_file { "id": "sb-7f3a19c4", "path": "/work/out.json" }
+        <div class="work"><span class="no">2</span><div><h3>Put files in &mdash; they get scanned at the gate</h3><pre>moat_write_file { "id": "sb-7f3a19c4", "path": "/work/task.py", "content": "..." }
+<span class="rtn">&rarr; { "bytes_written": 412, "sha256": "9f2c..." }</span>
+<span class="blk">&rarr; 409 secret_detected: "aws-secret-key" at line 4 &mdash; blocked</span></pre></div></div>
+        <div class="work"><span class="no">3</span><div><h3>Run commands, capture the output</h3><pre>moat_exec { "id": "sb-7f3a19c4", "argv": ["python3","/work/task.py"], "timeout_sec": 60 }
+<span class="rtn">&rarr; stdout/stderr returned &hellip; { "exit": 0, "timed_out": false }</span></pre></div></div>
+        <div class="work"><span class="no">4</span><div><h3>Pull results out</h3><pre>moat_read_file { "id": "sb-7f3a19c4", "path": "/work/out.json" }
 <span class="rtn">&rarr; raw bytes + sha256</span></pre></div></div>
-        <div class="work reveal"><span class="no">5</span><div><h3>Destroy it</h3><pre>moat_destroy { "id": "sb-7f3a19c4" }
-<span class="rtn">&rarr; VM stopped, disk discarded, 0 bytes persisted   (also automatic on TTL / idle)</span></pre></div></div>
+        <div class="work"><span class="no">5</span><div><h3>Burn the VM</h3><pre>moat_destroy { "id": "sb-7f3a19c4" }
+<span class="rtn">&rarr; VM stopped, scratch disk discarded, 0 bytes persisted   (also automatic on TTL / idle)</span></pre></div></div>
       </div>
     </div>
   </section>
 
   <!-- ============ FOR AGENTS ============ -->
   <section id="agent">
-    <span class="mk" aria-hidden="true">Garrison</span>
     <div class="wrap">
       <h2>Point your agent at Moat with one config block.</h2>
       <p class="lede">Moat ships an MCP server and a <span class="mono">SKILL.md</span> that teaches an agent the whole ephemeral workflow: when to sandbox, how to read results, and never to hand over the user's real credentials.</p>
 
-      <div class="codeblock reveal">
+      <div class="codeblock">
         <div class="h"><span>~/.config/agent/mcp.json</span><button class="copy" data-copy="#mcpcfg" type="button">Copy</button></div>
         <pre id="mcpcfg">{
   "mcpServers": {
@@ -670,8 +934,8 @@
       </div>
 
       <div class="cols c2">
-        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">MCP tools</span><h3>Six verbs</h3><p><span class="mono">moat_create</span>, <span class="mono">moat_exec</span>, <span class="mono">moat_write_file</span>, <span class="mono">moat_read_file</span>, <span class="mono">moat_list</span>, <span class="mono">moat_destroy</span>. Captured exec output, exit codes, timeouts, and secret-block errors are all first-class results.</p></div>
-        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">SKILL.md</span><h3>The playbook, in the repo</h3><p>Describes the create&rarr;write&rarr;exec&rarr;read&rarr;destroy loop, when a command belongs in a sandbox, how to surface a blocked secret to the user instead of overriding it, and defaulting to <span class="mono">network: deny</span>.</p></div>
+        <div class="plate"><span class="lab k">MCP tools</span><h3>Six verbs</h3><p><span class="mono">moat_create</span>, <span class="mono">moat_exec</span>, <span class="mono">moat_write_file</span>, <span class="mono">moat_read_file</span>, <span class="mono">moat_list</span>, <span class="mono">moat_destroy</span>. Captured exec output, exit codes, timeouts, and secret-block errors are all first-class results.</p></div>
+        <div class="plate"><span class="lab k">SKILL.md</span><h3>The playbook, in the repo</h3><p>Describes the create&rarr;write&rarr;exec&rarr;read&rarr;destroy loop, when a command belongs in a sandbox, how to surface a blocked secret to the user instead of overriding it, and defaulting to <span class="mono">network: deny</span>.</p></div>
       </div>
       <p class="fineprint">Works with any MCP client (Claude Code, Claude Desktop, Cursor, Continue), plus a plain HTTP/JSON API and the <span class="mono">moat</span> CLI.</p>
     </div>
@@ -679,11 +943,10 @@
 
   <!-- ============ DEFENSIVE SCHEDULE ============ -->
   <section id="schedule">
-    <span class="mk" aria-hidden="true">Schedule</span>
     <div class="wrap">
-      <h2>Every way a command tries to reach you &mdash; and the work that stops it.</h2>
-      <p class="lede">Each row maps to a ring on the plan above. Hover a row to mark it.</p>
-      <div class="scroll reveal">
+      <h2>Every way a command tries to reach you &mdash; and the wall that stops it.</h2>
+      <p class="lede">Each row maps to a defense on the castle above. Hover a row to light it up.</p>
+      <div class="scroll">
         <table>
           <caption>Defensive schedule &middot; threat &rarr; control</caption>
           <thead><tr><th scope="col">If the command tries to&hellip;</th><th scope="col">Moat's control</th></tr></thead>
@@ -703,12 +966,11 @@
 
   <!-- ============ INSTRUMENT READINGS ============ -->
   <section id="readings">
-    <span class="mk" aria-hidden="true">Readings</span>
     <div class="wrap">
       <h2>The cost of a sandbox should be a rounding error.</h2>
       <p class="lede">Fast enough to give every command its own VM.</p>
-      <div class="readings reveal">
-        <div class="reading"><div class="v">24<span class="u">ms</span></div><div class="l">Cold boot to a ready in-VM agent</div></div>
+      <div class="readings">
+        <div class="reading"><div class="v">24<span class="u">ms</span></div><div class="l">Cold start to a ready in-VM agent</div></div>
         <div class="reading"><div class="v">25<span class="u">ms</span></div><div class="l">Snapshot restore to a ready agent</div></div>
         <div class="reading"><div class="v">1<span class="u">ms</span></div><div class="l">Warm-pool acquire, p50</div></div>
         <div class="reading"><div class="v">2<span class="u">MiB</span></div><div class="l">Diff-snapshot memory image, 256&nbsp;MiB guest</div></div>
@@ -717,21 +979,20 @@
     </div>
   </section>
 
-  <!-- ============ TITLE CARTOUCHE: INSTALL ============ -->
+  <!-- ============ INSTALL ============ -->
   <section id="install">
-    <span class="mk" aria-hidden="true">Title block</span>
     <div class="wrap">
       <h2>One command. No account. Nothing phones home.</h2>
-      <div class="cmd" style="margin-top:26px; max-width:680px">
+      <div class="cmd" style="margin-top:26px; max-width:720px">
         <span class="p">$</span>
         <code id="installcmd2">curl -fsSL https://raw.githubusercontent.com/M30W-M1X/moat/main/install.sh | sh</code>
         <button class="copy" data-copy="#installcmd2" type="button">Copy</button>
       </div>
       <div class="cols c2">
-        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">Prerequisites</span><h3>A Linux host with KVM</h3><p>x86_64, <span class="mono">/dev/kvm</span> present, and systemd (or run <span class="mono">install.sh --user</span> to install under <span class="mono">$HOME</span> with a delegated cgroup slice). Bare metal, or a VM with nested virtualization.</p></div>
-        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">What the installer does</span><h3>Checks, fetches, verifies</h3><p>Confirms virtualization support, installs <span class="mono">moatd</span>, <span class="mono">moat</span>, <span class="mono">moat-mcp</span>, and <span class="mono">moat-uffd</span>, downloads a Cosign-verified kernel, base rootfs, and CycloneDX SBOM, writes <span class="mono">moatd.json</span>, and installs a systemd unit.</p></div>
+        <div class="plate"><span class="lab k">Prerequisites</span><h3>A Linux host with KVM</h3><p>x86_64, <span class="mono">/dev/kvm</span> present, and systemd (or run <span class="mono">install.sh --user</span> to install under <span class="mono">$HOME</span> with a delegated cgroup slice). Bare metal, or a VM with nested virtualization.</p></div>
+        <div class="plate"><span class="lab k">What the installer does</span><h3>Checks, fetches, verifies</h3><p>Confirms virtualization support, installs <span class="mono">moatd</span>, <span class="mono">moat</span>, <span class="mono">moat-mcp</span>, and <span class="mono">moat-uffd</span>, downloads a Cosign-verified kernel, base rootfs, and CycloneDX SBOM, writes <span class="mono">moatd.json</span>, and installs a systemd unit.</p></div>
       </div>
-      <div class="codeblock reveal">
+      <div class="codeblock">
         <div class="h"><span>verify</span><button class="copy" data-copy="#verifycmd" type="button">Copy</button></div>
         <pre id="verifycmd">moat doctor                       # KVM, cgroup delegation, image signatures
 moat run -- echo hello from a microVM
@@ -740,15 +1001,14 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
     </div>
   </section>
 
-  <!-- ============ WORKS SCHEDULE: ROADMAP ============ -->
+  <!-- ============ ROADMAP ============ -->
   <section id="roadmap">
-    <span class="mk" aria-hidden="true">Works</span>
     <div class="wrap">
       <h2>Single-node production is built. Multi-node fleet is next.</h2>
       <p class="lede">The isolation engine, self-serve MCP product, and single-node production hardening all ship today under Apache-2.0. Multi-node fleet orchestration and platform reach come next.</p>
 
       <div class="schedule">
-        <div class="entry reveal">
+        <div class="entry">
           <div class="top"><span class="id">v0</span><h3>The isolation engine</h3><span class="badge built">Built</span></div>
           <p>The Firecracker control plane, proven on real microVMs.</p>
           <ul>
@@ -759,7 +1019,7 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
             <li>Northbound HTTP/JSON API with native TLS/mTLS, Unix sockets, bearer-token auth, and per-token template, quota, and egress policy</li>
           </ul>
         </div>
-        <div class="entry reveal">
+        <div class="entry">
           <div class="top"><span class="id">M1</span><h3>Self-serve v1.0: anyone can install it</h3><span class="badge built">Built</span></div>
           <p>Everything a solo developer or a small team needs to <span class="mono">curl | sh</span> and point an agent at Moat safely.</p>
           <ul>
@@ -768,7 +1028,7 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
             <li><strong>Install &amp; uninstall.</strong> One-command <span class="mono">curl | sh</span> installer with KVM checks, SHA-256 + Cosign verification, systemd unit, and <span class="mono">moat uninstall</span>.</li>
           </ul>
         </div>
-        <div class="entry reveal">
+        <div class="entry">
           <div class="top"><span class="id">M2</span><h3>Audit, trust, and single-node hardening</h3><span class="badge built">Built</span></div>
           <p>Tamper-evident accountability and supply-chain verification on every host.</p>
           <ul>
@@ -777,7 +1037,7 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
             <li><strong>Snapshot-templated warm pools.</strong> Per-template pools backed by cold starts or snapshots (with optional UFFD demand-paging) and automatic guest clock resync.</li>
           </ul>
         </div>
-        <div class="entry planned reveal">
+        <div class="entry planned">
           <div class="top"><span class="id">M3</span><h3>Fleet and reach</h3><span class="badge next">Next</span><span class="est">~1 quarter</span></div>
           <p>Multi-node scheduling and broader platform reach for teams running agent infrastructure at scale.</p>
           <ul>
@@ -789,31 +1049,29 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
     </div>
   </section>
 
-  <!-- ============ TERMS: LICENSING ============ -->
+  <!-- ============ LICENSING ============ -->
   <section id="opensource">
-    <span class="mk" aria-hidden="true">Terms</span>
     <div class="wrap">
       <h2>Apache-2.0. The boundary is never paywalled.</h2>
       <div class="cols c2">
-        <div class="plate reveal" style="border-color:color-mix(in srgb, var(--water) 45%, var(--rule))"><span class="tick" aria-hidden="true"></span><span class="lab k" style="color:var(--water)">Free forever</span><h3>Everything that isolates</h3><p>The daemon, CLI, guest agent, MCP server, <span class="mono">SKILL.md</span>, single-node operation, and every guarantee in the legend. Apache-2.0, self-hosted, no telemetry.</p></div>
-        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">Open-core, later</span><h3>Operating a fleet</h3><p>Multi-node scheduling, the web console, SSO / RBAC, and managed hosting. Convenience for teams running Moat at scale, never the security guarantee.</p></div>
+        <div class="plate" style="background:var(--water-wash)"><span class="lab k">Free forever</span><h3>Everything that isolates</h3><p>The daemon, CLI, guest agent, MCP server, <span class="mono">SKILL.md</span>, single-node operation, and every guarantee on the castle. Apache-2.0, self-hosted, no telemetry.</p></div>
+        <div class="plate"><span class="lab k">Open-core, later</span><h3>Operating a fleet</h3><p>Multi-node scheduling, the web console, SSO / RBAC, and managed hosting. Convenience for teams running Moat at scale, never the security guarantee.</p></div>
       </div>
     </div>
   </section>
 
-  <!-- ============ QUERIES: FAQ ============ -->
+  <!-- ============ FAQ ============ -->
   <section id="faq-sec">
-    <span class="mk" aria-hidden="true">Queries</span>
     <div class="wrap">
       <h2>The questions everyone asks first.</h2>
       <div class="faq">
-        <details class="reveal" open><summary>Isn't this just Docker?</summary><p>Containers share the host kernel, so a container escape, a real and recurring class of CVE, puts the attacker on your box. Moat gives each task its own kernel under KVM: the same isolation model AWS uses to keep Lambda tenants apart.</p></details>
-        <details class="reveal"><summary>Do I need root?</summary><p>The daemon needs access to <span class="mono">/dev/kvm</span> and can run inside a delegated systemd cgroup slice without full root. The installer sets this up. A rootless mode using user namespaces is supported for the network-isolated path.</p></details>
-        <details class="reveal"><summary>Does my code or data leave my machine?</summary><p>No. Moat runs entirely on your host. Nothing is sent anywhere. The filtered egress proxy is the only outbound path, and you set its allowlist.</p></details>
-        <details class="reveal"><summary>Which agents work with it?</summary><p>Anything that speaks MCP (Claude Code, Claude Desktop, Cursor, Continue, and others), plus a plain HTTP/JSON API and the <span class="mono">moat</span> CLI for everything else.</p></details>
-        <details class="reveal"><summary>What's the overhead?</summary><p>A microVM adds a few MiB of memory and single-digit-millisecond start latency from a warm pool. Cold boot to a ready agent is about 24&nbsp;ms.</p></details>
-        <details class="reveal"><summary>GPU workloads?</summary><p>Not yet. Firecracker has no device passthrough. GPU support is on the roadmap via an alternative VMM backend.</p></details>
-        <details class="reveal"><summary>macOS or Windows?</summary><p>The host must be Linux with KVM. On macOS, run Moat inside a Linux VM. On Windows, WSL2 with nested virtualization works.</p></details>
+        <details open><summary>Isn't this just Docker?</summary><p>Containers share the host kernel, so a container escape, a real and recurring class of CVE, puts the attacker on your box. Moat gives each task its own kernel under KVM: the same isolation model AWS uses to keep Lambda tenants apart.</p></details>
+        <details><summary>Do I need root?</summary><p>The daemon needs access to <span class="mono">/dev/kvm</span> and can run inside a delegated systemd cgroup slice without full root. The installer sets this up. Networked sandboxes and the Firecracker jailer require root or <span class="mono">CAP_NET_ADMIN</span> / <span class="mono">CAP_SYS_ADMIN</span>.</p></details>
+        <details><summary>Does my code or data leave my machine?</summary><p>No. Moat runs entirely on your host. Nothing is sent anywhere. The filtered egress proxy is the only outbound path, and you set its allowlist.</p></details>
+        <details><summary>Which agents work with it?</summary><p>Anything that speaks MCP (Claude Code, Claude Desktop, Cursor, Continue, and others), plus a plain HTTP/JSON API and the <span class="mono">moat</span> CLI for everything else.</p></details>
+        <details><summary>What's the overhead?</summary><p>A microVM adds a few MiB of memory and single-digit-millisecond start latency from a warm pool. Cold start to a ready agent is about 24&nbsp;ms.</p></details>
+        <details><summary>GPU workloads?</summary><p>Not yet. Firecracker has no device passthrough. GPU support is on the roadmap via an alternative VMM backend.</p></details>
+        <details><summary>macOS or Windows?</summary><p>The host must be Linux with KVM. On macOS, run Moat inside a Linux VM. On Windows, WSL2 with nested virtualization works.</p></details>
       </div>
     </div>
   </section>
@@ -823,10 +1081,11 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
     <div class="wrap">
       <span class="stamp" aria-hidden="true">Condemned &middot; 0 bytes persisted</span>
       <h2>Let the agent run wild.</h2>
-      <p>In a box that is disposable, disconnected, and empty &mdash; then gone.</p>
+      <p>In a castle that is disposable, disconnected, and empty &mdash; then burned.</p>
       <div class="actions">
         <a class="btn btn--primary" href="#install">Install Moat</a>
-        <a class="btn btn--ghost" href="#roadmap">Read the roadmap</a>
+        <a class="btn btn--ghost" href="developer-guide.html">Read Developer Guide</a>
+        <a class="btn btn--ghost" href="implementation-plan.html">Implementation Plan</a>
       </div>
     </div>
   </div>
@@ -836,15 +1095,18 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
   <div class="wrap">
     <div class="block">
       <div class="cell">
-        <span class="lab">Drawing</span>
-        <div style="font-family:var(--f-mono); color:var(--ink-2); font-size:13px">moat &middot; hardware-isolated sandboxes for AI agents</div>
+        <span class="lab">Castle Map</span>
+        <div style="font-family:var(--f-mono); color:var(--ink); font-size:13px">moat &middot; hardware-isolated sandboxes for AI agents</div>
         <div style="margin-top:10px">
-          <a href="#top">Docs</a><a href="#install">Install</a><a href="#roadmap">Roadmap</a><a href="https://github.com/M30W-M1X/moat">GitHub</a>
+          <a href="developer-guide.html">Dev Guide</a>
+          <a href="implementation-plan.html">Plan</a>
+          <a href="#install">Install</a>
+          <a href="https://github.com/M30W-M1X/moat">GitHub</a>
         </div>
       </div>
       <div class="cell">
         <span class="lab">Notes</span>
-        <p class="disc">Moat is an independent open-source project. Not affiliated with, or endorsed by, Amazon Web Services. &ldquo;Firecracker&rdquo; is a trademark of Amazon.com, Inc. Benchmarks are indicative measurements on one machine, not guarantees. Product plan drafted 2026-08-30.</p>
+        <p class="disc">Moat is an independent open-source project. Not affiliated with, or endorsed by, Amazon Web Services. &ldquo;Firecracker&rdquo; is a trademark of Amazon.com, Inc. Benchmarks are indicative measurements on one machine, not guarantees.</p>
       </div>
     </div>
   </div>
@@ -855,7 +1117,7 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
   "use strict";
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ---- theme toggle: linen <-> cyanotype ---- */
+  /* ---- theme toggle: Day Castle <-> Night Castle ---- */
   (function(){
     var root = document.documentElement, btn = document.getElementById("theme");
     var saved; try { saved = localStorage.getItem("moat-theme"); } catch(e){}
@@ -865,10 +1127,13 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
       if (a) return a;
       return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
+    function paintIcon(){ btn.textContent = cur() === "dark" ? "☾" : "☀"; }
+    paintIcon();
     btn.addEventListener("click", function(){
       var next = cur() === "dark" ? "light" : "dark";
       root.setAttribute("data-theme", next);
       try { localStorage.setItem("moat-theme", next); } catch(e){}
+      paintIcon();
     });
   })();
 
@@ -884,232 +1149,110 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
     });
   });
 
-  /* ---- scroll reveal ---- */
-  (function(){
-    var els = document.querySelectorAll(".reveal");
-    if (reduce || !("IntersectionObserver" in window)) { els.forEach(function(e){ e.classList.add("in"); }); return; }
-    var io = new IntersectionObserver(function(rows){
-      rows.forEach(function(r){ if (r.isIntersecting){ r.target.classList.add("in"); io.unobserve(r.target); } });
-    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
-    els.forEach(function(e){ io.observe(e); });
-  })();
-
-  /* ================= THE PLAN ================= */
-  var CX = 590, CY = 372;
-  var RINGS = {
-    glacis: { rOut: 332, rIn: 212 },
-    moat:   { rOut: 289, rIn: 182 },
-    wall:   { rOut: 250, rIn: 150 },
-    keep:   { r: 82 }
-  };
-
-  function starD(cx, cy, rOut, rIn, rot){
-    var n = 5, d = "";
-    for (var i = 0; i < n*2; i++){
-      var r = (i % 2 === 0) ? rOut : rIn;
-      var a = (Math.PI / n) * i - Math.PI/2 + (rot || 0);
-      var x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
-      d += (i === 0 ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1) + " ";
-    }
-    return d + "Z";
-  }
-  function polyD(cx, cy, r, sides, rot){
-    var d = "";
-    for (var i = 0; i < sides; i++){
-      var a = (2*Math.PI/sides) * i - Math.PI/2 + (rot || 0);
-      d += (i === 0 ? "M" : "L") + (cx + r*Math.cos(a)).toFixed(1) + "," + (cy + r*Math.sin(a)).toFixed(1) + " ";
-    }
-    return d + "Z";
-  }
-  function ptOnStar(rOut, rIn, idx){
-    var n = 5, r = (idx % 2 === 0) ? rOut : rIn;
-    var a = (Math.PI / n) * idx - Math.PI/2;
-    return { x: CX + r*Math.cos(a), y: CY + r*Math.sin(a), a: a };
-  }
-
-  var plan = document.getElementById("plan");
-  if (plan){
-    var setD = function(sel, d){ var el = plan.querySelector(sel); if (el) el.setAttribute("d", d); };
-    setD("#p-glacis [data-role='fill']", starD(CX, CY, RINGS.glacis.rOut, RINGS.glacis.rIn, 0));
-    setD("#p-glacis [data-role='edge']", starD(CX, CY, RINGS.glacis.rOut, RINGS.glacis.rIn, 0));
-    setD("#p-moat [data-role='fill']", starD(CX, CY, RINGS.moat.rOut, RINGS.moat.rIn, 0));
-    setD("#p-moat [data-role='edge']", starD(CX, CY, RINGS.moat.rOut, RINGS.moat.rIn, 0));
-    setD("#p-wall [data-role='fill']", starD(CX, CY, RINGS.wall.rOut, RINGS.wall.rIn, 0));
-    setD("#p-wall [data-role='edge']", starD(CX, CY, RINGS.wall.rOut, RINGS.wall.rIn, 0));
-    setD("#p-keep [data-role='edge']", polyD(CX, CY, RINGS.keep.r, 5, 0));
-    var kl = document.getElementById("keeplabel");
-    if (kl){ kl.setAttribute("x", CX); kl.setAttribute("y", CY + 8); }
-
-    /* ravelins: a small triangle in each re-entrant notch of the wall */
-    var ravD = "";
-    for (var k = 1; k < 10; k += 2){
-      var base = ptOnStar(RINGS.wall.rOut, RINGS.wall.rIn, k);
-      var apexR = RINGS.moat.rIn - 6;
-      var ax0 = CX + apexR * Math.cos(base.a), ay0 = CY + apexR * Math.sin(base.a);
-      var spread = 0.15;
-      var lx = CX + (RINGS.wall.rIn + 4) * Math.cos(base.a - spread);
-      var ly = CY + (RINGS.wall.rIn + 4) * Math.sin(base.a - spread);
-      var rx = CX + (RINGS.wall.rIn + 4) * Math.cos(base.a + spread);
-      var ry = CY + (RINGS.wall.rIn + 4) * Math.sin(base.a + spread);
-      ravD += "M" + lx.toFixed(1) + "," + ly.toFixed(1) + " L" + ax0.toFixed(1) + "," + ay0.toFixed(1) + " L" + rx.toFixed(1) + "," + ry.toFixed(1) + " Z ";
-    }
-    setD("#p-ravelins [data-role='edge']", ravD);
-
-    /* sally port: the south wall notch (idx 5, straight down) = the checkpoint */
-    var south = ptOnStar(RINGS.wall.rOut, RINGS.wall.rIn, 5);
-    var sallyRect = plan.querySelector("#p-sally rect");
-    var sallyLine = plan.querySelector("#p-sally line");
-    sallyRect.setAttribute("x", (south.x - 42).toFixed(1));
-    sallyRect.setAttribute("y", (south.y - 15).toFixed(1));
-    sallyLine.setAttribute("x1", (south.x - 30).toFixed(1)); sallyLine.setAttribute("y1", south.y.toFixed(1));
-    sallyLine.setAttribute("x2", (south.x + 30).toFixed(1)); sallyLine.setAttribute("y2", south.y.toFixed(1));
-
-    /* leaders A-G, placed in fixed margin lanes so nothing collides */
-    var wS0 = ptOnStar(RINGS.wall.rOut, RINGS.wall.rIn, 0);
-    var wS2 = ptOnStar(RINGS.wall.rOut, RINGS.wall.rIn, 2);
-    var mS8 = ptOnStar(RINGS.moat.rOut, RINGS.moat.rIn, 8);
-    var gS6 = ptOnStar(RINGS.glacis.rOut, RINGS.glacis.rIn, 6);
-    var LEAD = [
-      { k: "A", term: "wall",        sub: "KVM boundary",      fx: wS0.x, fy: wS0.y, tx: CX,  ty: 58,  a: "middle" },
-      { k: "F", term: "bastion",     sub: "cgroup + rate caps",fx: wS2.x, fy: wS2.y, tx: 1000, ty: 250, a: "end" },
-      { k: "B", term: "keep",        sub: "disposed after use",fx: CX - RINGS.keep.r, fy: CY, tx: 34, ty: 246, a: "start" },
-      { k: "D", term: "moat",        sub: "no host route",     fx: mS8.x, fy: mS8.y, tx: 34, ty: 372, a: "start" },
-      { k: "E", term: "outer works", sub: "egress proxy",      fx: gS6.x, fy: gS6.y, tx: 34, ty: 500, a: "start" },
-      { k: "C", term: "checkpoint",  sub: "secret firewall",   fx: south.x, fy: south.y + 16, tx: 430, ty: 706, a: "middle" },
-      { k: "G", term: "your metal",  sub: "single host",       fx: CX + 150, fy: CY + RINGS.glacis.rOut - 34, tx: 792, ty: 706, a: "start" }
-    ];
-    var leadG = document.getElementById("p-leaders");
-    var NS = "http://www.w3.org/2000/svg";
-    LEAD.forEach(function(L){
-      var ex = L.a === "end" ? L.tx : (L.a === "middle" ? L.tx : L.tx + 4);
-      var ey = L.ty + 6;
-      var ln = document.createElementNS(NS, "line");
-      ln.setAttribute("x1", L.fx.toFixed(1)); ln.setAttribute("y1", L.fy.toFixed(1));
-      ln.setAttribute("x2", ex.toFixed(1)); ln.setAttribute("y2", ey.toFixed(1));
-      ln.setAttribute("stroke", "var(--rule-2)"); ln.setAttribute("stroke-width", "1.1");
-      leadG.appendChild(ln);
-      var dot = document.createElementNS(NS, "circle");
-      dot.setAttribute("cx", L.fx.toFixed(1)); dot.setAttribute("cy", L.fy.toFixed(1)); dot.setAttribute("r", "3.4");
-      dot.setAttribute("fill", "var(--ink-2)");
-      leadG.appendChild(dot);
-      var t = document.createElementNS(NS, "text");
-      t.setAttribute("x", L.tx); t.setAttribute("y", L.ty); t.setAttribute("text-anchor", L.a);
-      t.setAttribute("font-size", "23");
-      t.innerHTML = '<tspan fill="var(--alarm)" font-weight="700">' + L.k + '</tspan><tspan dx="9" fill="var(--ink)">' + L.term + '</tspan>' +
-                    '<tspan x="' + L.tx + '" dy="26" font-size="19" fill="var(--ink-3)">' + L.sub + '</tspan>';
-      leadG.appendChild(t);
-    });
-
-    /* draw-on */
-    function drawOn(){
-      plan.querySelectorAll(".draw, .fade").forEach(function(el, i){
-        setTimeout(function(){ el.classList.add("in"); }, reduce ? 0 : 90 * i);
-      });
-    }
-    if (reduce){ drawOn(); }
-    else if ("IntersectionObserver" in window){
-      var io = new IntersectionObserver(function(r){
-        if (r[0].isIntersecting){ drawOn(); io.disconnect(); }
-      }, { threshold: 0.2 });
-      io.observe(plan);
-    } else { drawOn(); }
-
-    /* ---- threat trace ---- */
+  /* ---- pixel castle siege trace ---- */
+  var svg = document.getElementById("castle-svg");
+  if (svg){
     var TRACE = {
-      files:  { ring: "wall",   label: "Turned at the wall", text: "No host filesystem is mounted. The guest sees a read-only rootfs and its own copy-on-write scratch disk." },
-      creds:  { ring: "sally",  label: "Turned at the checkpoint", text: "Every file, env var, and stdin crossing in is scanned for secrets and blocked unless explicitly allowed and audited." },
-      lan:    { ring: "moat",   label: "Turned at the moat", text: "A per-VM network namespace with nftables dropping the host, 169.254.169.254, and RFC-1918 ranges." },
-      exfil:  { ring: "glacis", label: "Turned at the outer works", text: "Egress only through a domain-filtered proxy, transparently redirected so a client that ignores HTTP_PROXY still cannot bypass it." },
-      fork:   { ring: "wall",   label: "Contained at the wall", text: "cgroup v2 cpu.max / memory.max / pids.max on the VMM, plus Firecracker rate limiters on the disk and NIC." },
-      escape: { ring: "wall",   label: "Turned at the wall", text: "No shared kernel. The guest runs its own kernel under KVM, launched by a seccomp-jailed Firecracker process." },
-      state:  { ring: "keep",   label: "The whole work is condemned", text: "One microVM per task, never reused. Stopped and discarded on exit, TTL, or idle. An orphan reaper sweeps the rest." }
+      files:  { ring: "wall",   x1: 320, y1: 142, x2: 174, y2: 186, label: "Stopped at the KVM wall", text: "No host filesystem is mounted. The guest sees a shared read-only rootfs and its own ephemeral overlayfs scratch disk." },
+      creds:  { ring: "sally",  x1: 320, y1: 392, x2: 320, y2: 274, label: "Blocked at the iron portcullis", text: "Every file, env var, and stdin crossing in is scanned for secrets and blocked with 409 unless explicitly allowed and audited." },
+      lan:    { ring: "moat",   x1: 320, y1: 142, x2: 432, y2: 360, label: "Sunk in the moat", text: "A per-VM network namespace with nftables dropping routes to the host, 169.254.169.254, and RFC-1918 ranges." },
+      exfil:  { ring: "glacis", x1: 320, y1: 142, x2: 56,  y2: 224, label: "Turned at the watchtower", text: "Egress only through a domain-filtered proxy with global and per-token lists, enforced by transparent DNAT and strict policy drop." },
+      fork:   { ring: "wall",   x1: 320, y1: 142, x2: 466, y2: 186, label: "Capped at the east bastion", text: "cgroup v2 cpu.max / memory.max / pids.max on the VMM, plus Firecracker token-bucket rate limiters on the disk and NIC." },
+      escape: { ring: "wall",   x1: 320, y1: 142, x2: 204, y2: 236, label: "Stopped by the KVM stone wall", text: "No shared kernel. The guest runs its own Linux kernel under KVM, confined by a Firecracker jailer with seccomp." },
+      state:  { ring: "keep",   x1: 320, y1: 142, x2: 320, y2: 142, label: "The entire keep is burned", text: "One microVM per task, never reused. Stopped and discarded on exit, TTL, or idle. An orphan reaper sweeps anything left behind." }
     };
-    var STOPR = { glacis: 300, moat: 258, wall: 220, sally: 190, keep: 100 };
     var traceG = document.getElementById("p-trace");
     var stampG = document.getElementById("p-stamp");
     var readout = document.getElementById("readout");
     var btns = Array.prototype.slice.call(document.querySelectorAll("#tracebtns .tbtn"));
     var ringEls = {
-      glacis: plan.querySelector("#p-glacis"), moat: plan.querySelector("#p-moat"),
-      wall: plan.querySelector("#p-wall"), keep: plan.querySelector("#p-keep")
+      glacis: svg.querySelector("#p-glacis"),
+      moat:   svg.querySelector("#p-moat"),
+      wall:   svg.querySelector("#p-wall"),
+      sally:  svg.querySelector("#p-sally"),
+      keep:   svg.querySelector("#p-keep")
     };
 
     function clearTrace(){
       traceG.innerHTML = "";
-      stampG.setAttribute("opacity", "0"); stampG.innerHTML = "";
-      Object.keys(ringEls).forEach(function(k){ ringEls[k].classList.remove("hot", "dim"); });
+      stampG.setAttribute("opacity", "0");
+      stampG.innerHTML = "";
+      Object.keys(ringEls).forEach(function(k){ if (ringEls[k]) ringEls[k].classList.remove("hot", "dim"); });
       document.querySelectorAll("#schedule tr[data-ring]").forEach(function(tr){ tr.style.background = ""; });
     }
+
     function runTrace(kind){
       clearTrace();
       var t = TRACE[kind]; if (!t) return;
       var ns = "http://www.w3.org/2000/svg";
-      var fromInside = (kind === "creds");
-      var ang = fromInside ? Math.PI/2 : -Math.PI/2 + 0.38;
-      var startR = fromInside ? RINGS.keep.r + 4 : RINGS.glacis.rOut + 150;
-      var endR = STOPR[t.ring] || 250;
-      var sx = CX + startR * Math.cos(ang), sy = CY + startR * Math.sin(ang);
-      var ex = CX + endR * Math.cos(ang), ey = CY + endR * Math.sin(ang);
-      var path = document.createElementNS(ns, "path");
-      path.setAttribute("d", "M" + sx.toFixed(1) + "," + sy.toFixed(1) + " L" + ex.toFixed(1) + "," + ey.toFixed(1));
-      traceG.appendChild(path);
-      var len = Math.hypot(ex - sx, ey - sy);
-      if (!reduce){
-        path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
-        path.style.transition = "stroke-dashoffset .7s cubic-bezier(.16,1,.3,1)";
-        requestAnimationFrame(function(){ path.style.strokeDashoffset = "0"; });
-      }
-      var head = document.createElementNS(ns, "circle");
-      head.setAttribute("cx", ex.toFixed(1)); head.setAttribute("cy", ey.toFixed(1));
-      head.setAttribute("r", "5"); head.setAttribute("fill", "var(--alarm)"); head.setAttribute("stroke", "none");
-      traceG.appendChild(head);
 
-      var hotKey = (t.ring === "sally") ? "wall" : t.ring;
-      Object.keys(ringEls).forEach(function(k){ if (k !== hotKey) ringEls[k].classList.add("dim"); });
-      if (ringEls[hotKey]) setTimeout(function(){ ringEls[hotKey].classList.add("hot"); }, reduce ? 0 : 620);
+      Object.keys(ringEls).forEach(function(k){
+        if (!ringEls[k]) return;
+        if (k === t.ring) ringEls[k].classList.add("hot");
+        else ringEls[k].classList.add("dim");
+      });
 
-      if (kind === "state"){
-        setTimeout(function(){
-          stampG.innerHTML = '<g transform="rotate(-8 590 372)"><rect x="340" y="326" width="500" height="94" fill="none" stroke="var(--stamp)" stroke-width="4"></rect><text x="590" y="388" text-anchor="middle" font-family="var(--f-mono)" font-weight="700" font-size="40" letter-spacing="6" fill="var(--stamp)">CONDEMNED</text></g>';
-          stampG.setAttribute("opacity", "1");
-        }, reduce ? 0 : 700);
+      if (kind !== "state"){
+        var ln = document.createElementNS(ns, "line");
+        ln.setAttribute("x1", t.x1); ln.setAttribute("y1", t.y1);
+        ln.setAttribute("x2", t.x2); ln.setAttribute("y2", t.y2);
+        ln.setAttribute("stroke", "#ff6b3d");
+        ln.setAttribute("stroke-width", "6");
+        ln.setAttribute("stroke-dasharray", "10 8");
+        traceG.appendChild(ln);
+
+        // Pixelated impact burst at the defense point
+        var burst = document.createElementNS(ns, "g");
+        burst.innerHTML =
+          '<rect x="' + (t.x2 - 14) + '" y="' + (t.y2 - 14) + '" width="28" height="28" fill="#e54826" stroke="#1b1829" stroke-width="3"/>' +
+          '<rect x="' + (t.x2 - 8) + '" y="' + (t.y2 - 8) + '" width="16" height="16" fill="#ffd15c"/>' +
+          '<text x="' + t.x2 + '" y="' + (t.y2 + 4) + '" text-anchor="middle" font-family="Press Start 2P,monospace" font-size="10" fill="#1b1829">X</text>';
+        traceG.appendChild(burst);
+      } else {
+        stampG.innerHTML =
+          '<rect x="218" y="102" width="204" height="58" fill="#e54826" stroke="#1b1829" stroke-width="4"/>' +
+          '<text x="320" y="138" text-anchor="middle" font-family="Press Start 2P,monospace" font-size="14" fill="#fff">VM BURNED</text>';
+        stampG.setAttribute("opacity", "1");
       }
 
       readout.innerHTML = "<b>" + t.label + "</b>" + t.text;
       var row = document.querySelector('#schedule tr[data-ring="' + t.ring + '"]');
-      if (row) row.style.background = "color-mix(in srgb, var(--alarm) 12%, transparent)";
+      if (row) row.style.background = "var(--gold-wash)";
     }
 
     btns.forEach(function(b){
       b.addEventListener("click", function(){
         var active = b.getAttribute("aria-pressed") === "true";
         btns.forEach(function(x){ x.setAttribute("aria-pressed", "false"); });
-        if (active){ clearTrace(); readout.innerHTML = "<b>The command in the keep</b>Pick an attack. The plan draws its path inward and marks the work that turns it back."; return; }
+        if (active){
+          clearTrace();
+          readout.innerHTML = "<b>The agent in the keep</b>Pick an attack. Watch the castle defense that turns it back.";
+          return;
+        }
         b.setAttribute("aria-pressed", "true");
         runTrace(b.getAttribute("data-trace"));
       });
     });
 
-    /* schedule rows hover -> mark ring */
     document.querySelectorAll("#schedule tr[data-ring]").forEach(function(tr){
       tr.addEventListener("mouseenter", function(){
-        var k = tr.getAttribute("data-ring"); var hk = (k === "sally") ? "wall" : (k === "keep") ? null : k;
-        if (hk && ringEls[hk]) ringEls[hk].classList.add("hot");
+        var k = tr.getAttribute("data-ring");
+        if (ringEls[k]) ringEls[k].classList.add("hot");
       });
       tr.addEventListener("mouseleave", function(){
         if (!btns.some(function(x){ return x.getAttribute("aria-pressed") === "true"; })){
-          Object.keys(ringEls).forEach(function(k){ ringEls[k].classList.remove("hot"); });
+          Object.keys(ringEls).forEach(function(k){ if (ringEls[k]) ringEls[k].classList.remove("hot"); });
         }
       });
     });
   }
 
-  /* ================= FIELD REPORT: the real moat run ================= */
+  /* ---- live terminal field report ---- */
   (function(){
     var host = document.getElementById("termbody");
     if (!host) return;
     var lines = [
-      { c: "u",   t: "$ moat run --net=deny --put .:/work -- python summarize.py report.pdf" },
+      { c: "u",   t: "$ moat run --put .:/work -- python3 summarize.py report.pdf" },
       { c: "tag", t: "moat: sandbox sb-2f9c41 ready in 7ms   python · net=deny · cpu 1.0 · mem 512M · ttl 15m" },
       { c: "tag", t: "moat: copied ./ → /work   (2 files, 214 KB, scanned — no secrets)" },
       { c: "b",   t: "summarize.py: extracted 9 pages from report.pdf" },
@@ -1129,13 +1272,13 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
       if (li >= lines.length) return;
       var l = lines[li++], span = document.createElement("span");
       span.className = l.c; host.appendChild(span);
-      var i = 0, txt = l.t, speed = l.c === "u" ? 22 : 5;
+      var i = 0, txt = l.t, speed = l.c === "u" ? 20 : 4;
       (function tick(){
         span.textContent = txt.slice(0, i++);
         if (i <= txt.length){ setTimeout(tick, speed); }
         else {
           host.appendChild(document.createTextNode("\n"));
-          setTimeout(nextLine, l.c === "u" ? 240 : 120);
+          setTimeout(nextLine, l.c === "u" ? 200 : 100);
         }
       })();
     }
@@ -1143,7 +1286,7 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
     if ("IntersectionObserver" in window){
       var io = new IntersectionObserver(function(r){
         if (r[0].isIntersecting && !started){ started = true; nextLine(); io.disconnect(); }
-      }, { threshold: 0.3 });
+      }, { threshold: 0.25 });
       io.observe(host.closest(".report"));
     } else { nextLine(); }
   })();
