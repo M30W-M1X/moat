@@ -1,75 +1,73 @@
 # Installing Moat
 
-## One command
+Go from a Linux box with KVM to hardware-isolated agent sandboxes in under two minutes. No account required. Nothing phones home.
+
+## One-command install
+
+### System install (recommended for servers and systemd)
 
 ```sh
-curl -fsSL https://moat.sh/install | sh
+curl -fsSL https://raw.githubusercontent.com/M30W-M1X/moat/main/install.sh | sh
 ```
 
-The installer:
-
-1. checks the host — Linux, x86_64, and `/dev/kvm`
-2. downloads the release tarball and `checksums.txt` for `M30W-M1X/moat`
-3. verifies the sha256, and the cosign signature when `cosign` is present
-4. installs `moat`, `moatd`, `moat-mcp`, `moat-uffd` to `/usr/local/bin` and the
-   guest agent plus images to `/var/lib/moat`
-5. writes a starter `/etc/moat/moatd.json` with a random token, if none exists
-6. installs a `moatd` systemd unit when systemd is present
-
-Run it as your user (`--user`) to install under `$HOME` instead:
+### User install (no root required, installs under `$HOME`)
 
 ```sh
-curl -fsSL https://moat.sh/install | sh -s -- --user
+curl -fsSL https://raw.githubusercontent.com/M30W-M1X/moat/main/install.sh | sh -s -- --user
 ```
 
-### Options
+What the installer does:
+
+1. Checks the host — Linux `x86_64` and `/dev/kvm`.
+2. Downloads the release tarball and `checksums.txt` from `M30W-M1X/moat`.
+3. Verifies the SHA-256 digest, and the Cosign signature when `cosign` is installed.
+4. Installs `moat`, `moatd`, `moat-mcp`, and `moat-uffd` to `/usr/local/bin` (or `~/.local/bin`), and the guest agent, kernel, rootfs, `images.lock`, `images.lock.sig`, and CycloneDX SBOM to `/var/lib/moat` (or `~/.local/share/moat`).
+5. Writes a starter `moatd.json` with a random bearer token if none exists.
+6. Installs a hardened `moatd.service` systemd unit when systemd is present.
+
+### Installer options
 
 | Flag | Meaning |
 | --- | --- |
-| `--user` | install under `$HOME` (`~/.local/bin`, `~/.local/share/moat`, `~/.config/moat`) |
-| `--prefix DIR` | binary directory |
-| `--data DIR` | image directory |
-| `--version VER` | a specific release tag (default: latest) |
-| `--no-service` | skip the systemd unit |
-| `--dry-run` | print the plan, change nothing |
+| `--user` | Install under `$HOME` (`~/.local/bin`, `~/.local/share/moat`, `~/.config/moat`) |
+| `--prefix DIR` | Override binary directory |
+| `--data DIR` | Override image and audit directory |
+| `--version VER` | Install a specific release tag (default: latest) |
+| `--no-service` | Skip the systemd unit |
+| `--dry-run` | Print the plan and change nothing |
 
-`MOAT_REPO=owner/name` points the installer at a fork.
+Set `MOAT_REPO=owner/name` to install from a fork.
 
-## After install
+## Verify and run
 
 ```sh
-moat doctor                       # KVM, firecracker, cgroup v2, images, ...
-systemctl enable --now moatd      # or the printed run command
+moat doctor                       # checks KVM, Firecracker, cgroup v2, image digests
+systemctl enable --now moatd      # or systemctl --user enable --now moatd
 moat run -- echo hello from a microVM
 ```
 
-Where the daemon and CLI look for the images, in order: `$MOAT_DATA`,
-`$XDG_DATA_HOME/moat`, `~/.local/share/moat`, `/var/lib/moat`. A repo checkout
-uses `build/artifacts` instead.
+Image lookup order: `$MOAT_DATA`, `$XDG_DATA_HOME/moat`, `~/.local/share/moat`, `/var/lib/moat`. A source checkout uses `build/artifacts`.
 
-## Point an agent at it
+## Connect an AI agent
 
-See [`mcp.md`](mcp.md). The MCP config block, with the token from your
-`moatd.json`, is also printed at the end of the install.
+See [`docs/mcp.md`](mcp.md). The installer prints a ready-to-paste MCP config block using your generated token.
 
-## Build a release yourself
+## Production hardening checklist
 
-```sh
-make images            # kernel + rootfs (optional; bundled into the tarball if present)
-VERSION=v0.1.0 make dist
-```
+Out of the box, Moat isolates every task in its own KVM microVM with a private disk, ingress secret scanning, and hash-chained audit logging. For multi-tenant or unattended production hosts, enable these in `/etc/moat/moatd.json` (see [`docs/moatd.example.json`](moatd.example.json)):
 
-`dist/` then holds `moat_<ver>_linux_amd64.tar.gz` and `checksums.txt`. Sign
-`checksums.txt` with cosign and attach both, plus the signature, to a GitHub
-release.
+1. **VMM jailer:** set `"defaults": { "jail": true }` (requires root or `CAP_SYS_ADMIN` + `CAP_NET_ADMIN` in `moatd.service`) so each Firecracker process runs chrooted with seccomp and dropped privileges.
+2. **Read-only rootfs + overlayfs:** set `"read_only_root": true` and `"scratch_mib": 512` on templates to mount the shared ext4 image read-only and isolate writes onto a sparse per-VM scratch disk without copying the base image.
+3. **Strict egress enforcement:** run `moatd` with `-egress-transparent 0.0.0.0:3128` and `"defaults": { "strict_egress": true }` so `nftables` drops all non-proxy outbound ports and transparently forces HTTP/HTTPS through the domain filter.
+4. **Transport security:** bind to a local Unix socket (`"socket": "/run/moat/moatd.sock"` with `-addr ""`) for single-host agents, or set `"tls_cert"`, `"tls_key"`, and `"tls_client_ca"` for mTLS over TCP.
+5. **Signed image verification:** keep `"image_verify": "enforce"` (the default) and set `"cosign_identity"` and `"cosign_issuer"` so `moatd` verifies `images.lock.sig` before serving any template.
+6. **SIEM forwarding:** set `"audit": { "webhook_url": "https://..." }` to stream every tamper-evident audit event to your log collector.
 
-## Verifying the image
+## Verifying image provenance
 
-The release ships `images.lock` and `sbom.cdx.json` beside `vmlinux` and
-`rootfs.ext4`. `images.lock` records the sha256 of each file plus the base
-image digest, the kernel snapshot, and the SBOM digest.
+Each release ships `images.lock`, `images.lock.sig`, and `sbom.cdx.json` beside `vmlinux` and `rootfs.ext4`. `images.lock` records the SHA-256 of each artifact plus the pinned base OCI digest, kernel CI snapshot, and SBOM digest.
 
-Check the images by hand:
+Verify the local images by hand:
 
 ```sh
 cd /var/lib/moat
@@ -81,27 +79,30 @@ for k in ("kernel", "rootfs", "sbom"):
 PY
 ```
 
-`moatd` runs the same check at startup. In the default `enforce` mode it does
-not serve a template whose kernel or rootfs does not match `images.lock`. When
-the release also ships `images.lock.sig`, set `cosign_identity` (or
-`MOAT_COSIGN_IDENTITY`) and `moatd` verifies the signature too. `moat doctor`
-prints an `image-lock` line for the local images.
-
-Rebuild the rootfs yourself and confirm it matches:
+Rebuild from source and prove byte-for-byte reproducibility:
 
 ```sh
 make images && make images-verify
 ```
 
-This is byte-for-byte reproducible on one toolchain (the same `e2fsprogs`,
-`podman`, `go`, and `tar`). On a different toolchain the package set and the
-SBOM still match, but the ext4 byte layout can differ.
+On the same toolchain (`e2fsprogs`, `podman`, `go`, `tar`), two builds produce identical ext4 bytes. Across toolchains, the package set and CycloneDX SBOM still match.
+
+## Building a signed release yourself
+
+```sh
+make images
+SIGN=1 VERSION=v0.2.0 build/release.sh
+```
+
+`dist/` holds the tarball, `checksums.txt`, and Cosign signatures/bundles (`images.lock.sig` inside the tarball, `checksums.txt.sig` alongside it).
 
 ## Uninstall
 
+Remove binaries, systemd unit, config, and data in one command:
+
 ```sh
-moat uninstall                # removes system install (/usr/local/bin, /var/lib/moat, /etc/moat, unit)
-moat uninstall --user         # removes user install (~/.local/bin, ~/.local/share/moat, ~/.config/moat)
-moat uninstall --keep-data    # keeps images and audit logs
-moat uninstall --dry-run      # prints the removal plan without changing files
+moat uninstall                # system install (/usr/local/bin, /var/lib/moat, /etc/moat, unit)
+moat uninstall --user         # user install (~/.local/bin, ~/.local/share/moat, ~/.config/moat)
+moat uninstall --keep-data    # remove binaries and unit, keep images and audit logs
+moat uninstall --dry-run      # print what would be removed without changing files
 ```

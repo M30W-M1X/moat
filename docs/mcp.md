@@ -1,11 +1,30 @@
-# moat-mcp — Model Context Protocol server
+# moat-mcp — Hardware-isolated sandboxes for AI coding agents
 
-`moat-mcp` gives an AI agent tools to use Moat. It speaks MCP over stdio and
-calls a running `moatd` over its HTTP API.
+`moat-mcp` connects any Model Context Protocol client — Claude Code, Claude Desktop, Cursor, Continue, Codex, or your own agent loop — to a local `moatd` daemon.
 
-## Run it
+Instead of approving `pip install`, `npm install`, or generated scripts on your own machine, your agent runs them inside a disposable KVM microVM with no access to `~/.ssh`, `~/.aws`, your LAN, or your files — and destroys the VM when the task finishes.
 
-Start `moatd` first, then point an MCP client at `moat-mcp`:
+## Configure your MCP client
+
+### Option 1: Local Unix socket (recommended on the same machine)
+
+No open TCP port. Uses the `0660` socket at `/run/moat/moatd.sock` plus a bearer token from `moatd.json`:
+
+```json
+{
+  "mcpServers": {
+    "moat": {
+      "command": "moat-mcp",
+      "args": ["--socket", "/run/moat/moatd.sock"],
+      "env": {
+        "MOAT_TOKEN": "dev:<secret>"
+      }
+    }
+  }
+}
+```
+
+### Option 2: HTTP or HTTPS (`MOAT_ADDR`)
 
 ```json
 {
@@ -14,32 +33,52 @@ Start `moatd` first, then point an MCP client at `moat-mcp`:
       "command": "moat-mcp",
       "env": {
         "MOAT_ADDR": "http://127.0.0.1:8080",
-        "MOAT_TOKEN": "ci:s3cr3t"
+        "MOAT_TOKEN": "dev:<secret>"
       }
     }
   }
 }
 ```
 
-`-addr URL`, `-socket PATH`, and `-token id:secret` work instead of the
-environment (`MOAT_ADDR`, `MOAT_SOCKET`, `MOAT_TOKEN`). `MOAT_ADDR` also
-accepts `unix:///path/to/moatd.sock`.
+Flags `-addr URL`, `-socket PATH`, and `-token id:secret` override `$MOAT_ADDR`, `$MOAT_SOCKET`, and `$MOAT_TOKEN`. `MOAT_ADDR` also accepts `unix:///run/moat/moatd.sock`.
+
+## Add the agent playbook (`SKILL.md`)
+
+Point your agent's system instructions or skills directory at [`SKILL.md`](../SKILL.md) (installed at `/var/lib/moat/SKILL.md` or `~/.local/share/moat/SKILL.md`). It teaches the model:
+
+- Which commands belong in a sandbox (installs, generated code, network fetches, destructive edits) and which trivial read-only checks do not.
+- The `create → write → exec → read → destroy` loop, defaulting to `network: "deny"`.
+- Never to silently override a secret-firewall block or place real credentials inside a sandbox.
 
 ## Tools
 
+Six verbs cover the entire sandbox lifecycle:
+
 | Tool | Purpose |
 | --- | --- |
-| `moat_create` | Start a disposable sandbox. `network`: `deny` (default) or `egress`. |
-| `moat_write_file` | Write a file into the guest. Screened for credentials. |
-| `moat_exec` | Run one command, wait, return `exit` / `stdout` / `stderr` / `timed_out`. |
-| `moat_read_file` | Read a file out of the guest. Binary comes back base64. |
-| `moat_list` | List the token's sandboxes. |
-| `moat_destroy` | Stop and discard a sandbox. |
+| `moat_create` | Start a fresh, disposable microVM. `network`: `deny` (default) or `egress` (domain-filtered). Optional `template` and `ttl_seconds`. |
+| `moat_write_file` | Copy text or base64 binary into the guest. Screened by the ingress secret firewall before a byte enters the VM. |
+| `moat_exec` | Run one command with optional `env`, `dir`, `stdin`, and `timeout_sec`. Returns `exit`, `signal`, `timed_out`, `stdout`, and `stderr`. |
+| `moat_read_file` | Pull a result file back out of the guest. Text returns as UTF-8; binary returns as base64. |
+| `moat_list` | List active sandboxes owned by this token. |
+| `moat_destroy` | Stop the VM and discard its disk immediately. |
 
-A write or exec blocked by the secret firewall comes back as an error result
-naming the rule and line. The agent playbook (`SKILL.md`) tells the agent to
-surface that to the user rather than override it.
+## What a secret-firewall block looks like
 
-## Works with
+If an agent tries to upload a `.env` file or pass a credential in `env`/`stdin`, `moatd` rejects the call with `409` before the bytes reach the microVM. `moat-mcp` returns a structured error to the model naming the exact rule and line:
 
-Any MCP client — Claude Code, Claude Desktop, Cursor, Continue, and others.
+```text
+BLOCKED by the secret firewall: secret detected in /work/.env — not sent
+  aws-secret-key at line 3 (aZ****(40 chars))
+Do not retry with allow_secrets unless the user has explicitly told you to send this.
+Never put the user's real credentials into a sandbox.
+```
+
+## Review what the agent did
+
+Every sandbox creation, command, file transfer, secret block, and egress decision lands in the hash-chained audit log. Inspect any session — even after the VM is gone:
+
+```sh
+moat audit report sb-7f3a19c4
+moat audit verify
+```

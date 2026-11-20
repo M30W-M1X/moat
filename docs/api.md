@@ -1,12 +1,17 @@
 # moatd HTTP API
 
-`moatd` is the northbound daemon. It serves a JSON API for sandbox lifecycle,
-command execution, and file transfer.
+`moatd` is the self-hosted control plane for Moat. It gives agent products, CI runners, and coding assistants disposable Firecracker microVMs over plain HTTP/JSON or a Unix domain socket — with bearer-token multi-tenancy, per-template warm pools, an ingress secret firewall, strict domain-filtered egress, native TLS/mTLS, Prometheus metrics, and a hash-chained audit trail.
+
+Zero external accounts. Zero vendor lock-in. Every isolation feature ships under Apache-2.0.
 
 ## Run
 
 ```sh
-MOAT_TOKENS="ci:s3cr3t,dev:hunter2" moatd -addr :8080 -pool 4
+# Quick start from flags
+MOAT_TOKENS="ci:s3cr3t,dev:hunter2" moatd -addr 127.0.0.1:8080 -pool 4
+
+# Production start from config (TLS or Unix socket, per-token policies, audit log)
+moatd -config /etc/moat/moatd.json
 ```
 
 Flags: `-addr`, `-socket`, `-tls-cert`, `-tls-key`, `-tls-client-ca`,
@@ -19,112 +24,135 @@ Flags: `-addr`, `-socket`, `-tls-cert`, `-tls-key`, `-tls-client-ca`,
 `-cosign-identity`, `-cosign-issuer`, `-secret-scan` (default on),
 `-secret-redact`, `-json-log`.
 
-## Config file
+Pass `-addr ""` with `-socket /run/moat/moatd.sock` to listen exclusively on a local Unix socket (`0660`).
 
-`-config FILE` reads a JSON file that defines the templates, the tokens, and a
-per-token policy. It replaces `-tokens` and the single flag-built template. A
-non-zero value in the file's `defaults` block overrides the matching flag. See
-`docs/moatd.example.json`.
+## Config file (`moatd.json`)
+
+`-config FILE` defines templates, bearer tokens, per-token policies, transport security, and audit settings. Unknown keys are rejected at startup. See [`docs/moatd.example.json`](moatd.example.json) for a full working example.
 
 ```json
 {
+  "image_verify": "enforce",
+  "socket": "/run/moat/moatd.sock",
   "templates": [
-    { "name": "default", "vcpus": 1, "mem_mib": 256, "cpu_max": 0.5 }
+    {
+      "name": "default",
+      "vcpus": 1,
+      "mem_mib": 256,
+      "cpu_max": 0.5,
+      "mem_max_mib": 512,
+      "pids_max": 256,
+      "pool": 4,
+      "read_only_root": true,
+      "scratch_mib": 512
+    }
   ],
   "tokens": [
-    { "id": "ci", "secret": "…", "templates": ["default"],
-      "max_concurrent": 8, "max_ttl": "30m", "deny_network": true }
+    {
+      "id": "ci",
+      "secret": "replace-me",
+      "templates": ["default"],
+      "max_concurrent": 8,
+      "max_ttl": "30m",
+      "egress_allow": ["pypi.org", "github.com"]
+    }
   ],
-  "defaults": { "global_max": 64, "pool": 4, "default_ttl": "15m" }
+  "defaults": {
+    "global_max": 64,
+    "token_max": 16,
+    "default_ttl": "15m",
+    "max_ttl": "1h",
+    "jail": true,
+    "strict_egress": true
+  },
+  "audit": {
+    "dir": "/var/lib/moat/audit",
+    "webhook_url": "https://siem.internal/moat/events"
+  }
 }
 ```
 
-A token with an empty `templates` list may use any template. `max_concurrent`
-`0` falls back to `token_max`; `max_ttl` empty falls back to `max_ttl`. Add
-`"allow_secret_override": true` to a token to let its requests carry
-secret-flagged content (see below). Add `"egress_allow"` and `"egress_deny"`
-lists on a token to scope outbound hosts per tenant; global deny rules always
-win over per-token allow rules.
+### Key capabilities in `moatd.json`
 
-Per-template fields also support `"pool"` (per-template warm pool size),
-`"snapshot_dir"` and `"use_uffd"` (snapshot-templated warm pools), and
-`"read_only_root": true` with `"scratch_mib"` (shared read-only rootfs with a
-sparse ext4 overlayfs upper layer).
-
-Top-level transport fields `"socket"`, `"tls_cert"`, `"tls_key"`, and
-`"tls_client_ca"` enable Unix domain socket listening, TLS 1.2+, and mTLS.
-`defaults.jail`, `defaults.jail_uid`, `defaults.jail_gid` run Firecracker under
-the jailer, and `defaults.strict_egress` sets the sandbox nftables forward
-policy to drop. `audit.webhook_url` (or `-audit-webhook`) forwards each audit
-event asynchronously via JSON POST.
+- **Per-template pools & snapshots:** set `"pool"` per template, and optionally `"snapshot_dir"` + `"use_uffd": true` to warm pool members from snapshots with automatic guest clock resync.
+- **Read-only rootfs + overlayfs:** set `"read_only_root": true` and `"scratch_mib"` so sandboxes mount the shared template read-only and write only to a sparse per-VM ext4 scratch disk.
+- **Per-token policy:** restrict `"templates"`, `"max_concurrent"`, `"max_ttl"`, `"deny_network"`, `"allow_secret_override"`, `"audit_read": "all"`, and per-token `"egress_allow"` / `"egress_deny"` (global deny rules always win over per-token allow rules).
+- **VMM jailer & strict egress:** `"defaults.jail"` (`jail_uid`, `jail_gid`) runs Firecracker under the jailer; `"defaults.strict_egress"` sets the sandbox `nftables` forward policy to `drop` so only proxy traffic and configured DNS pass.
+- **Transport security:** `"socket"` opens a `0660` Unix socket; `"tls_cert"` + `"tls_key"` enable TLS 1.2+; `"tls_client_ca"` enforces mutual TLS (`RequireAndVerifyClientCert`).
+- **SIEM forwarding:** `"audit.webhook_url"` (or `-audit-webhook`) forwards every written audit event asynchronously via bounded-queue JSON POST without blocking API requests.
 
 ## Secret firewall
 
-On by default. Every file, environment value, and stdin crossing into a
-sandbox is scanned with the Gitleaks rule set (regex + keyword + Shannon
-entropy). A match returns `409` and the content is not sent:
+On by default. Every file, environment value, and stdin crossing into a sandbox is scanned with the vendored Gitleaks rule set (regex + keyword + Shannon entropy). A match returns `409` and zero bytes reach the guest:
 
 ```json
-{ "error": "secret detected in /work/.env — not sent",
+{
+  "error": "secret detected in /work/.env — not sent",
   "hint": "remove the credential, or resend with allow_secrets if your token permits it",
-  "findings": [ { "rule": "aws-secret-key", "line": 3, "secret": "aZ****(40 chars)", "entropy": 5.1 } ] }
+  "findings": [
+    { "rule": "aws-secret-key", "line": 3, "secret": "aZ****(40 chars)", "entropy": 5.1 }
+  ]
+}
 ```
 
-To override, the caller's token needs `allow_secret_override` and the request
-must ask for it: `"allow_secrets": true` in the exec body, or
-`?allow_secrets=true` on the file `PUT`. Overrides are logged. Start `moatd`
-with `-secret-redact` to replace each secret with a marker and let the rest of
-the content through instead of blocking. `-secret-scan=false` turns the
-firewall off.
+To override, the caller's token needs `"allow_secret_override": true` and the request must pass `"allow_secrets": true` (exec) or `?allow_secrets=true` (file `PUT`). Every override is synchronously written to the audit log; if the audit write fails, the request fails closed (`503`). Start `moatd` with `-secret-redact` to replace findings with a marker instead of blocking, or `-secret-scan=false` to disable.
 
 ## Auth
 
-Every `/v1/...` route needs `Authorization: Bearer <secret>`. A caller sees only
-the sandboxes created with its own token. `/healthz` and `/metrics` are open.
+Every `/v1/...` route requires `Authorization: Bearer <secret>` (checked in constant time). Callers see only sandboxes owned by their token. `/healthz` and `/metrics` are unauthenticated.
 
 ## Routes
 
 ### `POST /v1/sandboxes`
 
-Create a sandbox. Body (all optional):
+Create a sandbox. Body (all fields optional, max 1 MiB):
 
 ```json
 { "template": "default", "networked": false, "ttl_seconds": 300 }
 ```
 
-`201` with:
+`201 Created`:
 
 ```json
-{ "id": "sb-…", "template": "default",
-  "created_at": "…", "expires_at": "…",
-  "networked": false, "guest_ip": "" }
+{
+  "id": "sb-7f3a19c4",
+  "template": "default",
+  "created_at": "2026-08-30T18:10:00Z",
+  "expires_at": "2026-08-30T18:15:00Z",
+  "networked": false,
+  "guest_ip": ""
+}
 ```
 
-`429` when the per-token or global concurrency quota is full. `403` when a
-token policy forbids the template or a networked sandbox.
+Errors: `403` (token policy forbids template or networking), `413` (oversized body), `429` (per-token or global quota reached), `503` (audit write failed — sandbox rolled back).
 
 ### `GET /v1/sandboxes`
 
-`200` with `{ "sandboxes": [ <sandbox>, … ] }` — the caller's sandboxes.
+`200` with `{ "sandboxes": [ <sandbox>, ... ] }` — active sandboxes owned by the caller's token.
 
 ### `GET /v1/sandboxes/{id}` · `DELETE /v1/sandboxes/{id}`
 
-Status, or destroy (`204`). Sandboxes are also destroyed automatically at
-`expires_at`.
+Inspect or destroy (`204 No Content`). Sandboxes are also reaped automatically at `expires_at`.
 
 ### `POST /v1/sandboxes/{id}/exec`
 
-Run one process. Body:
+Run one process inside the guest. Body:
 
 ```json
-{ "argv": ["sh","-c","echo hi"], "env": {"K":"V"}, "dir": "/",
-  "stdin": "<base64>", "tty": false, "timeout_ms": 0, "allow_secrets": false }
+{
+  "argv": ["sh", "-c", "echo hi"],
+  "env": { "K": "V" },
+  "dir": "/work",
+  "stdin": "<base64>",
+  "tty": false,
+  "timeout_ms": 30000,
+  "allow_secrets": false
+}
 ```
 
-`409` when an env value or stdin holds a credential (see Secret firewall); the
-command does not run.
+`409` when an env value or stdin trips the secret firewall; `413` when the body exceeds the upload cap.
 
-Response is `application/x-ndjson`, one JSON object per line:
+Streams `application/x-ndjson`, one JSON object per line:
 
 ```json
 {"stream":"stdout","data":"<base64>"}
@@ -132,104 +160,52 @@ Response is `application/x-ndjson`, one JSON object per line:
 {"stream":"exit","code":0,"signal":0,"timed_out":false}
 ```
 
-For a networked sandbox the server sets `HTTP_PROXY` / `HTTPS_PROXY` in the
-process environment, pointing at the egress proxy, and a caller cannot override
-them. With `-egress-transparent ADDR` the daemon also adds an nftables redirect
-in the sandbox namespace that forces guest TCP 80 and 443 through the proxy, so
-a client that ignores the proxy variables still cannot bypass the domain policy.
-The transparent path filters on the HTTP Host header and the TLS SNI and does
-not terminate TLS.
+For networked sandboxes, `moatd` injects `HTTP_PROXY` / `HTTPS_PROXY` pointing at the egress proxy and prevents caller overrides. With `-egress-transparent ADDR`, `nftables` DNATs guest TCP 80/443 directly to the transparent SNI/Host-filtering proxy (no TLS termination) and drops arbitrary outbound ports under strict egress.
 
 ### `PUT /v1/sandboxes/{id}/files/{path}`
 
-Write the raw request body to `/{path}` in the guest. `200` with
-`{ "bytes_written": N, "sha256": "…" }`. `409` when the body holds a credential
-(see Secret firewall); add `?allow_secrets=true` to override if the token
-permits it. `413` when the body is larger than the scan limit (64 MiB).
+Write the raw request body to `/{path}` in the guest. `200` with `{ "bytes_written": N, "sha256": "..." }`. `409` on a secret hit (`?allow_secrets=true` to override if permitted). `413` when larger than the upload cap (64 MiB default).
 
 ### `GET /v1/sandboxes/{id}/files/{path}`
 
-Stream `/{path}` back as `application/octet-stream`; the `X-Sha256` trailer holds
-the digest. `404` when the file does not exist.
+Stream `/{path}` back as `application/octet-stream`; the `X-Sha256` trailer holds the digest. `404` when absent.
 
 ## Audit log
 
 ### `GET /v1/audit`
 
-Newline-delimited JSON (`application/x-ndjson`), one event per line, in `seq`
-order.
+Streams newline-delimited JSON (`application/x-ndjson`) in `seq` order.
 
 | Query param | Meaning |
 | --- | --- |
-| `sandbox` | exact sandbox id |
-| `token` | exact token id (only for a token with `audit_read: "all"`) |
-| `type` | repeatable; exact event type |
-| `since`, `until` | RFC3339, or a Go duration with a leading `-` (e.g. `-15m`) |
-| `limit` | max events (default 1000, cap 100000) |
+| `sandbox` | Exact sandbox ID |
+| `token` | Exact token ID (requires `audit_read: "all"`) |
+| `type` | Repeatable exact event type (`sandbox.create`, `exec`, `secret.block`, `egress.deny`, ...) |
+| `since`, `until` | RFC3339 timestamp or negative Go duration (e.g. `-15m`) |
+| `limit` | Max events (default 1000, cap 100000) |
 | `order` | `asc` (default) or `desc` |
 
-A normal token sees only events for sandboxes it created, plus events tagged
-with its own token id. A token with `audit_read: "all"` sees every event.
+Events record metadata only — never file contents, env values, or command output. Every event carries `prev` and `hash` (SHA-256 of canonical JSON). On startup `moatd` verifies the log and refuses to start on tampering. Verify any time with `moat audit verify`.
 
-Event shape:
-
-```json
-{"seq":42,"ts":"2026-08-30T18:14:07.913482Z","type":"exec","sandbox":"sb-7f3a19c4",
- "token":"ci","attrs":{"argv":["python","/work/task.py"],"exit":0,"dur_ms":1180},
- "prev":"a91c4f…","hash":"7d2e08…"}
-```
-
-Events are metadata only. No payload, environment value, file body, or command
-output is ever recorded. Each `hash` is the sha256 of the event's canonical
-form; `prev` chains to the previous event. Verify the chain with
-`moat audit verify`.
-
-On startup `moatd` verifies the audit log file. It does not start when a
-complete line before the end is corrupt or changed. A crash-truncated final
-line is tolerated. To recover, run `moat audit verify -dir <auditdir>` to find
-the bad file, then move that file aside and restart `moatd`.
-
-`daemon.start` also carries an `images` array — one entry per template with
-`kernel_sha256`, `rootfs_sha256`, `sbom_sha256`, `verified`, and `signed`.
-`moatd` computes these at startup from `images.lock` beside each template's
-rootfs. In the default `enforce` mode a digest mismatch drops that template,
-and `moatd` exits non-zero when no template is left. Set `image_verify` to
-`warn` or `off`, or `MOAT_IMAGE_VERIFY`, to change that. A missing `images.lock`
-is a warning in every mode.
+`daemon.start` records an `images` provenance array from `images.lock`. In default `enforce` mode, any template failing digest or Cosign signature verification is dropped before serving.
 
 ### `GET /v1/sandboxes/{id}/report`
 
-A JSON rollup of one sandbox's activity, built from the audit log. Works after
-the sandbox is destroyed, until its events are pruned. The caller must own the
-sandbox or hold `audit_read: "all"`; otherwise `404`.
-
-## Token policy: `audit_read`
-
-`"audit_read": "all"` in a token's `moatd.json` entry lets it read every
-token's audit events and run `moat audit verify` over the API. Omitted or
-empty means the token sees only its own.
+Returns a JSON rollup of one sandbox's lifetime: exec counts, bytes in/out, file hashes, secret-firewall events, egress allow/deny hosts, and chain verification status. Works even after the sandbox is destroyed.
 
 ## Observability
 
-- `GET /metrics` — Prometheus text. Series include
-  `moat_sandboxes_active{template}`,
-  `moat_sandboxes_created_total{template,source}`,
-  `moat_sandbox_create_seconds{source}`,
-  `moat_exec_total{outcome}`, `moat_file_bytes_total{direction}`,
-  `moat_secret_findings_total{rule,action}`,
-  `moat_quota_rejects_total`, `moat_pool_ready`,
-  `moat_http_requests_total{route,status}`,
-  `moat_egress_requests_total{decision}`.
-- Request logs are one structured JSON line per request (`method`, `route`,
-  `status`, `dur_ms`).
+- `GET /metrics` — Prometheus exposition including `moat_sandboxes_active{template}`, `moat_sandboxes_created_total{template,source}`, `moat_sandbox_create_seconds{source}`, `moat_exec_total{outcome}`, `moat_file_bytes_total{direction}`, `moat_secret_findings_total{rule,action}`, `moat_quota_rejects_total`, `moat_pool_ready`, `moat_http_requests_total{route,status}`, `moat_egress_requests_total{decision}`, and audit writer counters.
+- Request logs emit one structured JSON line per request (`method`, `route`, `status`, `dur_ms`).
 
 ## curl walk-through
 
 ```sh
 T='Authorization: Bearer s3cr3t'
-ID=$(curl -s -XPOST -H "$T" -d '{"ttl_seconds":120}' localhost:8080/v1/sandboxes | jq -r .id)
-curl -s -XPOST -H "$T" -d '{"argv":["uname","-a"]}' localhost:8080/v1/sandboxes/$ID/exec
-curl -s -XPUT  -H "$T" --data-binary @./script.py localhost:8080/v1/sandboxes/$ID/files/tmp/s.py
-curl -s -XPOST -H "$T" -d '{"argv":["python3","/tmp/s.py"]}' localhost:8080/v1/sandboxes/$ID/exec
-curl -s -XDELETE -H "$T" localhost:8080/v1/sandboxes/$ID
+ID=$(curl -s -XPOST -H "$T" -d '{"ttl_seconds":120}' http://127.0.0.1:8080/v1/sandboxes | jq -r .id)
+curl -s -XPOST -H "$T" -d '{"argv":["uname","-a"]}' http://127.0.0.1:8080/v1/sandboxes/$ID/exec
+curl -s -XPUT  -H "$T" --data-binary @./script.py http://127.0.0.1:8080/v1/sandboxes/$ID/files/tmp/s.py
+curl -s -XPOST -H "$T" -d '{"argv":["python3","/tmp/s.py"]}' http://127.0.0.1:8080/v1/sandboxes/$ID/exec
+curl -s -XGET  -H "$T" http://127.0.0.1:8080/v1/sandboxes/$ID/report | jq .
+curl -s -XDELETE -H "$T" http://127.0.0.1:8080/v1/sandboxes/$ID
 ```

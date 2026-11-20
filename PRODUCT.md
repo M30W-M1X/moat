@@ -86,22 +86,31 @@ agent, with a credential firewall on the way in. Specifically:
 
 ## Capabilities and Constraints
 
-Shipped (engine P1–P5 and product milestone M1):
+Shipped (engine P1–P5, product milestone M1, and single-node production hardening M2):
 
-- microVM lifecycle with the jailer; snapshot/restore and diff snapshots; a
-  warm pool; an orphan reaper.
-- Guest agent: streamed exec with PTY and timeouts, byte-exact file transfer,
-  over vsock.
+- microVM lifecycle with the jailer; read-only rootfs + ephemeral ext4 overlayfs
+  scratch disks; snapshot/restore (with automatic guest clock resync) and diff
+  snapshots; per-template cold or snapshot-backed warm pools; an orphan reaper.
+- Guest agent as PID 1: zombie reaper, streamed exec with PTY and timeouts,
+  byte-exact file transfer over vsock.
 - Limits: cgroup v2 `cpu.max` / `memory.max` / `pids.max`; Firecracker
   token-bucket rate limiters on the disk and NIC.
-- Northbound HTTP/JSON API: bearer-token auth, per-token template and quota
-  policy, TTL janitor, Prometheus metrics, structured logs.
-- Egress domain-filter proxy plus a transparent nftables redirect.
+- Northbound HTTP/JSON API: native TLS 1.2+/mTLS and Unix domain socket
+  listeners, bearer-token auth, per-token template/quota/egress policy, TTL
+  janitor, Prometheus metrics, structured logs.
+- Egress domain-filter proxy (global + per-token policy) plus a transparent
+  nftables redirect and strict `policy drop` forward chain.
 - Ingress secret firewall (vendored Gitleaks rule set; `409` on a hit, audited
   override, optional redaction).
-- `moat-mcp` MCP server, `SKILL.md`, `moat doctor`.
-- `install.sh` one-command installer; `make dist` release build; a
-  `deploy/moatd.service` systemd unit.
+- Hash-chained, metadata-only JSONL audit log, `moat audit` CLI, per-sandbox
+  activity report API, and async webhook SIEM sink.
+- Reproducible image builds (`make images-verify` in CI), CycloneDX SBOM,
+  `images.lock` digest + Cosign signature verification enforced at startup, and
+  `moat template import` for any linux/amd64 OCI image.
+- `moat-mcp` MCP server (HTTP(S) and Unix socket), `SKILL.md`, `moat doctor`,
+  `moat uninstall`.
+- `install.sh` one-command installer; automated Cosign-signed release workflow;
+  a hardened `deploy/moatd.service` systemd unit.
 
 Constraints:
 
@@ -110,12 +119,12 @@ Constraints:
   different VMM backend.
 - macOS and Windows only as hosts of a Linux VM (WSL2 with nested virt on
   Windows).
-- Single-node. A multi-node fleet control plane is milestone M2, not shipped.
-- No gRPC surface yet; no snapshot-templated pool; no downloadable per-language
-  template registry (`moat template pull`).
+- Single-node. A multi-node fleet control plane is milestone M3, not shipped.
+- No gRPC northbound surface yet; no downloadable per-language template registry
+  (`moat template pull` — covered locally by `moat template import`).
 - userfaultfd restore needs root or `vm.unprivileged_userfaultfd=1`.
 - The daemon needs `/dev/kvm` and a delegated cgroup v2 subtree; networked
-  sandboxes need `CAP_NET_ADMIN` / `CAP_SYS_ADMIN` or real root.
+  sandboxes and the jailer need `CAP_NET_ADMIN` / `CAP_SYS_ADMIN` or real root.
 
 Terminology: *sandbox* = one microVM handed to an API caller. *template* =
 a kernel + rootfs a sandbox starts from. *the ingress secret firewall* screens

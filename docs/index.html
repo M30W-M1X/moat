@@ -662,15 +662,16 @@
   "mcpServers": {
     "moat": {
       "command": "moat-mcp",
-      "args": ["--socket", "/run/moat/moatd.sock"]
+      "args": ["--socket", "/run/moat/moatd.sock"],
+      "env": { "MOAT_TOKEN": "dev:&lt;secret&gt;" }
     }
   }
 }</pre>
       </div>
 
       <div class="cols c2">
-        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">MCP tools</span><h3>Seven verbs</h3><p><span class="mono">moat_create</span>, <span class="mono">moat_exec</span>, <span class="mono">moat_write_file</span>, <span class="mono">moat_read_file</span>, <span class="mono">moat_get</span>, <span class="mono">moat_list</span>, <span class="mono">moat_destroy</span>. Streamed exec output, exit codes, timeouts, and secret-block errors are all first-class results.</p></div>
-        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">SKILL.md</span><h3>The playbook, in the repo</h3><p>Describes the create&rarr;put&rarr;exec&rarr;get&rarr;destroy loop, when a command belongs in a sandbox, how to surface a blocked secret to the user instead of overriding it, and defaulting to <span class="mono">network: deny</span>.</p></div>
+        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">MCP tools</span><h3>Six verbs</h3><p><span class="mono">moat_create</span>, <span class="mono">moat_exec</span>, <span class="mono">moat_write_file</span>, <span class="mono">moat_read_file</span>, <span class="mono">moat_list</span>, <span class="mono">moat_destroy</span>. Captured exec output, exit codes, timeouts, and secret-block errors are all first-class results.</p></div>
+        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">SKILL.md</span><h3>The playbook, in the repo</h3><p>Describes the create&rarr;write&rarr;exec&rarr;read&rarr;destroy loop, when a command belongs in a sandbox, how to surface a blocked secret to the user instead of overriding it, and defaulting to <span class="mono">network: deny</span>.</p></div>
       </div>
       <p class="fineprint">Works with any MCP client (Claude Code, Claude Desktop, Cursor, Continue), plus a plain HTTP/JSON API and the <span class="mono">moat</span> CLI.</p>
     </div>
@@ -690,7 +691,7 @@
             <tr data-ring="wall"><td class="thr">Read or write host files</td><td>No host filesystem is mounted. The guest sees only a shared read-only rootfs and its own ephemeral copy-on-write scratch disk.</td></tr>
             <tr data-ring="sally"><td class="thr">Steal host credentials</td><td>The host environment is deny-by-default. Every variable, file, and stdin crossing into a sandbox is scanned for keys, tokens, and private material, and blocked unless explicitly allowed and audited.</td></tr>
             <tr data-ring="moat"><td class="thr">Pivot to your LAN or cloud metadata</td><td>Each VM gets its own network namespace. nftables drops traffic to the host, to <span class="mono">169.254.169.254</span>, and to RFC&#8209;1918 ranges.</td></tr>
-            <tr data-ring="glacis"><td class="thr">Exfiltrate data over the network</td><td>Egress is allowed only through a domain-filtered forward proxy, transparently redirected at the firewall so a client that ignores <span class="mono">HTTP_PROXY</span> still cannot bypass the policy.</td></tr>
+            <tr data-ring="glacis"><td class="thr">Exfiltrate data over the network</td><td>Egress is allowed only through a domain-filtered proxy with global and per-token allowlists. Transparent DNAT and strict <span class="mono">policy drop</span> nftables rules stop guests from bypassing <span class="mono">HTTP_PROXY</span> or reaching arbitrary ports.</td></tr>
             <tr data-ring="wall"><td class="thr">Fork-bomb, exhaust memory, or thrash disk</td><td>cgroup v2 <span class="mono">cpu.max</span> / <span class="mono">memory.max</span> / <span class="mono">pids.max</span> on the VMM, plus Firecracker token-bucket rate limiters on the disk and NIC.</td></tr>
             <tr data-ring="wall"><td class="thr">Exploit a container-escape-class kernel bug</td><td>There is no shared kernel. The guest runs its own kernel under KVM, launched by a Firecracker process under a seccomp filter with dropped privileges.</td></tr>
             <tr data-ring="keep"><td class="thr">Leave state behind for the next task</td><td>One microVM per task, never reused. Stopped and discarded on exit, TTL, or idle timeout. An orphan reaper cleans up anything a crash leaves running.</td></tr>
@@ -727,8 +728,8 @@
         <button class="copy" data-copy="#installcmd2" type="button">Copy</button>
       </div>
       <div class="cols c2">
-        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">Prerequisites</span><h3>A Linux host with KVM</h3><p>x86_64, <span class="mono">/dev/kvm</span> present, and systemd (or run with <span class="mono">--rootless</span> using a delegated cgroup slice). Bare metal, or a VM with nested virtualization.</p></div>
-        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">What the installer does</span><h3>Checks, fetches, verifies</h3><p>Confirms virtualization support, installs <span class="mono">moatd</span>, <span class="mono">moat</span>, and <span class="mono">moat-mcp</span>, downloads a cosign-verified kernel and base rootfs, writes <span class="mono">/etc/moat/moatd.json</span>, and installs a systemd unit.</p></div>
+        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">Prerequisites</span><h3>A Linux host with KVM</h3><p>x86_64, <span class="mono">/dev/kvm</span> present, and systemd (or run <span class="mono">install.sh --user</span> to install under <span class="mono">$HOME</span> with a delegated cgroup slice). Bare metal, or a VM with nested virtualization.</p></div>
+        <div class="plate reveal"><span class="tick" aria-hidden="true"></span><span class="lab k">What the installer does</span><h3>Checks, fetches, verifies</h3><p>Confirms virtualization support, installs <span class="mono">moatd</span>, <span class="mono">moat</span>, <span class="mono">moat-mcp</span>, and <span class="mono">moat-uffd</span>, downloads a Cosign-verified kernel, base rootfs, and CycloneDX SBOM, writes <span class="mono">moatd.json</span>, and installs a systemd unit.</p></div>
       </div>
       <div class="codeblock reveal">
         <div class="h"><span>verify</span><button class="copy" data-copy="#verifycmd" type="button">Copy</button></div>
@@ -743,37 +744,45 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
   <section id="roadmap">
     <span class="mk" aria-hidden="true">Works</span>
     <div class="wrap">
-      <h2>The engine and the self-serve product are built. Fleet is next.</h2>
-      <p class="lede">Two milestones sit on top of the shipped engine. v0 is the isolation control plane. Milestone&nbsp;1 is install-it-and-point-an-agent-at-it in five minutes. Both ship today. Milestone&nbsp;2 makes it safe to run a team's whole agent fleet on.</p>
+      <h2>Single-node production is built. Multi-node fleet is next.</h2>
+      <p class="lede">The isolation engine, self-serve MCP product, and single-node production hardening all ship today under Apache-2.0. Multi-node fleet orchestration and platform reach come next.</p>
 
       <div class="schedule">
         <div class="entry reveal">
           <div class="top"><span class="id">v0</span><h3>The isolation engine</h3><span class="badge built">Built</span></div>
           <p>The Firecracker control plane, proven on real microVMs.</p>
           <ul>
-            <li>microVM lifecycle: jailer, per-VM netns, snapshot / restore, diff snapshots, warm pool, orphan reaper</li>
-            <li>Guest agent as PID&nbsp;1: streamed exec with PTY and timeouts, file in / out over vsock</li>
-            <li>Isolation: nftables rules, cgroup v2 limits, Firecracker rate limiters</li>
-            <li>Northbound HTTP/JSON API, bearer-token auth, per-token template &amp; quota policy</li>
-            <li>Egress domain-filter proxy with transparent, unbypassable redirect</li>
+            <li>microVM lifecycle: jailer, per-VM netns, snapshot / restore with clock resync, diff snapshots, per-template warm pools, orphan reaper</li>
+            <li>Read-only rootfs with sparse ext4 overlayfs scratch disks, plus <span class="mono">moat template import</span> for any OCI image</li>
+            <li>Guest agent as PID&nbsp;1: zombie reaper, streamed exec with PTY and timeouts, byte-exact file transfer over vsock</li>
+            <li>Isolation: strict <span class="mono">policy drop</span> nftables rules, cgroup v2 limits, Firecracker rate limiters</li>
+            <li>Northbound HTTP/JSON API with native TLS/mTLS, Unix sockets, bearer-token auth, and per-token template, quota, and egress policy</li>
           </ul>
         </div>
         <div class="entry reveal">
           <div class="top"><span class="id">M1</span><h3>Self-serve v1.0: anyone can install it</h3><span class="badge built">Built</span></div>
           <p>Everything a solo developer or a small team needs to <span class="mono">curl | sh</span> and point an agent at Moat safely.</p>
           <ul>
-            <li><strong>Ingress secret firewall.</strong> Every file, env var, and stdin crossing in is scanned with the Gitleaks rule set. Block by default, an audited override, optional redaction.</li>
-            <li><strong>Agent integration.</strong> The <span class="mono">moat-mcp</span> server (stdio), a <span class="mono">SKILL.md</span> playbook, and a <span class="mono">moat doctor</span> preflight.</li>
-            <li><strong>One-command install.</strong> The <span class="mono">curl | sh</span> installer with arch / KVM checks and sha256 + cosign verification, and a systemd unit.</li>
+            <li><strong>Ingress secret firewall.</strong> Every file, env var, and stdin crossing in is scanned with the vendored Gitleaks rule set. Block by default, audited override, optional redaction.</li>
+            <li><strong>Agent integration.</strong> The <span class="mono">moat-mcp</span> server (stdio over Unix socket or HTTP), <span class="mono">SKILL.md</span> playbook, and <span class="mono">moat doctor</span> preflight.</li>
+            <li><strong>Install &amp; uninstall.</strong> One-command <span class="mono">curl | sh</span> installer with KVM checks, SHA-256 + Cosign verification, systemd unit, and <span class="mono">moat uninstall</span>.</li>
+          </ul>
+        </div>
+        <div class="entry reveal">
+          <div class="top"><span class="id">M2</span><h3>Audit, trust, and single-node hardening</h3><span class="badge built">Built</span></div>
+          <p>Tamper-evident accountability and supply-chain verification on every host.</p>
+          <ul>
+            <li><strong>Hash-chained audit trail.</strong> Metadata-only JSONL log of every boundary crossing, <span class="mono">moat audit {tail,query,report,verify}</span>, per-sandbox activity rollups, and async webhook SIEM forwarding.</li>
+            <li><strong>Reproducible images &amp; SBOM.</strong> Deterministic ext4 builds (<span class="mono">make images-verify</span> in CI), CycloneDX SBOM, and <span class="mono">images.lock</span> digest + Cosign signature enforcement at daemon startup.</li>
+            <li><strong>Snapshot-templated warm pools.</strong> Per-template pools backed by cold starts or snapshots (with optional UFFD demand-paging) and automatic guest clock resync.</li>
           </ul>
         </div>
         <div class="entry planned reveal">
-          <div class="top"><span class="id">M2</span><h3>Production and fleet: teams run it for real</h3><span class="badge next">Next</span><span class="est">~1 quarter</span></div>
-          <p>The audit trail, multi-node operation, and reach to run a whole team's agent traffic through Moat.</p>
+          <div class="top"><span class="id">M3</span><h3>Fleet and reach</h3><span class="badge next">Next</span><span class="est">~1 quarter</span></div>
+          <p>Multi-node scheduling and broader platform reach for teams running agent infrastructure at scale.</p>
           <ul>
-            <li><strong>Observability and trust.</strong> A structured audit log of every boundary crossing, <span class="mono">moat logs</span>, a per-session &ldquo;what did this sandbox do&rdquo; report, and an SBOM with reproducible image builds.</li>
             <li><strong>Fleet</strong> (open-core paid). A multi-node control plane: scheduling across hosts, per-team policy, SSO / RBAC, a web console, and managed hosting. The security boundary is never in the paid tier.</li>
-            <li><strong>Reach.</strong> GPU passthrough via an alternative VMM backend, macOS through a Linux helper VM, a WSL2 guide, and Python / TypeScript / Go SDKs.</li>
+            <li><strong>Reach.</strong> gRPC northbound surface, GPU passthrough via an alternative VMM backend, macOS through a Linux helper VM, a WSL2 guide, and Python / TypeScript / Go SDKs.</li>
           </ul>
         </div>
       </div>

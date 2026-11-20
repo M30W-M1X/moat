@@ -1,237 +1,205 @@
 # Moat
 
-A Go control plane that starts, isolates, and reaps **Firecracker microVMs** as
-disposable, hardware-isolated sandboxes for untrusted AI-agent code and tool use.
+**Give your agent root. Burn the VM.**
 
-See [`CLAUDE.md`](CLAUDE.md) for the architecture and roadmap, and
-`docs/implementation-plan.html` for the full plan.
-[`docs/developer-guide.md`](docs/developer-guide.md) is the low-level guide —
-every package, the security model, the image pipeline, the build, the API, and
-how to deploy. [`docs/developer-guide.html`](docs/developer-guide.html) is the
-same content as a standalone page with diagrams.
+Moat is an open-source, self-hosted sandbox for AI coding agents and untrusted code. Every task runs inside its own disposable Firecracker microVM on KVM — separate Linux kernel, no host filesystem, no host network, no host credentials — then disappears the moment the task ends.
 
-## Status
+No containers sharing your kernel. No third-party cloud holding your source code. One command on your Linux machine.
 
-- **Phase 1 ✅** — one command starts a microVM and reaches an in-VM agent over vsock.
-- **Phase 2 ✅** — the agent runs processes and moves files, over a gRPC service
-  (`agent.v1.Agent`) on vsock.
-- **Phase 3 (networking) ✅** — each microVM gets its own network namespace, TAP, and
-  `nftables` rules: internet egress, but no path to the host, the other microVMs, or
-  `169.254.169.254`.
-- **Phase 3 (limits) ✅** — cgroup v2 `cpu.max` / `memory.max` / `pids.max` on the
-  Firecracker process (via this process's delegated systemd subtree, no root
-  needed), plus Firecracker per-VM token-bucket rate limiters on the rootfs and the
-  network interface.
-- **Phase 4 ✅** — full snapshot/restore (`~25 ms` to a ready agent vs `~1.1 s` cold),
-  a warm pool of microVMs (`p50` acquire `~1 ms`, with lease TTL / idle reaping), an
-  orphan reaper for Firecracker processes a crash left behind, a userfaultfd
-  page-fault handler (`restore -uffd`) that streams guest pages on demand, and diff
-  snapshots (`snapshot -diff-exec`, `restore -diff`) whose memory file holds only
-  the changed pages (`~2 MiB` on disk for a `256 MiB` guest).
-- **Phase 5 ✅** — `moatd`, the northbound HTTP/JSON API: create/exec/files/delete
-  sandboxes with bearer-token auth, concurrency quotas, templates, TTLs, a warm pool,
-  Prometheus metrics, structured logs, and an egress domain-filter proxy (also a
-  transparent mode, `-egress-transparent`, that an nftables redirect forces
-  guest 80/443 through — SNI/Host filtered, no TLS termination). A `-config FILE`
-  (JSON) defines templates, tokens, and a per-token policy (template allowlist,
-  max concurrent, max TTL, deny networking). See [`docs/api.md`](docs/api.md) and
-  [`docs/moatd.example.json`](docs/moatd.example.json).
-- **Ingress secret firewall ✅** — every file, env value, and stdin crossing
-  into a sandbox is scanned with the vendored Gitleaks rule set. A hit returns
-  `409` (or is redacted with `-secret-redact`); a permitted token may override.
-  `moat run` scans `-put` / `-env` client-side. `internal/secretscan`.
-- **Agent integration ✅** — `moat-mcp` is an MCP server (stdio) giving an agent
-  `moat_create` / `moat_write_file` / `moat_exec` / `moat_read_file` /
-  `moat_list` / `moat_destroy`. Point it at a running `moatd` with `MOAT_ADDR` +
-  `MOAT_TOKEN`. `SKILL.md` is the agent playbook. `moat doctor` preflights the
-  host. HTTP client: `internal/moatapi`.
-- **One-command install ✅** — `curl -fsSL https://moat.sh/install | sh`
-  (`install.sh`): host checks, GitHub-release download, sha256 + cosign verify,
-  binaries + images + a starter config + a systemd unit. `make dist` builds the
-  release tarball. An installed binary finds its images via `$MOAT_DATA` /
-  `/var/lib/moat`. See [`docs/install.md`](docs/install.md).
-- **Audit log (M2)** — `moatd` writes a hash-chained, metadata-only JSONL
-  record of every boundary crossing (create / destroy / exec / file / secret
-  block / egress decision / quota reject). `GET /v1/audit`,
-  `GET /v1/sandboxes/{id}/report`, and `moat audit {tail,query,report,verify}`.
-  Per-token read scope with `audit_read: "all"`. On by default; disable with
-  `-audit-dir off`. `internal/audit`.
-- **Reproducible images (M2)** — `make images` builds a byte-identical
-  `rootfs.ext4` on one toolchain, pins the kernel by sha256, and writes
-  `images.lock` plus a CycloneDX `sbom.cdx.json`. `moatd` verifies the kernel
-  and rootfs against `images.lock` at startup and fails closed on a mismatch
-  (`image_verify=enforce`, the default). `make images-verify` proves the
-  rebuild. `internal/imagelock`.
+---
 
-### Phase 1: smoke test
+## Why Moat
 
-```
-$ moat demo
-... microVM started   elapsed=24ms
-guest-agent: serving agent.v1.Agent on vsock port 5252
-... agent Info OK   agent_version=phase2 guest_pid=1 kernel=6.1.182
-... microVM stopped
-```
+Coding agents install packages, execute generated scripts, and fetch from the internet on their own. Where that command runs decides what one bad tool call — or one prompt injection — can reach.
 
-### Phase 2: run a command in a fresh microVM
+| Where the command runs | Kernel boundary | Host files & credentials | Your code stays local | Cost per task |
+| --- | --- | --- | --- | --- |
+| **Directly on your host** | None | Full access (`~/.ssh`, `~/.aws`, browser cookies) | Yes | Free until it burns you |
+| **Docker / container** | Shared host kernel | Exposed by container escapes or leaked mounts | Yes | Low |
+| **Hosted cloud sandbox** | Provider VM | Isolated from laptop, sent to third-party servers | **No** | Per-minute bill + latency |
+| **Moat (Firecracker + KVM)** | **Dedicated guest kernel per task** | **None mounted; ingress secret firewall** | **Yes — runs on your metal** | **~1 ms from a warm pool** |
 
-```
-$ moat run -- uname -a
-Linux (none) 6.1.182 #1 SMP ... x86_64 Linux
-... command finished   code=0 pid=266
+---
 
-$ moat run -- sh -c 'echo out; echo err 1>&2; exit 7'; echo "exit=$?"
-out
-err
-exit=7
+## 60-second quickstart
 
-# copy a file in, run against it, copy a result out
-$ moat run -put ./data.csv:/tmp/data.csv -get /tmp/out.json:./out.json \
-    -- sh -c 'wc -l /tmp/data.csv > /tmp/out.json'
-
-$ moat run -tty -- top -b -n1        # PTY-attached
-$ moat run -timeout 5s -- sleep 60   # exit 124 on timeout
-
-# isolated networking (needs root, or run the whole command under
-#   unshare --user --map-root-user --mount --net --fork -- ... )
-$ moat run -net -- sh -c 'wget -qO- https://example.com | head -1'
-$ moat run -net -- ping -c1 169.254.169.254   # blocked by the isolation rules
-```
-
-### Phase 4: snapshot, restore, warm pool
-
-```
-$ moat snapshot -id tpl -exec 'apk add --no-cache python3'   # boot, prep, snapshot
-$ moat restore  -id tpl -- python3 --version                 # ~25 ms to a ready agent
-... restored, agent ready   elapsed=24ms
-
-$ moat restore -id tpl -uffd -- free -m    # pages stream from mem.bin on demand
-                                                 # (needs root / vm.unprivileged_userfaultfd=1)
-
-# diff snapshot: full base, then a memory diff of the changes made after it
-$ moat snapshot -id tpl -exec 'apk add python3' -diff-exec 'pip install requests'
-... full snapshot written   mem_bytes=268435456
-... diff snapshot written   mem_apparent=268435456   mem_disk_bytes=1949696
-$ moat restore -id tpl -diff -- python3 -c 'import requests'   # rebases base+diff
-
-$ moat bench -pool 4 -iters 25
-pool warm   elapsed=1.2s   size=4
-acquire over 25 cycles:  min 0.5ms  p50 1ms  p90 2ms  p99 2ms  max 2ms
-PASS: p50 acquire < 50ms
-
-$ moat reap        # kill Firecracker processes a crash left behind
-reaped 1: [orphan1]
-```
-
-### Phase 5: the daemon
-
-```
-$ MOAT_TOKENS="dev:s3cr3t" moatd -addr :8080 -pool 4
-$ T='Authorization: Bearer s3cr3t'
-$ ID=$(curl -s -XPOST -H "$T" localhost:8080/v1/sandboxes | jq -r .id)
-$ curl -s -XPOST -H "$T" -d '{"argv":["uname","-a"]}' localhost:8080/v1/sandboxes/$ID/exec
-{"stream":"stdout","data":"TGludXggLi4uCg=="}
-{"stream":"exit","code":0,"signal":0,"timed_out":false}
-$ curl -s localhost:8080/metrics | grep moat_sandboxes_active
-```
-
-
-The host CLI (`cmd/moat`) uses `firecracker-go-sdk` to start Firecracker with a
-downloaded CI `vmlinux` and a minimal ext4 rootfs. The static guest agent
-(`guest/agent`) runs as PID 1 and serves `agent.v1.Agent` on vsock port 5252. The host
-client (`internal/agentclient`) dials it as gRPC through Firecracker's vsock mux socket
-(`internal/vsockconn`).
-
-## Requirements
-
-- Linux with `/dev/kvm` readable by your user (bare metal, or a VM with nested
-  virtualization)
-- `firecracker` and `jailer` on `PATH` (tested with v1.16.1)
-- Go 1.27+, `make`
-- `podman` and `mkfs.ext4` (to build the rootfs — no root needed)
-- `curl` (to fetch the kernel)
-- To regenerate protobuf: `make tools` (installs `buf` + plugins into `$GOBIN`, no root)
-
-## Build & run
+Requires Linux `x86_64` with `/dev/kvm`.
 
 ```sh
-make build agent      # bin/moat + static bin/guest-agent
-make images            # build/artifacts/{vmlinux,rootfs.ext4}
-make demo             # Phase 1 smoke test
-make run ARGS='-- uname -a'
-make test             # fast unit tests
-make test-integration # boots real microVMs, drives the agent (needs /dev/kvm)
+# Install binaries, verified kernel + rootfs, starter config, and systemd unit
+curl -fsSL https://raw.githubusercontent.com/M30W-M1X/moat/main/install.sh | sh
+
+# Verify KVM, cgroup v2 delegation, Firecracker, and image digests
+moat doctor
+
+# Start the daemon
+systemctl enable --now moatd
+
+# Run your first command inside a throwaway microVM
+moat run -- uname -a
 ```
 
-## Demo
+Prefer a rootless install under `$HOME` (`~/.local/bin`, `~/.local/share/moat`, `~/.config/moat`)? Append `-s -- --user`.
 
+### Connect your AI agent (MCP)
+
+Drop one block into Claude Code, Claude Desktop, Cursor, or any MCP client (using the token generated in `/etc/moat/moatd.json` or `~/.config/moat/moatd.json`):
+
+```json
+{
+  "mcpServers": {
+    "moat": {
+      "command": "moat-mcp",
+      "args": ["--socket", "/run/moat/moatd.sock"],
+      "env": { "MOAT_TOKEN": "dev:<secret>" }
+    }
+  }
+}
+```
+
+Give the agent [`SKILL.md`](SKILL.md) so it knows when to isolate commands, how to handle a secret-firewall block without overriding it, and to default to `network: "deny"`. See [`docs/mcp.md`](docs/mcp.md).
+
+---
+
+## Every threat, and the control that stops it
+
+Every control below ships in the Apache-2.0 core. Nothing in the security boundary is paywalled.
+
+| If the command tries to... | Moat's control |
+| --- | --- |
+| **Read or modify host files** | No host filesystem is mounted. Every sandbox gets a private sparse copy or a shared read-only rootfs paired with an ephemeral ext4 overlayfs scratch disk (`read_only_root`). |
+| **Steal host credentials** | Host env is deny-by-default. The ingress secret firewall scans every file, env var, and stdin crossing in against the vendored Gitleaks rule set and returns `409` on a hit (with audited override or `-secret-redact`). |
+| **Pivot to your LAN or cloud metadata** | Per-VM network namespace with `nftables` rules dropping routes to the host, `169.254.169.254`, loopback, and RFC-1918 ranges. |
+| **Exfiltrate data over the network** | Outbound HTTP/HTTPS flows through a domain-filtered proxy with global and per-token allow/deny lists. Transparent DNAT (`-egress-transparent`) plus `strict_egress` (`policy drop` on forward) prevents guests from bypassing the proxy. |
+| **Fork-bomb, OOM, or thrash disk** | cgroup v2 `cpu.max`, `memory.max`, and `pids.max` on the VMM, plus Firecracker token-bucket rate limiters on disk and NIC. |
+| **Exploit a container-escape kernel bug** | Separate Linux guest kernel under KVM, optionally confined under the Firecracker `jailer` (chroot, seccomp filter, dropped privileges). |
+| **Leave state behind for the next task** | One microVM per task, never reused. Destroyed on exit, TTL, or idle timeout. An orphan reaper sweeps anything a crash leaves behind. |
+| **Tamper with what happened** | Hash-chained, metadata-only JSONL audit log of every create, exec, file transfer, secret block, and egress verdict — verifiable with `moat audit verify` and streamable to a SIEM via webhook. |
+
+---
+
+## Performance
+
+Fast enough to give every task its own virtual machine:
+
+| Metric | Reading |
+| --- | --- |
+| Cold start to ready in-VM agent | ~24 ms |
+| Snapshot restore to ready agent (with automatic clock resync) | ~25 ms |
+| Warm-pool acquire (p50) | ~1 ms |
+| Diff-snapshot memory image (256 MiB guest) | ~2 MiB on disk |
+
+*Indicative measurements on one developer machine (Fedora, KVM, x86_64) — not guarantees. Numbers move with hardware and template size.*
+
+---
+
+## Built for solo developers, agent platforms, and security teams
+
+### For developers running coding agents locally
+- **Drop-in MCP server (`moat-mcp`):** `moat_create`, `moat_write_file`, `moat_exec`, `moat_read_file`, `moat_list`, `moat_destroy` over stdio, talking to `moatd` via Unix socket or HTTP(S).
+- **One-shot CLI (`moat run`):** run untrusted scripts, package installs, or builds straight from your shell with `-put`, `-get`, `-tty`, `-timeout`, `-net`, and client-side secret scanning.
+- **Bring any container image:** `moat template import python:3.12` turns any `linux/amd64` OCI image or tar archive into a microVM template, preserving `ENV`, `WORKDIR`, and `ENTRYPOINT`.
+
+### For engineers building agent products
+- **Clean HTTP/JSON API (`moatd`):** lifecycle, streamed NDJSON exec, binary file transfer with SHA-256 trailers, Prometheus `/metrics`, and structured JSON request logs. See [`docs/api.md`](docs/api.md).
+- **Per-template warm pools & snapshots:** keep warm microVMs ready per template, backed by cold starts or snapshots (`snapshot_dir`, optional `use_uffd` demand-paging) with automatic guest clock resync.
+- **Multi-tenant policy per bearer token:** restrict allowed templates, max concurrency, max TTL, networking, per-token egress domain allow/deny lists, secret override rights, and audit read scope.
+
+### For security-conscious organizations
+- **Nothing leaves your infrastructure:** self-hosted, zero telemetry, zero external accounts.
+- **Transport hardening:** native TLS 1.2+, mutual TLS (`tls_client_ca`), Unix domain socket mode (`socket` with `0660` permissions), and bounded request bodies/timeouts.
+- **Tamper-evident audit trail:** hash-chained JSONL logs (`moat audit tail|query|report|verify`), per-sandbox activity rollups (`GET /v1/sandboxes/{id}/report`), and an async non-blocking webhook sink (`audit.webhook_url`) for SIEM ingestion.
+- **Supply-chain verification:** deterministic, reproducible rootfs builds (`make images-verify`), CycloneDX SBOM (`sbom.cdx.json`), and `images.lock` digest + Cosign signature verification enforced by `moatd` at startup.
+
+---
+
+## Try it in five lines
+
+### CLI
 ```sh
-make demo-image       # build the dev-shell rootfs template (once, a few minutes)
+# Run a command with file I/O and a timeout
+moat run -put ./data.csv:/work/data.csv -get /work/out.json:./out.json \
+  -timeout 30s -- sh -c 'wc -l /work/data.csv > /work/out.json'
+
+# Import a container image as a microVM template
+moat template import python:3.12-slim --name python --config /etc/moat/moatd.json
+
+# Inspect and verify the audit log
+moat audit report sb-7f3a19c4
+moat audit verify
+```
+
+### HTTP API
+```sh
+T='Authorization: Bearer s3cr3t'
+ID=$(curl -s -XPOST -H "$T" -d '{"template":"python","ttl_seconds":120}' https://127.0.0.1:8443/v1/sandboxes | jq -r .id)
+curl -s -XPUT  -H "$T" --data-binary @./task.py https://127.0.0.1:8443/v1/sandboxes/$ID/files/work/task.py
+curl -s -XPOST -H "$T" -d '{"argv":["python3","/work/task.py"]}' https://127.0.0.1:8443/v1/sandboxes/$ID/exec
+curl -s -XDELETE -H "$T" https://127.0.0.1:8443/v1/sandboxes/$ID
+```
+
+### End-to-end self-checking demo
+```sh
+make demo-image       # build the dev-shell rootfs (once)
 make kernel           # fetch the pinned vmlinux (once)
-./demo/run.sh         # scripted, self-checking end-to-end walk-through
+./demo/run.sh         # proves kernel isolation, secret blocking, private disks, and audit chain
 ```
 
-`./demo/run.sh` starts `moatd`, creates sandboxes over the HTTP API, runs a
-real Go build in one, and checks each isolation property — own kernel,
-private rootfs, secret firewall, hash-chained audit. See
-[`demo/README.md`](demo/README.md). Extra rootfs templates live in
-[`build/templates/`](build/templates/README.md).
+---
 
-Import any linux/amd64 container as a template with
-`moat template import python:3.12` — it carries the image's
-`ENV` / `WORKDIR` / `ENTRYPOINT` forward as exec defaults (a request
-value always wins).
+## Documentation
 
-## `moat run` flags
+| Guide | What it covers |
+| --- | --- |
+| [`docs/install.md`](docs/install.md) | One-command install, `--user` mode, image verification, production hardening, `moat uninstall` |
+| [`docs/mcp.md`](docs/mcp.md) | Wiring `moat-mcp` into Claude Code, Cursor, and other MCP clients |
+| [`docs/api.md`](docs/api.md) | `moatd` HTTP API, `moatd.json` schema, secret firewall, egress policy, TLS/mTLS, audit API |
+| [`docs/moatd.example.json`](docs/moatd.example.json) | Annotated production-ready daemon configuration |
+| [`SKILL.md`](SKILL.md) | Agent playbook for ephemeral sandbox usage |
+| [`demo/README.md`](demo/README.md) | Self-checking end-to-end isolation walk-through |
+| [`build/templates/README.md`](build/templates/README.md) | Building custom templates and importing OCI images |
+| [`docs/developer-guide.md`](docs/developer-guide.md) | Deep architecture, package map, security model, image pipeline, and operations |
 
-```
--id / -kernel / -rootfs / -vcpus / -mem / -jail / -keep   (as for demo)
--dir DIR            working directory in the guest
--env KEY=VALUE      set an environment variable (repeatable)
--tty               run the command attached to a PTY
--timeout DUR       kill the command after DUR (e.g. 30s); 0 means no limit
--put LOCAL:REMOTE  copy a file into the guest before the command (repeatable)
--get REMOTE:LOCAL  copy a file out of the guest after the command (repeatable)
--net               give the guest an isolated network (needs privilege)
--uplink NAME       parent interface to NAT onto: auto (default), none, or a name
--net-pool CIDR     address pool for guest networks (default 10.62.0.0/16)
--cpu N             cgroup CPU cap in cores (e.g. 0.5); 0 means no limit
--mem-max MiB       cgroup memory.max for the VMM process; 0 means no limit
--pids N            cgroup pids.max for the VMM process; 0 means no limit
--disk-bw BYTES     rootfs bandwidth limit in bytes/sec; 0 means no limit
--net-bw BYTES      network bandwidth limit in bytes/sec; 0 means no limit
+---
+
+## Build from source
+
+Requirements: Linux `x86_64` with `/dev/kvm`, `firecracker` and `jailer` on `PATH` (tested with v1.16.1), Go 1.27+, `make`, `podman`, `mkfs.ext4`, and `curl`.
+
+```sh
+make all              # bin/{moat,moatd,moat-mcp,moat-uffd,guest-agent}
+make images           # build/artifacts/{vmlinux,rootfs.ext4,sbom.cdx.json,images.lock}
+make test             # unit tests
+make test-integration # boots real microVMs (needs /dev/kvm)
+make images-verify    # proves byte-identical rootfs rebuilds
 ```
 
-Exit code: the guest process exit code; `124` on timeout; `128+signal` on a signal.
-
-## Layout
+<details>
+<summary>Repository layout</summary>
 
 | Path | Purpose |
 | --- | --- |
-| `cmd/moat` | host control CLI: `demo`, `run` |
-| `proto/agent/v1` | `agent.v1.Agent` protobuf service |
-| `gen/agent/v1` | generated protobuf + gRPC code (committed) |
-| `internal/config` | machine config, paths, kernel args |
-| `internal/vm` | Firecracker driver (firecracker-go-sdk wrapper) |
-| `internal/vsockconn` | host→guest vsock dial through Firecracker's mux socket |
-| `internal/agentclient` | host-side gRPC client for the in-VM agent |
-| `internal/netconf` | per-VM netns + veth + TAP + `/30` IPAM + nftables isolation rules |
-| `internal/cgroup` | cgroup v2 CPU / memory / PID caps on the VMM (delegated subtree, no root) |
-| `internal/pool` | warm pool of running microVMs; one-shot lease + TTL/idle reaping + refill |
-| `cmd/moat-uffd` | userfaultfd page-fault handler for `restore -uffd` |
-| `cmd/moatd` | northbound HTTP/JSON API daemon |
-| `cmd/moat-mcp` | MCP server for AI agents (stdio) |
-| `internal/server` | API handlers, sandbox registry, auth, quotas, TTL janitor, metrics, secret firewall |
-| `internal/moatapi` | Go client for the moatd HTTP API |
-| `internal/secretscan` | ingress credential scanner (vendored Gitleaks rules) |
-| `internal/egress` | CONNECT/HTTP forward proxy with a domain allow/deny policy |
-| `internal/audit` | append-only, hash-chained audit log; writer, reader, per-sandbox report |
-| `internal/imagelock` | load and verify images.lock; the moatd startup image check |
-| `guest/agent` | in-VM agent; PID 1; serves `agent.v1.Agent` (exec, file I/O, info) |
-| `build/` | `fetch-kernel.sh`, `build-rootfs.sh`, `build-template.sh`, `templates/` |
-| `demo/` | `run.sh` — scripted end-to-end isolation walk-through, and its sample workload |
-| `run/`, `build/artifacts/` | per-VM runtime state and VM images (gitignored) |
+| `cmd/moat` | Host CLI: `run`, `demo`, `snapshot`, `restore`, `bench`, `reap`, `doctor`, `template`, `audit`, `uninstall` |
+| `cmd/moatd` | Northbound HTTP/JSON API daemon (TCP, TLS/mTLS, Unix socket) |
+| `cmd/moat-mcp` | Model Context Protocol server over stdio |
+| `cmd/moat-uffd` | Userfaultfd page-fault handler for on-demand snapshot restore |
+| `guest/agent` | Static in-VM PID 1 agent (`agent.v1.Agent` over vsock, zombie reaper, overlayfs root, clock sync) |
+| `internal/vm` | Firecracker & jailer driver, sparse/reflink rootfs copies, scratch ext4 builder |
+| `internal/pool` | Per-template warm pools (cold or snapshot-backed) with lease TTL and idle reaping |
+| `internal/netconf` | Per-VM netns, veth, TAP, `/30` IPAM, and strict `nftables` isolation |
+| `internal/egress` | Forward and transparent SNI/Host egress proxy with global + per-token policy |
+| `internal/secretscan` | Ingress credential firewall (vendored Gitleaks rules) |
+| `internal/audit` | Append-only hash-chained JSONL audit log, reports, verification, and webhook sink |
+| `internal/imagelock` | Reproducible image digest and Cosign signature verification |
+| `internal/server` | HTTP API handlers, auth, quotas, TTL janitor, Prometheus metrics |
+| `internal/moatapi` | Go client for `moatd` (HTTP, HTTPS, Unix socket) |
 
-## Not yet (see roadmap in `CLAUDE.md`)
+</details>
 
-a gRPC northbound surface (P5).
+---
+
+## License & notice
+
+Licensed under **Apache-2.0**. The daemon, CLI, guest agent, MCP server, `SKILL.md`, single-node operation, and every isolation and audit control are free forever — **the security boundary is never paywalled**.
+
+Moat is an independent open-source project. Not affiliated with, or endorsed by, Amazon Web Services. "Firecracker" is a trademark of Amazon.com, Inc.
