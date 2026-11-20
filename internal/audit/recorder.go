@@ -44,6 +44,7 @@ type Config struct {
 	FsyncInterval time.Duration
 	Metrics       Metrics
 	Log           *logrus.Logger
+	Sinks         []Sink // optional external sinks forwarded after local write
 
 	// WriteFunc writes one audit line to the open file. It defaults to
 	// (*os.File).Write. A test sets it to force a write error.
@@ -172,15 +173,28 @@ func (r *Recorder) RecordSync(ctx context.Context, e Event) error {
 	}
 	start := time.Now()
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	err := r.appendLocked(&e, true)
+	r.mu.Unlock()
 	r.m().WriteObserved("sync", time.Since(start).Seconds())
 	if err != nil {
 		r.m().Recorded(e.Type, "error")
 		return err
 	}
 	r.m().Recorded(e.Type, "ok")
+	r.emitSinks(e)
 	return nil
+}
+
+// emitSinks forwards a written event to all configured external sinks.
+func (r *Recorder) emitSinks(e Event) {
+	for _, s := range r.cfg.Sinks {
+		if s == nil {
+			continue
+		}
+		if err := s.Emit(e); err != nil {
+			r.cfg.Log.WithError(err).WithField("type", e.Type).Warn("audit sink emit failed")
+		}
+	}
 }
 
 // appendLocked fills the chain fields, rotates if needed, writes the line, and
@@ -257,16 +271,26 @@ func (r *Recorder) Close() error {
 	r.closeOne.Do(func() { close(r.closed) })
 	r.writerWG.Wait()
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.f == nil {
-		return nil
+	var closeErr error
+	if r.f != nil {
+		if err := r.f.Sync(); err != nil {
+			closeErr = err
+		}
+		if err := r.f.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+		r.f = nil
 	}
-	if err := r.f.Sync(); err != nil {
-		return err
+	r.mu.Unlock()
+	for _, s := range r.cfg.Sinks {
+		if s == nil {
+			continue
+		}
+		if err := s.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
 	}
-	err := r.f.Close()
-	r.f = nil
-	return err
+	return closeErr
 }
 
 // Flush blocks until the async writer writes every event queued before this
@@ -387,6 +411,7 @@ func (r *Recorder) writeOne(e Event) {
 	}
 	r.m().Recorded(e.Type, "ok")
 	r.m().QueueDepth(len(r.queue))
+	r.emitSinks(e)
 }
 
 // recover scans existing files for the highest seq and the chain tip, and

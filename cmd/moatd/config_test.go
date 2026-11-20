@@ -164,3 +164,99 @@ func TestLoadConfigTemplateWithoutExecDefaults(t *testing.T) {
 		t.Errorf("unset exec defaults must stay zero: %+v", tpl)
 	}
 }
+
+func TestLoadConfigProductionFields(t *testing.T) {
+	path := writeTemp(t, `{
+	  "templates": [
+	    {
+	      "name": "fast",
+	      "pool": 3,
+	      "snapshot_dir": "/var/lib/moat/snaps/fast",
+	      "use_uffd": true,
+	      "read_only_root": true,
+	      "scratch_mib": 1024
+	    }
+	  ],
+	  "tokens": [
+	    {
+	      "id": "ci",
+	      "secret": "s3cr3t",
+	      "egress_allow": ["pypi.org"],
+	      "egress_deny": ["evil.pypi.org"]
+	    }
+	  ],
+	  "defaults": {
+	    "jail": true,
+	    "jail_uid": 1001,
+	    "jail_gid": 1001,
+	    "egress_allow": ["github.com"],
+	    "egress_deny": ["blocked.example"],
+	    "strict_egress": true
+	  },
+	  "socket": "/run/moat/moatd.sock",
+	  "tls_cert": "/etc/moat/server.pem",
+	  "tls_key": "/etc/moat/server.key",
+	  "tls_client_ca": "/etc/moat/ca.pem",
+	  "audit": {
+	    "dir": "/var/lib/moat/audit",
+	    "webhook_url": "https://siem.example/events"
+	  }
+	}`)
+
+	lc, err := loadConfigFile(path, "/k", "/r")
+	if err != nil {
+		t.Fatalf("loadConfigFile: %v", err)
+	}
+	tpl := lc.Templates[0]
+	if tpl.PoolSize != 3 || tpl.SnapshotDir != "/var/lib/moat/snaps/fast" || !tpl.UseUFFD || !tpl.ReadOnlyRoot || tpl.ScratchMiB != 1024 {
+		t.Fatalf("template production fields wrong: %+v", tpl)
+	}
+	pol := lc.Policies["ci"]
+	if len(pol.EgressAllow) != 1 || pol.EgressAllow[0] != "pypi.org" || len(pol.EgressDeny) != 1 || pol.EgressDeny[0] != "evil.pypi.org" {
+		t.Fatalf("token egress policy wrong: %+v", pol)
+	}
+	if !lc.Jail || lc.JailUID != 1001 || lc.JailGID != 1001 || !lc.StrictEgress {
+		t.Fatalf("defaults hardening fields wrong: %+v", lc)
+	}
+	if len(lc.EgressAllow) != 1 || lc.EgressAllow[0] != "github.com" || len(lc.EgressDeny) != 1 || lc.EgressDeny[0] != "blocked.example" {
+		t.Fatalf("default egress lists wrong: allow=%v deny=%v", lc.EgressAllow, lc.EgressDeny)
+	}
+	if lc.Socket != "/run/moat/moatd.sock" || lc.TLSCert != "/etc/moat/server.pem" || lc.TLSKey != "/etc/moat/server.key" || lc.TLSClientCA != "/etc/moat/ca.pem" {
+		t.Fatalf("transport fields wrong: socket=%q cert=%q key=%q ca=%q", lc.Socket, lc.TLSCert, lc.TLSKey, lc.TLSClientCA)
+	}
+	if lc.Audit == nil || lc.Audit.WebhookURL != "https://siem.example/events" {
+		t.Fatalf("audit webhook wrong: %+v", lc.Audit)
+	}
+}
+
+func TestLoadConfigTLSValidation(t *testing.T) {
+	base := `{"templates":[{"name":"t"}],"tokens":[{"id":"a","secret":"b"}]`
+	cases := map[string]string{
+		"cert without key":      base + `,"tls_cert":"/a.pem"}`,
+		"key without cert":      base + `,"tls_key":"/a.key"}`,
+		"client ca without tls": base + `,"tls_client_ca":"/ca.pem"}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := loadConfigFile(writeTemp(t, body), "/k", "/r"); err == nil {
+				t.Errorf("%s: expected validation error", name)
+			}
+		})
+	}
+}
+
+func TestBuildTLSConfigValidation(t *testing.T) {
+	if cfg, err := buildTLSConfig("", "", ""); err != nil || cfg != nil {
+		t.Fatalf("empty tls = (%v, %v), want (nil, nil)", cfg, err)
+	}
+	if _, err := buildTLSConfig("/cert", "", ""); err == nil {
+		t.Error("expected error for cert without key")
+	}
+	if _, err := buildTLSConfig("", "", "/ca"); err == nil {
+		t.Error("expected error for client CA without cert/key")
+	}
+	cfg, err := buildTLSConfig("/cert", "/key", "")
+	if err != nil || cfg == nil || cfg.MinVersion == 0 {
+		t.Fatalf("tls without client CA = (%+v, %v)", cfg, err)
+	}
+}

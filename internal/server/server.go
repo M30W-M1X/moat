@@ -51,6 +51,9 @@ type Config struct {
 	// namespace that forces guest TCP port 80 and 443 through the transparent
 	// egress proxy on that port. The guest cannot opt out.
 	EgressRedirectPort int
+	// StrictEgress sets the sandbox nftables forward policy to drop.
+	// Only proxy traffic and DNS to configured resolvers pass.
+	StrictEgress bool
 
 	// SecretScanOff turns the ingress secret firewall off. It is on by default.
 	SecretScanOff bool
@@ -77,6 +80,12 @@ type Config struct {
 	// images.lock.sig with `cosign verify-blob`.
 	CosignIdentity string
 	CosignIssuer   string
+
+	// Jail runs each Firecracker VMM under the Firecracker jailer (chroot,
+	// seccomp filter, dropped privileges). Needs root.
+	Jail      bool
+	JailerUID int
+	JailerGID int
 }
 
 // TokenPolicy narrows what one token may do. A zero field falls back to the
@@ -94,6 +103,11 @@ type TokenPolicy struct {
 	// AuditRead widens audit visibility. "all" lets this token read every
 	// token's events and run verify. Empty means own events only.
 	AuditRead string
+
+	// EgressAllow and EgressDeny narrow outbound hosts for this token.
+	// Global deny rules always win over per-token allow rules.
+	EgressAllow []string
+	EgressDeny  []string
 }
 
 // templateAllowed reports whether p permits the named template.
@@ -247,11 +261,16 @@ func (s *Server) Start(ctx context.Context) error {
 		if psize <= 0 {
 			continue
 		}
-		base, err := t.machine()
+		base, err := t.machine(s.cfg)
 		if err != nil {
 			return err
 		}
-		p, err := pool.New(ctx, pool.Options{Size: psize}, base, s.log)
+		p, err := pool.New(ctx, pool.Options{
+			Size:        psize,
+			SnapshotDir: t.SnapshotDir,
+			UseUFFD:     t.UseUFFD,
+			ScratchMiB:  t.ScratchMiB,
+		}, base, s.log)
 		if err != nil {
 			for _, existing := range s.pools {
 				existing.Close()
@@ -328,19 +347,37 @@ func (s *Server) IdentifyClient(ip netip.Addr) (string, string, bool) {
 	return "", "", false
 }
 
+// TokenEgressPolicy returns the per-token egress allow and deny lists.
+// It returns false when the token has no egress override.
+func (s *Server) TokenEgressPolicy(tid string) (allow, deny []string, ok bool) {
+	p, found := s.cfg.Policies[tid]
+	if !found || (len(p.EgressAllow) == 0 && len(p.EgressDeny) == 0) {
+		return nil, nil, false
+	}
+	return p.EgressAllow, p.EgressDeny, true
+}
+
 // machine builds a config.Machine the warm pool clones members from.
-func (t Template) machine() (config.Machine, error) {
+func (t Template) machine(cfg Config) (config.Machine, error) {
 	m, err := config.NewMachine("tmpl-" + t.Name)
 	if err != nil {
 		return config.Machine{}, err
 	}
 	m.KernelImagePath = t.Kernel
 	m.RootFSPath = t.RootFS
+	m.ReadOnlyRoot = t.ReadOnlyRoot
 	m.VCPUs = t.VCPUs
 	m.MemMiB = t.MemMiB
 	m.Limits = t.Limits
 	m.DiskBWBytesPerSec = t.DiskBW
 	m.NetBWBytesPerSec = t.NetBW
+	m.Jail = cfg.Jail
+	if cfg.JailerUID > 0 {
+		m.JailerUID = cfg.JailerUID
+	}
+	if cfg.JailerGID > 0 {
+		m.JailerGID = cfg.JailerGID
+	}
 	return m, nil
 }
 
@@ -469,9 +506,15 @@ func view(s *Sandbox) sandboxView {
 }
 
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req createReq
 	if r.ContentLength != 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				writeErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+				return
+			}
 			writeErr(w, http.StatusBadRequest, "bad JSON body: "+err.Error())
 			return
 		}
@@ -707,8 +750,14 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	start := time.Now()
+	r.Body = http.MaxBytesReader(w, r.Body, s.maxUp)
 	var req execReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		writeErr(w, http.StatusBadRequest, "bad JSON body: "+err.Error())
 		return
 	}

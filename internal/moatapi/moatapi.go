@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -24,8 +25,12 @@ type Client struct {
 	http  *http.Client
 }
 
-// New returns a Client. addr may be "host:port" or a full "http://host:port".
+// New returns a Client. addr may be "host:port", "http(s)://host:port", or
+// "unix:///path/to/moatd.sock".
 func New(addr, token string) *Client {
+	if strings.HasPrefix(addr, "unix://") {
+		return NewUnix(strings.TrimPrefix(addr, "unix://"), token)
+	}
 	if !strings.Contains(addr, "://") {
 		addr = "http://" + addr
 	}
@@ -33,6 +38,21 @@ func New(addr, token string) *Client {
 		base:  strings.TrimRight(addr, "/"),
 		token: token,
 		http:  &http.Client{Timeout: 0}, // per-call context sets the deadline
+	}
+}
+
+// NewUnix returns a Client that connects to moatd over a Unix domain socket.
+func NewUnix(socketPath, token string) *Client {
+	d := &net.Dialer{Timeout: 10 * time.Second}
+	tr := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return d.DialContext(ctx, "unix", socketPath)
+		},
+	}
+	return &Client{
+		base:  "http://moatd",
+		token: token,
+		http:  &http.Client{Transport: tr, Timeout: 0},
 	}
 }
 

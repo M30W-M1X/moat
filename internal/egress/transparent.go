@@ -70,7 +70,7 @@ func (p *Proxy) serveTransparentConn(client *net.TCPConn) {
 	host := hostFromStream(br, dst)
 	_ = client.SetReadDeadline(time.Time{})
 
-	rule, allow := p.pol.Match(host)
+	rule, allow, sandbox, token, clientIP := p.evalPolicy(client.RemoteAddr().String(), host)
 	label := "allow"
 	if !allow {
 		label = "deny"
@@ -81,14 +81,14 @@ func (p *Proxy) serveTransparentConn(client *net.TCPConn) {
 	}).Info("egress")
 
 	// Record the decision with via = "transparent". Build a minimal request so
-	// recordEgress can read the method, the port, and the client IP.
+	// recordEgressResolved can read the method and port.
 	method := http.MethodGet
 	if dst.Port() == 443 {
 		method = http.MethodConnect
 	}
 	ar := (&http.Request{Method: method, Host: dst.String(), RemoteAddr: client.RemoteAddr().String()}).
 		WithContext(context.Background())
-	p.recordEgress(ar, host, allow, "transparent", rule)
+	p.recordEgressResolved(ar, host, allow, "transparent", rule, sandbox, token, clientIP)
 
 	if !allow {
 		return

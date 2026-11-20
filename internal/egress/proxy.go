@@ -70,14 +70,21 @@ type auditHook struct {
 	identify func(netip.Addr) (string, string, bool)
 }
 
+// policyHook holds a per-token policy resolver. SetPolicyResolver swaps it
+// atomically so concurrent requests never observe a torn function value.
+type policyHook struct {
+	resolve func(tokenID string) (Policy, bool)
+}
+
 // Proxy is the forward proxy handler.
 type Proxy struct {
-	pol      Policy
-	log      *logrus.Logger
-	dial     *net.Dialer
-	rt       http.RoundTripper
-	decision *prometheus.CounterVec
-	audit    atomic.Pointer[auditHook]
+	pol       Policy
+	log       *logrus.Logger
+	dial      *net.Dialer
+	rt        http.RoundTripper
+	decision  *prometheus.CounterVec
+	audit     atomic.Pointer[auditHook]
+	policyRes atomic.Pointer[policyHook]
 }
 
 // SetAudit attaches an audit recorder and a client-IP resolver. It is safe to
@@ -85,6 +92,13 @@ type Proxy struct {
 // its sandbox id and token id.
 func (p *Proxy) SetAudit(rec *audit.Recorder, identify func(netip.Addr) (string, string, bool)) {
 	p.audit.Store(&auditHook{rec: rec, identify: identify})
+}
+
+// SetPolicyResolver attaches a per-token egress policy lookup. When a request
+// resolves to a token id with a policy, that policy applies alongside the
+// global Deny list. It is safe to call while the proxy serves traffic.
+func (p *Proxy) SetPolicyResolver(fn func(tokenID string) (Policy, bool)) {
+	p.policyRes.Store(&policyHook{resolve: fn})
 }
 
 // New builds a Proxy. reg may be nil.
@@ -172,24 +186,65 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) decide(r *http.Request, host string, via string) bool {
-	rule, ok := p.pol.Match(host)
+	rule, ok, sandbox, token, clientIP := p.evalPolicy(r.RemoteAddr, host)
 	d := "allow"
 	if !ok {
 		d = "deny"
 	}
 	p.decision.WithLabelValues(d).Inc()
 	p.log.WithFields(logrus.Fields{"host": host, "method": r.Method, "decision": d}).Info("egress")
-	p.recordEgress(r, host, ok, via, rule)
+	p.recordEgressResolved(r, host, ok, via, rule, sandbox, token, clientIP)
 	return ok
 }
 
-// recordEgress writes one egress audit event. It records both an allow and a
-// deny event on the async path. A guest controls the connection rate, so a
-// per-connection fsync would let the guest flood every audit writer. The proxy
-// resolves the sandbox and the token from the client IP. An unknown client IP
-// goes to the "client_ip" attribute and the envelope sandbox and token stay
-// empty. The event holds metadata only.
-func (p *Proxy) recordEgress(r *http.Request, host string, allowed bool, via, rule string) {
+// evalPolicy resolves the client sandbox and token, then checks the global
+// Deny list, the per-token policy when one exists, and the global Allow list.
+// A per-token policy can never weaken the global Deny list.
+func (p *Proxy) evalPolicy(remoteAddr, host string) (rule string, allowed bool, sandbox, token, clientIP string) {
+	if h := p.audit.Load(); h != nil && h.identify != nil {
+		if ap, err := netip.ParseAddrPort(remoteAddr); err == nil {
+			if sid, tid, ok := h.identify(ap.Addr()); ok {
+				sandbox, token = sid, tid
+			} else {
+				clientIP = ap.Addr().String()
+			}
+		}
+	}
+
+	norm := strings.ToLower(strings.TrimSuffix(host, "."))
+	// Global deny list always wins.
+	for _, d := range p.pol.Deny {
+		if hostMatches(norm, d) {
+			return d, false, sandbox, token, clientIP
+		}
+	}
+
+	if ph := p.policyRes.Load(); ph != nil && ph.resolve != nil && token != "" {
+		if tokPol, ok := ph.resolve(token); ok {
+			for _, d := range tokPol.Deny {
+				if hostMatches(norm, d) {
+					return d, false, sandbox, token, clientIP
+				}
+			}
+			if len(tokPol.Allow) > 0 {
+				for _, a := range tokPol.Allow {
+					if hostMatches(norm, a) {
+						return a, true, sandbox, token, clientIP
+					}
+				}
+				return "default-deny", false, sandbox, token, clientIP
+			}
+		}
+	}
+
+	rule, allowed = p.pol.Match(norm)
+	return rule, allowed, sandbox, token, clientIP
+}
+
+// recordEgressResolved writes one egress audit event with pre-resolved client
+// identity. Both allow and deny events go on the async path so a guest cannot
+// flood the synchronous writer. The event holds metadata only.
+func (p *Proxy) recordEgressResolved(r *http.Request, host string, allowed bool, via, rule, sandbox, token, clientIP string) {
 	h := p.audit.Load()
 	if h == nil || h.rec == nil || !h.rec.Enabled() {
 		return
@@ -214,15 +269,8 @@ func (p *Proxy) recordEgress(r *http.Request, host string, allowed bool, via, ru
 		"matched_rule": rule,
 		"via":          via,
 	}
-	var sandbox, token string
-	if h.identify != nil {
-		if ap, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
-			if sid, tid, ok := h.identify(ap.Addr()); ok {
-				sandbox, token = sid, tid
-			} else {
-				attrs["client_ip"] = ap.Addr().String()
-			}
-		}
+	if sandbox == "" && clientIP != "" {
+		attrs["client_ip"] = clientIP
 	}
 	ev := audit.Event{Sandbox: sandbox, Token: token, Attrs: attrs}
 	if allowed {
@@ -254,7 +302,11 @@ func Serve(ctx context.Context, addr string, p *Proxy) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	srv := &http.Server{Handler: p}
+	srv := &http.Server{
+		Handler:           p,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	go func() {
 		<-ctx.Done()
 		sc, cancel := context.WithTimeout(context.Background(), 3*time.Second)

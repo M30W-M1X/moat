@@ -101,6 +101,23 @@ func TestNFTScriptRedirect(t *testing.T) {
 	}
 }
 
+func TestNFTScriptStrictEgress(t *testing.T) {
+	p := planForTest(t, "none")
+	p.StrictEgress = true
+	s := p.nftScript()
+
+	mustContain := []string{
+		"type filter hook forward priority 0; policy drop;",
+		"ip daddr { 1.1.1.1, 8.8.8.8 } udp dport 53 accept",
+		"ip daddr { 1.1.1.1, 8.8.8.8 } tcp dport 53 accept",
+	}
+	for _, m := range mustContain {
+		if !strings.Contains(s, m) {
+			t.Errorf("strict egress script missing %q\n---\n%s", m, s)
+		}
+	}
+}
+
 func TestPrefixNetmask(t *testing.T) {
 	cases := map[int]string{30: "255.255.255.252", 24: "255.255.255.0", 16: "255.255.0.0", 8: "255.0.0.0"}
 	for bits, want := range cases {

@@ -146,3 +146,60 @@ func TestProxyAllowsAndDenies(t *testing.T) {
 		t.Errorf("denied GET status = %d, want 403", resp2.StatusCode)
 	}
 }
+
+func TestPerTokenEgressPolicy(t *testing.T) {
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+
+	p := New(Policy{
+		Allow: []string{"pypi.org", "github.com"},
+		Deny:  []string{"blocked.global.test"},
+	}, log, nil)
+	p.SetAudit(nil, func(ip netip.Addr) (string, string, bool) {
+		switch ip.String() {
+		case "10.0.0.2":
+			return "sb-ci", "ci", true
+		case "10.0.0.3":
+			return "sb-dev", "dev", true
+		default:
+			return "", "", false
+		}
+	})
+	p.SetPolicyResolver(func(tid string) (Policy, bool) {
+		switch tid {
+		case "ci":
+			return Policy{
+				Allow: []string{"registry.npmjs.org", "blocked.global.test"},
+				Deny:  []string{"bad.registry.npmjs.org"},
+			}, true
+		case "dev":
+			return Policy{Deny: []string{"github.com"}}, true
+		default:
+			return Policy{}, false
+		}
+	})
+
+	check := func(remote, host string, want bool) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "http://"+host+"/", nil)
+		req.RemoteAddr = remote + ":12345"
+		if got := p.decide(req, host, "proxy"); got != want {
+			t.Errorf("remote=%s host=%s: got %v, want %v", remote, host, got, want)
+		}
+	}
+
+	// Token "ci" has explicit allow list and deny list.
+	check("10.0.0.2", "registry.npmjs.org", true)
+	check("10.0.0.2", "bad.registry.npmjs.org", false) // token deny wins
+	check("10.0.0.2", "pypi.org", false)               // not in token allow
+	check("10.0.0.2", "blocked.global.test", false)    // global deny always wins over token allow
+
+	// Token "dev" specifies only a deny override; global allow still applies.
+	check("10.0.0.3", "pypi.org", true)
+	check("10.0.0.3", "github.com", false) // token deny blocks global allow
+	check("10.0.0.3", "evil.example", false)
+
+	// Unknown client IP falls back to global policy.
+	check("10.0.0.9", "github.com", true)
+	check("10.0.0.9", "registry.npmjs.org", false)
+}

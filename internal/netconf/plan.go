@@ -49,6 +49,11 @@ type Plan struct {
 	// namespace. The guest cannot bypass the proxy by ignoring HTTP(S)_PROXY.
 	RedirectPort int
 
+	// StrictEgress changes the forward chain default policy to drop so the
+	// guest can only reach the point-to-point proxy links and DNS servers.
+	// Arbitrary non-proxy outbound ports are dropped.
+	StrictEgress bool
+
 	// DNS servers written into the guest /etc/resolv.conf by the agent.
 	DNS []string
 }
@@ -97,10 +102,14 @@ func (p Plan) KernelIPArg() string {
 func (p Plan) nftScript() string {
 	tap30 := netip.PrefixFrom(p.TapGW, p.TapBits).Masked()
 	veth30 := netip.PrefixFrom(p.VethNSIP, p.VethBits).Masked()
+	fwdPolicy := "accept"
+	if p.StrictEgress {
+		fwdPolicy = "drop"
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "table inet mvm {\n")
 	fmt.Fprintf(&b, "  chain forward {\n")
-	fmt.Fprintf(&b, "    type filter hook forward priority 0; policy accept;\n")
+	fmt.Fprintf(&b, "    type filter hook forward priority 0; policy %s;\n", fwdPolicy)
 	fmt.Fprintf(&b, "    ct state established,related accept\n")
 	// The per-VM point-to-point links stay reachable.
 	fmt.Fprintf(&b, "    ip daddr { %s, %s } accept\n", tap30, veth30)
@@ -110,6 +119,13 @@ func (p Plan) nftScript() string {
 	fmt.Fprintf(&b, "    ip daddr 10.0.0.0/8 drop\n")
 	fmt.Fprintf(&b, "    ip daddr 172.16.0.0/12 drop\n")
 	fmt.Fprintf(&b, "    ip daddr 192.168.0.0/16 drop\n")
+	if p.StrictEgress && len(p.DNS) > 0 {
+		// Permit DNS lookups only to the configured resolvers so the guest can
+		// resolve hostnames before connecting through the transparent proxy.
+		dnsSet := strings.Join(p.DNS, ", ")
+		fmt.Fprintf(&b, "    ip daddr { %s } udp dport 53 accept\n", dnsSet)
+		fmt.Fprintf(&b, "    ip daddr { %s } tcp dport 53 accept\n", dnsSet)
+	}
 	fmt.Fprintf(&b, "  }\n")
 	fmt.Fprintf(&b, "  chain postrouting {\n")
 	fmt.Fprintf(&b, "    type nat hook postrouting priority 100; policy accept;\n")

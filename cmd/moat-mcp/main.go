@@ -29,22 +29,32 @@ var version = "dev"
 
 func main() {
 	addr := envOr("MOAT_ADDR", "http://127.0.0.1:8080")
+	socket := os.Getenv("MOAT_SOCKET")
 	token := os.Getenv("MOAT_TOKEN")
 	maxOut := 256 << 10
 
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "-addr", "--addr":
-			i++
-			addr = os.Args[i]
+			if i+1 < len(os.Args) {
+				i++
+				addr = os.Args[i]
+			}
+		case "-socket", "--socket":
+			if i+1 < len(os.Args) {
+				i++
+				socket = os.Args[i]
+			}
 		case "-token", "--token":
-			i++
-			token = os.Args[i]
+			if i+1 < len(os.Args) {
+				i++
+				token = os.Args[i]
+			}
 		case "-version", "--version":
 			fmt.Println("moat-mcp", version)
 			return
 		case "-h", "-help", "--help":
-			fmt.Fprintln(os.Stderr, "usage: moat-mcp [-addr URL] [-token id:secret]  (or $MOAT_ADDR, $MOAT_TOKEN)")
+			fmt.Fprintln(os.Stderr, "usage: moat-mcp [-addr URL | -socket PATH] [-token id:secret]  (or $MOAT_ADDR, $MOAT_SOCKET, $MOAT_TOKEN)")
 			return
 		}
 	}
@@ -53,7 +63,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	api := moatapi.New(addr, token)
+	var api *moatapi.Client
+	if socket != "" {
+		api = moatapi.NewUnix(socket, token)
+	} else {
+		api = moatapi.New(addr, token)
+	}
 	s := mcp.NewServer(&mcp.Implementation{Name: "moat", Version: version}, nil)
 	registerTools(s, api, maxOut)
 

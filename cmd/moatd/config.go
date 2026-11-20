@@ -24,6 +24,10 @@ type fileConfig struct {
 	ImageVerify    string         `json:"image_verify"`
 	CosignIdentity string         `json:"cosign_identity"`
 	CosignIssuer   string         `json:"cosign_issuer"`
+	Socket         string         `json:"socket"`
+	TLSCert        string         `json:"tls_cert"`
+	TLSKey         string         `json:"tls_key"`
+	TLSClientCA    string         `json:"tls_client_ca"`
 }
 
 // fileAudit is the on-disk shape of the optional "audit" block. An empty "dir"
@@ -35,19 +39,25 @@ type fileAudit struct {
 	MaxAge        string `json:"max_age"`
 	FsyncBatch    int    `json:"fsync_batch"`
 	FsyncInterval string `json:"fsync_interval"`
+	WebhookURL    string `json:"webhook_url"`
 }
 
 type fileTemplate struct {
-	Name      string  `json:"name"`
-	Kernel    string  `json:"kernel"`      // empty = the built-in default vmlinux
-	RootFS    string  `json:"rootfs"`      // empty = the built-in default rootfs.ext4
-	VCPUs     int64   `json:"vcpus"`       // default 1
-	MemMiB    int64   `json:"mem_mib"`     // default 256
-	CPUMax    float64 `json:"cpu_max"`     // cgroup CPU cores; 0 = no cap
-	MemMaxMiB int64   `json:"mem_max_mib"` // cgroup memory.max; 0 = no cap
-	PidsMax   int64   `json:"pids_max"`    // cgroup pids.max; 0 = no cap
-	DiskBW    int64   `json:"disk_bw"`     // rootfs bytes/sec; 0 = no limit
-	NetBW     int64   `json:"net_bw"`      // network bytes/sec; 0 = no limit
+	Name         string  `json:"name"`
+	Kernel       string  `json:"kernel"`      // empty = the built-in default vmlinux
+	RootFS       string  `json:"rootfs"`      // empty = the built-in default rootfs.ext4
+	VCPUs        int64   `json:"vcpus"`       // default 1
+	MemMiB       int64   `json:"mem_mib"`     // default 256
+	CPUMax       float64 `json:"cpu_max"`     // cgroup CPU cores; 0 = no cap
+	MemMaxMiB    int64   `json:"mem_max_mib"` // cgroup memory.max; 0 = no cap
+	PidsMax      int64   `json:"pids_max"`    // cgroup pids.max; 0 = no cap
+	DiskBW       int64   `json:"disk_bw"`     // rootfs bytes/sec; 0 = no limit
+	NetBW        int64   `json:"net_bw"`      // network bytes/sec; 0 = no limit
+	Pool         int     `json:"pool"`        // per-template warm pool size
+	SnapshotDir  string  `json:"snapshot_dir"`
+	UseUFFD      bool    `json:"use_uffd"`
+	ReadOnlyRoot bool    `json:"read_only_root"`
+	ScratchMiB   int64   `json:"scratch_mib"`
 
 	// Exec defaults from an imported image. All optional.
 	Env         map[string]string `json:"env"`
@@ -65,16 +75,24 @@ type fileToken struct {
 	DenyNetwork   bool     `json:"deny_network"`
 	AllowSecrets  bool     `json:"allow_secret_override"` // may pass secret-flagged content
 	AuditRead     string   `json:"audit_read"`            // "all" = may read the audit log
+	EgressAllow   []string `json:"egress_allow"`
+	EgressDeny    []string `json:"egress_deny"`
 }
 
 type fileDefaults struct {
-	GlobalMax  int    `json:"global_max"`
-	TokenMax   int    `json:"token_max"`
-	DefaultTTL string `json:"default_ttl"`
-	MaxTTL     string `json:"max_ttl"`
-	Pool       int    `json:"pool"`
-	NetPool    string `json:"net_pool"`
-	Uplink     string `json:"uplink"`
+	GlobalMax    int      `json:"global_max"`
+	TokenMax     int      `json:"token_max"`
+	DefaultTTL   string   `json:"default_ttl"`
+	MaxTTL       string   `json:"max_ttl"`
+	Pool         int      `json:"pool"`
+	NetPool      string   `json:"net_pool"`
+	Uplink       string   `json:"uplink"`
+	Jail         bool     `json:"jail"`
+	JailUID      int      `json:"jail_uid"`
+	JailGID      int      `json:"jail_gid"`
+	EgressAllow  []string `json:"egress_allow"`
+	EgressDeny   []string `json:"egress_deny"`
+	StrictEgress bool     `json:"strict_egress"`
 }
 
 // loadedConfig is the result of reading a -config file. Zero-valued fields mean
@@ -90,6 +108,16 @@ type loadedConfig struct {
 	Pool         int
 	NetPool      string
 	Uplink       string
+	Jail         bool
+	JailUID      int
+	JailGID      int
+	EgressAllow  []string
+	EgressDeny   []string
+	StrictEgress bool
+	Socket       string
+	TLSCert      string
+	TLSKey       string
+	TLSClientCA  string
 	Audit        *loadedAudit
 	ConfigSHA256 string // hex sha256 of the raw file
 
@@ -107,6 +135,7 @@ type loadedAudit struct {
 	MaxAge        time.Duration
 	FsyncBatch    int
 	FsyncInterval time.Duration
+	WebhookURL    string
 	Set           bool
 }
 
@@ -154,12 +183,17 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 				MemBytes: ft.MemMaxMiB << 20,
 				PIDs:     ft.PidsMax,
 			},
-			DiskBW:      ft.DiskBW,
-			NetBW:       ft.NetBW,
-			Env:         ft.Env,
-			Dir:         ft.Workdir,
-			DefaultArgv: ft.DefaultArgv,
-			Source:      ft.Source,
+			DiskBW:       ft.DiskBW,
+			NetBW:        ft.NetBW,
+			PoolSize:     ft.Pool,
+			SnapshotDir:  ft.SnapshotDir,
+			UseUFFD:      ft.UseUFFD,
+			ReadOnlyRoot: ft.ReadOnlyRoot,
+			ScratchMiB:   ft.ScratchMiB,
+			Env:          ft.Env,
+			Dir:          ft.Workdir,
+			DefaultArgv:  ft.DefaultArgv,
+			Source:       ft.Source,
 		}
 		out.Templates = append(out.Templates, t)
 	}
@@ -187,7 +221,7 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 				return out, fmt.Errorf("%s: token %q allows unknown template %q", path, ft.ID, name)
 			}
 		}
-		if len(ft.Templates) > 0 || ft.MaxConcurrent > 0 || maxTTL > 0 || ft.DenyNetwork || ft.AllowSecrets || ft.AuditRead != "" {
+		if len(ft.Templates) > 0 || ft.MaxConcurrent > 0 || maxTTL > 0 || ft.DenyNetwork || ft.AllowSecrets || ft.AuditRead != "" || len(ft.EgressAllow) > 0 || len(ft.EgressDeny) > 0 {
 			if ft.AuditRead != "" && ft.AuditRead != "all" {
 				return out, fmt.Errorf("%s: token %q audit_read must be \"all\" or empty", path, ft.ID)
 			}
@@ -198,6 +232,8 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 				DenyNetwork:         ft.DenyNetwork,
 				AllowSecretOverride: ft.AllowSecrets,
 				AuditRead:           ft.AuditRead,
+				EgressAllow:         ft.EgressAllow,
+				EgressDeny:          ft.EgressDeny,
 			}
 		}
 	}
@@ -211,9 +247,22 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 	out.CosignIdentity = fc.CosignIdentity
 	out.CosignIssuer = fc.CosignIssuer
 
+	if (fc.TLSCert == "") != (fc.TLSKey == "") {
+		return out, fmt.Errorf("%s: tls_cert and tls_key must both be set", path)
+	}
+	if fc.TLSClientCA != "" && fc.TLSCert == "" {
+		return out, fmt.Errorf("%s: tls_client_ca requires tls_cert and tls_key", path)
+	}
+	out.Socket = fc.Socket
+	out.TLSCert = fc.TLSCert
+	out.TLSKey = fc.TLSKey
+	out.TLSClientCA = fc.TLSClientCA
+
 	d := fc.Defaults
 	out.GlobalMax, out.TokenMax, out.Pool = d.GlobalMax, d.TokenMax, d.Pool
 	out.NetPool, out.Uplink = d.NetPool, d.Uplink
+	out.Jail, out.JailUID, out.JailGID = d.Jail, d.JailUID, d.JailGID
+	out.EgressAllow, out.EgressDeny, out.StrictEgress = d.EgressAllow, d.EgressDeny, d.StrictEgress
 	if d.DefaultTTL != "" {
 		if out.DefaultTTL, err = time.ParseDuration(d.DefaultTTL); err != nil {
 			return out, fmt.Errorf("%s: defaults.default_ttl: %w", path, err)
@@ -231,6 +280,7 @@ func loadConfigFile(path string, defKernel, defRootFS string) (loadedConfig, err
 			MaxFileMB:  fc.Audit.MaxFileMB,
 			MaxTotalMB: fc.Audit.MaxTotalMB,
 			FsyncBatch: fc.Audit.FsyncBatch,
+			WebhookURL: fc.Audit.WebhookURL,
 			Set:        true,
 		}
 		if fc.Audit.MaxAge != "" {

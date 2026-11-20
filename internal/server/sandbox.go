@@ -33,6 +33,18 @@ type Template struct {
 	// PoolSize overrides the per-template warm pool size. 0 uses Config.PoolSize
 	// for the default template and disables pooling for other templates.
 	PoolSize int
+	// SnapshotDir, when set, starts pooled members from a snapshot in this
+	// directory instead of a cold start.
+	SnapshotDir string
+	// UseUFFD selects the userfaultfd memory backend when SnapshotDir is set.
+	UseUFFD bool
+
+	// ReadOnlyRoot attaches RootFS read-only and pairs it with a sparse
+	// per-VM ext4 scratch disk mounted as an overlayfs upper layer.
+	ReadOnlyRoot bool
+	// ScratchMiB sets the scratch disk size in MiB when ReadOnlyRoot is true.
+	// 0 defaults to 512 MiB.
+	ScratchMiB int64
 
 	// Exec defaults. An imported template fills these from the image config.
 	// A request value always wins over the template value.
@@ -180,17 +192,29 @@ func coldBoot(ctx context.Context, s *Server, tpl Template, id string, networked
 	}
 	m.KernelImagePath = tpl.Kernel
 
-	// A sandbox attaches its rootfs as read-write. Give each sandbox a
-	// private copy of the template so two sandboxes never share one file.
-	// The warm pool makes the same copy for its members.
+	// Give each sandbox private writable storage so two sandboxes never share
+	// mutable disk state. When ReadOnlyRoot is set, mount the shared template
+	// read-only with a sparse ephemeral scratch disk instead of copying.
 	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
 		return nil, nil, nil, fmt.Errorf("run dir: %w", err)
 	}
-	rootfs := filepath.Join(m.RunDir, "rootfs.ext4")
-	if err := vm.CopyRootFS(tpl.RootFS, rootfs); err != nil {
-		return nil, nil, nil, fmt.Errorf("copy rootfs: %w", err)
+	if tpl.ReadOnlyRoot {
+		m.ReadOnlyRoot = true
+		m.RootFSPath = tpl.RootFS
+		scratch := filepath.Join(m.RunDir, "scratch.ext4")
+		if err := vm.CreateScratchExt4(scratch, tpl.ScratchMiB); err != nil {
+			_ = os.RemoveAll(m.RunDir)
+			return nil, nil, nil, fmt.Errorf("create scratch disk: %w", err)
+		}
+		m.ScratchPath = scratch
+	} else {
+		rootfs := filepath.Join(m.RunDir, "rootfs.ext4")
+		if err := vm.CopyRootFS(tpl.RootFS, rootfs); err != nil {
+			_ = os.RemoveAll(m.RunDir)
+			return nil, nil, nil, fmt.Errorf("copy rootfs: %w", err)
+		}
+		m.RootFSPath = rootfs
 	}
-	m.RootFSPath = rootfs
 
 	// Remove the run directory and the rootfs copy if the start fails. A
 	// success clears this flag.
@@ -206,6 +230,13 @@ func coldBoot(ctx context.Context, s *Server, tpl Template, id string, networked
 	m.Limits = tpl.Limits
 	m.DiskBWBytesPerSec = tpl.DiskBW
 	m.NetBWBytesPerSec = tpl.NetBW
+	m.Jail = s.cfg.Jail
+	if s.cfg.JailerUID > 0 {
+		m.JailerUID = s.cfg.JailerUID
+	}
+	if s.cfg.JailerGID > 0 {
+		m.JailerGID = s.cfg.JailerGID
+	}
 
 	var plan *netconf.Plan
 	if networked {
@@ -215,6 +246,7 @@ func coldBoot(ctx context.Context, s *Server, tpl Template, id string, networked
 		}
 		p := netconf.BuildPlan(lease, s.uplink)
 		p.RedirectPort = s.cfg.EgressRedirectPort
+		p.StrictEgress = s.cfg.StrictEgress || p.RedirectPort > 0
 		if err := netconf.Apply(p); err != nil {
 			s.ipam.Release(id)
 			return nil, nil, nil, fmt.Errorf("network setup: %w", err)

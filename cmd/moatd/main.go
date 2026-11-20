@@ -10,14 +10,19 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,7 +40,11 @@ import (
 var version = "dev"
 
 func main() {
-	addr := flag.String("addr", ":8080", "listen address for the API")
+	addr := flag.String("addr", ":8080", "listen address for the API (empty to disable TCP when -socket is set)")
+	socketPath := flag.String("socket", "", "Unix domain socket path for the API")
+	tlsCert := flag.String("tls-cert", "", "TLS server certificate PEM file")
+	tlsKey := flag.String("tls-key", "", "TLS server private key PEM file")
+	tlsClientCA := flag.String("tls-client-ca", "", "CA PEM file to require client TLS certificates")
 	cfgFile := flag.String("config", "", "JSON file of templates, tokens, and per-token policy")
 	tokensFlag := flag.String("tokens", "", "comma list of id:secret (else $MOAT_TOKENS)")
 	poolSize := flag.Int("pool", 0, "warm, non-networked sandboxes to keep ready")
@@ -52,13 +61,18 @@ func main() {
 	pidsMax := flag.Int64("pids-max", 0, "cgroup pids.max per sandbox (0 = none)")
 	diskBW := flag.Int64("disk-bw", 0, "rootfs bandwidth per sandbox in bytes/sec (0 = none)")
 	netBW := flag.Int64("net-bw", 0, "network bandwidth per sandbox in bytes/sec (0 = none)")
+	jail := flag.Bool("jail", false, "run Firecracker under the jailer (chroot, seccomp, dropped privileges)")
+	jailUID := flag.Int("jail-uid", 0, "UID for the Firecracker jailer (0 = default)")
+	jailGID := flag.Int("jail-gid", 0, "GID for the Firecracker jailer (0 = default)")
 	netPool := flag.String("net-pool", "", "CIDR for networked sandbox addresses")
 	uplink := flag.String("uplink", "none", "parent interface for networked sandbox NAT (or none/auto)")
 	egressAddr := flag.String("egress-addr", "127.0.0.1:0", "listen address for the egress proxy")
 	egressAllow := flag.String("egress-allow", "", "comma list of allowed egress domains (empty = all)")
 	egressDeny := flag.String("egress-deny", "", "comma list of denied egress domains")
 	egressTransparent := flag.String("egress-transparent", "", "listen address for the transparent egress proxy; forces guest 80/443 through it")
+	strictEgress := flag.Bool("strict-egress", false, "set sandbox nftables forward policy to drop")
 	auditDir := flag.String("audit-dir", "", `audit log directory ("" = default, "off" disables)`)
+	auditWebhook := flag.String("audit-webhook", "", "HTTP URL to forward audit events as JSON POST")
 	imageVerify := flag.String("image-verify", "", `image check: "enforce" (default), "warn", or "off"`)
 	cosignIdentity := flag.String("cosign-identity", "", "cosign certificate identity for images.lock.sig")
 	cosignIssuer := flag.String("cosign-issuer", "", "cosign OIDC issuer for images.lock.sig")
@@ -105,9 +119,21 @@ func main() {
 		MaxTTL:        *maxTTL,
 		NetPool:       *netPool,
 		Uplink:        *uplink,
+		StrictEgress:  *strictEgress,
 		SecretScanOff: !*secretScan,
 		SecretRedact:  *secretRedact,
+		Jail:          *jail,
+		JailerUID:     *jailUID,
+		JailerGID:     *jailGID,
 	}
+
+	sock := *socketPath
+	certPath := *tlsCert
+	keyPath := *tlsKey
+	clientCAPath := *tlsClientCA
+	webhookURL := *auditWebhook
+	globalEgressAllow := splitList(*egressAllow)
+	globalEgressDeny := splitList(*egressDeny)
 
 	var loadedAuditFromFile *loadedAudit
 	if *cfgFile != "" {
@@ -129,6 +155,10 @@ func main() {
 		if cosIss == "" {
 			cosIss = fc.CosignIssuer
 		}
+		sock = orDefault(sock, fc.Socket)
+		certPath = orDefault(certPath, fc.TLSCert)
+		keyPath = orDefault(keyPath, fc.TLSKey)
+		clientCAPath = orDefault(clientCAPath, fc.TLSClientCA)
 		// A non-zero value in the file's defaults block wins over the flag.
 		cfg.GlobalMax = orInt(fc.GlobalMax, cfg.GlobalMax)
 		cfg.TokenMax = orInt(fc.TokenMax, cfg.TokenMax)
@@ -142,6 +172,16 @@ func main() {
 		cfg.NetPool = orDefault(fc.NetPool, cfg.NetPool)
 		if fc.Uplink != "" {
 			cfg.Uplink = fc.Uplink
+		}
+		cfg.Jail = cfg.Jail || fc.Jail
+		cfg.JailerUID = orInt(fc.JailUID, cfg.JailerUID)
+		cfg.JailerGID = orInt(fc.JailGID, cfg.JailerGID)
+		cfg.StrictEgress = cfg.StrictEgress || fc.StrictEgress
+		if len(globalEgressAllow) == 0 && len(fc.EgressAllow) > 0 {
+			globalEgressAllow = fc.EgressAllow
+		}
+		if len(globalEgressDeny) == 0 && len(fc.EgressDeny) > 0 {
+			globalEgressDeny = fc.EgressDeny
 		}
 		log.WithFields(logrus.Fields{
 			"templates": len(cfg.Templates), "tokens": len(cfg.Tokens),
@@ -194,6 +234,7 @@ func main() {
 		auditCfg.MaxAge = fa.MaxAge
 		auditCfg.FsyncBatch = fa.FsyncBatch
 		auditCfg.FsyncInterval = fa.FsyncInterval
+		webhookURL = orDefault(webhookURL, fa.WebhookURL)
 	}
 	switch *auditDir {
 	case "off":
@@ -202,6 +243,14 @@ func main() {
 		// Keep the resolved value.
 	default:
 		auditCfg.Dir = *auditDir
+	}
+	if webhookURL != "" && auditCfg.Dir != "" {
+		ws, err := audit.NewWebhookSink(audit.WebhookConfig{URL: webhookURL, Log: log})
+		if err != nil {
+			log.WithError(err).Fatal("configure audit webhook sink")
+		}
+		auditCfg.Sinks = append(auditCfg.Sinks, ws)
+		log.WithField("url", webhookURL).Info("audit webhook sink active")
 	}
 	rec, err := audit.New(auditCfg)
 	if err != nil {
@@ -216,6 +265,14 @@ func main() {
 	cfg.Audit = rec
 	cfg.Version = version
 
+	if *addr == "" && sock == "" {
+		log.Fatal("set -addr or -socket")
+	}
+	tlsCfg, err := buildTLSConfig(certPath, keyPath, clientCAPath)
+	if err != nil {
+		log.WithError(err).Fatal("configure TLS")
+	}
+
 	// A crash leaves running VMMs behind. Reconcile before the daemon serves.
 	if root, err := config.RunRoot(); err == nil {
 		if ids := vm.Reconcile(root, nil, log); len(ids) > 0 {
@@ -228,8 +285,8 @@ func main() {
 
 	// Egress proxy for networked sandboxes.
 	proxy := egress.New(egress.Policy{
-		Allow: splitList(*egressAllow),
-		Deny:  splitList(*egressDeny),
+		Allow: globalEgressAllow,
+		Deny:  globalEgressDeny,
 	}, log, nil)
 	egAddr, err := egress.Serve(ctx, *egressAddr, proxy)
 	if err != nil {
@@ -256,29 +313,142 @@ func main() {
 		log.WithError(err).Fatal("build server")
 	}
 	proxy.SetAudit(rec, srv.IdentifyClient)
+	proxy.SetPolicyResolver(func(tid string) (egress.Policy, bool) {
+		allow, deny, ok := srv.TokenEgressPolicy(tid)
+		if !ok {
+			return egress.Policy{}, false
+		}
+		return egress.Policy{Allow: allow, Deny: deny}, true
+	})
 	if err := srv.Start(ctx); err != nil {
 		log.WithError(err).Fatal("start server")
 	}
 
-	httpSrv := &http.Server{Addr: *addr, Handler: srv.Handler()}
+	handler := srv.Handler()
+	var tcpSrv *http.Server
+	if *addr != "" {
+		tcpSrv = &http.Server{
+			Addr:              *addr,
+			Handler:           handler,
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			TLSConfig:         tlsCfg,
+		}
+	}
+	var unixSrv *http.Server
+	var unixLn net.Listener
+	if sock != "" {
+		unixLn, err = openUnixListener(sock)
+		if err != nil {
+			log.WithError(err).Fatal("listen on unix socket")
+		}
+		defer os.Remove(sock)
+		unixSrv = &http.Server{
+			Handler:           handler,
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
+		}
+	}
+
 	shutdownDone := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		log.Info("shutting down")
 		sc, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		_ = httpSrv.Shutdown(sc)
+		if tcpSrv != nil {
+			_ = tcpSrv.Shutdown(sc)
+		}
+		if unixSrv != nil {
+			_ = unixSrv.Shutdown(sc)
+		}
 		srv.Shutdown(sc)
 		close(shutdownDone)
 	}()
 
-	log.WithField("addr", *addr).Info("moatd listening")
-	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.WithError(err).Fatal("http server")
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	if tcpSrv != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if certPath != "" {
+				log.WithFields(logrus.Fields{"addr": *addr, "mtls": clientCAPath != ""}).Info("moatd listening with TLS")
+				errCh <- tcpSrv.ListenAndServeTLS(certPath, keyPath)
+			} else {
+				log.WithField("addr", *addr).Info("moatd listening")
+				errCh <- tcpSrv.ListenAndServe()
+			}
+		}()
+	}
+	if unixSrv != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.WithField("socket", sock).Info("moatd listening on unix socket")
+			errCh <- unixSrv.Serve(unixLn)
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(errCh)
+	}()
+	for err := range errCh {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			stop()
+			log.WithError(err).Fatal("http server")
+		}
 	}
 	// Wait for srv.Shutdown to write daemon.stop and the final destroy events
 	// before the deferred rec.Close runs.
 	<-shutdownDone
+}
+
+// buildTLSConfig validates TLS paths and builds a TLS configuration with TLS 1.2
+// minimum and optional client certificate verification.
+func buildTLSConfig(certPath, keyPath, clientCAPath string) (*tls.Config, error) {
+	if (certPath == "") != (keyPath == "") {
+		return nil, errors.New("tls-cert and tls-key must both be set")
+	}
+	if clientCAPath != "" && certPath == "" {
+		return nil, errors.New("tls-client-ca requires tls-cert and tls-key")
+	}
+	if certPath == "" {
+		return nil, nil
+	}
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if clientCAPath != "" {
+		pemBytes, err := os.ReadFile(clientCAPath)
+		if err != nil {
+			return nil, fmt.Errorf("read tls client CA: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pemBytes) {
+			return nil, errors.New("parse tls client CA: no valid PEM certificates")
+		}
+		cfg.ClientCAs = pool
+		cfg.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+	return cfg, nil
+}
+
+// openUnixListener creates a Unix domain socket listener with mode 0660.
+func openUnixListener(path string) (net.Listener, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	_ = os.Remove(path)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, 0o660); err != nil {
+		ln.Close()
+		_ = os.Remove(path)
+		return nil, err
+	}
+	return ln, nil
 }
 
 func parseTokens(flagVal string) map[string]string {

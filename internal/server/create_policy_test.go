@@ -81,3 +81,34 @@ func TestPolicyDoesNotBlockUnrestrictedToken(t *testing.T) {
 		t.Fatalf("admin -> gpu was forbidden, should be allowed: %s", body)
 	}
 }
+
+func TestCreateRejectsOversizedBody(t *testing.T) {
+	ts := newPolicyServer(t)
+	big := `{"template":"` + strings.Repeat("a", (1<<20)+64) + `"}`
+	code, body := post(t, ts, "root", big)
+	if code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized create body: code %d body %s, want 413", code, body)
+	}
+}
+
+func TestTokenEgressPolicy(t *testing.T) {
+	log := logrus.New()
+	log.SetLevel(logrus.PanicLevel)
+	srv, err := New(Config{
+		Templates: []Template{{Name: "default", Kernel: "/none", RootFS: "/none", VCPUs: 1, MemMiB: 128}},
+		Tokens:    map[string]string{"ci": "s3cr3t", "open": "open"},
+		Policies: map[string]TokenPolicy{
+			"ci": {EgressAllow: []string{"pypi.org"}, EgressDeny: []string{"bad.pypi.org"}},
+		},
+	}, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allow, deny, ok := srv.TokenEgressPolicy("ci")
+	if !ok || len(allow) != 1 || allow[0] != "pypi.org" || len(deny) != 1 || deny[0] != "bad.pypi.org" {
+		t.Fatalf("TokenEgressPolicy(ci) = (%v, %v, %v)", allow, deny, ok)
+	}
+	if _, _, ok := srv.TokenEgressPolicy("open"); ok {
+		t.Fatal("TokenEgressPolicy(open) = true, want false")
+	}
+}
