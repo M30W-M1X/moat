@@ -63,7 +63,7 @@ Give the agent [`SKILL.md`](SKILL.md) so it knows when to isolate commands, how 
 
 ## Every threat, and the control that stops it
 
-Every control below ships in the Apache-2.0 core. Nothing in the security boundary is paywalled.
+Every control below ships in the MIT-licensed core. Nothing in the security boundary is paywalled.
 
 | If the command tries to... | Moat's control |
 | --- | --- |
@@ -84,12 +84,12 @@ Fast enough to give every task its own virtual machine:
 
 | Metric | Reading |
 | --- | --- |
-| Cold start to ready in-VM agent | ~24 ms |
-| Snapshot restore to ready agent (with automatic clock resync) | ~25 ms |
-| Warm-pool acquire (p50) | ~1 ms |
-| Diff-snapshot memory image (256 MiB guest) | ~2 MiB on disk |
+| Firecracker VMM cold start (median of 5 runs) | ~20 ms |
+| Snapshot restore to ready agent + clock resync (median of 5 runs) | ~35 ms |
+| Warm-pool acquire p50 (`444–755 µs` over 25 cycles) | <1 ms |
+| Diff-snapshot memory image (256 MiB guest, 3 ms write) | ~4.4 MiB on disk |
 
-*Indicative measurements on one developer machine (Fedora, KVM, x86_64) — not guarantees. Numbers move with hardware and template size.*
+*Indicative measurements on one developer machine (AMD Ryzen 7 5700G, Linux 7.2, KVM, x86_64, Firecracker v1.16.1, 256 MiB Alpine guest) — not guarantees. Numbers move with hardware and template size.*
 
 ---
 
@@ -151,6 +151,7 @@ make kernel           # fetch the pinned vmlinux (once)
 
 | Guide | What it covers |
 | --- | --- |
+| [`docs/operators.html`](docs/operators.html) | Operator guide: running `moatd`, choosing/setting default VMs, pools, egress, TLS/mTLS, and day-2 ops |
 | [`docs/install.md`](docs/install.md) | One-command install, `--user` mode, image verification, production hardening, `moat uninstall` |
 | [`docs/mcp.md`](docs/mcp.md) | Wiring `moat-mcp` into Claude Code, Cursor, and other MCP clients |
 | [`docs/api.md`](docs/api.md) | `moatd` HTTP API, `moatd.json` schema, secret firewall, egress policy, TLS/mTLS, audit API |
@@ -200,6 +201,6 @@ make images-verify    # proves byte-identical rootfs rebuilds
 
 ## License & notice
 
-Licensed under **Apache-2.0**. The daemon, CLI, guest agent, MCP server, `SKILL.md`, single-node operation, and every isolation and audit control are free forever — **the security boundary is never paywalled**.
+Licensed under the **MIT License** ([`LICENSE`](LICENSE)). The daemon, CLI, guest agent, MCP server, `SKILL.md`, single-node operation, and every isolation and audit control are free forever — **the security boundary is never paywalled**.
 
 Moat is an independent open-source project. Not affiliated with, or endorsed by, Amazon Web Services. "Firecracker" is a trademark of Amazon.com, Inc.

@@ -140,7 +140,7 @@ bytes crossing *into* a sandbox; the *egress proxy* filters traffic going *out*.
 - **Voice:** dry, confident, technical, a little edge. No exclamation marks, no
   "unleash / supercharge / seamless / effortless", no startup-cheerful. A
   control says exactly what it does.
-- **License:** Apache-2.0, open-core. Free forever: the daemon, CLI, guest
+- **License:** MIT, open-core. Free forever: the daemon, CLI, guest
   agent, MCP server, `SKILL.md`, single-node operation, and every isolation
   feature. A later paid tier covers multi-node fleet, a web console, SSO/RBAC,
   and managed hosting. **The security boundary is never in the paid tier** —
@@ -159,10 +159,12 @@ bytes crossing *into* a sandbox; the *egress proxy* filters traffic going *out*.
   right now**, so those URLs are not publicly reachable and the `curl | sh`
   install does not yet work for anyone outside the account. Making the repo
   public is a pending decision.
-- **Benchmarks**, measured on one developer machine (Fedora, KVM, x86_64) — not
-  guarantees: cold boot to a ready in-VM agent ~24 ms; snapshot restore ~25 ms;
-  warm-pool acquire p50 ~1 ms; a 256 MiB guest's diff memory image ~2 MiB on
-  disk. Always label these as indicative, single-machine measurements.
+- **Benchmarks**, measured on one developer machine (AMD Ryzen 7 5700G, Linux
+  7.2, KVM, x86_64, Firecracker v1.16.1, 256 MiB Alpine guest) — not
+  guarantees: Firecracker VMM cold start ~20 ms; snapshot restore to ready agent
+  with clock resync ~35 ms; warm-pool acquire p50 <1 ms (444–755 µs over 25
+  cycles); a 256 MiB guest's diff memory image ~4.4 MiB on disk (3 ms write).
+  Always label these as indicative, single-machine measurements.
 - **Docs:** `README.md`, `docs/api.md`, `docs/mcp.md`, `docs/install.md`,
   `SKILL.md`, `docs/moatd.example.json`; the marketing page `docs/index.html`;
   the fuller plan in `~/Documents/ClaudeVault/projects/microvm-controller/`.

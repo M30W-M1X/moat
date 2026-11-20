@@ -2,7 +2,7 @@
 
 `moatd` is the self-hosted control plane for Moat. It gives agent products, CI runners, and coding assistants disposable Firecracker microVMs over plain HTTP/JSON or a Unix domain socket — with bearer-token multi-tenancy, per-template warm pools, an ingress secret firewall, strict domain-filtered egress, native TLS/mTLS, Prometheus metrics, and a hash-chained audit trail.
 
-Zero external accounts. Zero vendor lock-in. Every isolation feature ships under Apache-2.0.
+Zero external accounts. Zero vendor lock-in. Every isolation feature ships under the MIT License.
 
 ## Run
 

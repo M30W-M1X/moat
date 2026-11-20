@@ -89,10 +89,15 @@
   .brand svg{width:28px;height:28px;shape-rendering:crispEdges;flex:none}
   .brand b{color:var(--alarm)}
   .brand span{color:var(--ink-3)}
-  .tagline{color:var(--ink-3);font-family:var(--f-display);font-size:11.5px;flex:1;min-width:180px}
-  .toggle{margin-left:auto;font-family:var(--f-display);font-size:11px;text-transform:uppercase;
+  .site-nav{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap}
+  .site-nav a{font-family:var(--f-display);font-size:11.5px;font-weight:700;text-transform:uppercase;text-decoration:none;color:var(--ink-2);padding:5px 9px;border:2px solid transparent}
+  .site-nav a:hover{color:var(--alarm);border-color:var(--rule);background:var(--bg)}
+  .site-nav a[aria-current="page"]{background:var(--gold-wash);color:var(--ink);border:2px solid var(--rule);box-shadow:2px 2px 0 var(--rule)}
+  .site-nav .navcta{background:var(--alarm);color:#fff;border:3px solid var(--rule);padding:5px 10px;box-shadow:2px 2px 0 var(--rule)}
+  .site-nav .navcta:hover{background:var(--alarm-ink);color:#fff}
+  .toggle{font-family:var(--f-display);font-size:13px;
     background:var(--gold-wash);color:var(--ink);border:3px solid var(--rule);
-    border-radius:0;padding:.45em .8em;cursor:pointer;box-shadow:2px 2px 0 var(--rule)}
+    border-radius:0;width:36px;height:34px;display:grid;place-items:center;cursor:pointer;box-shadow:2px 2px 0 var(--rule)}
   .toggle:hover{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--rule)}
 
   .wrap{max-width:calc(var(--sidebar) + var(--maxw) + 96px);margin:0 auto;
@@ -215,10 +220,17 @@
         <rect x="7" y="9" width="2" height="3" fill="var(--gold)"/>
         <rect x="0" y="12" width="16" height="4" fill="var(--accent)"/>
       </svg>
-      <b>MOAT</b> <span>·</span> Dev Guide
+      MOAT
     </a>
-    <span class="tagline">Firecracker microVM sandboxes for untrusted AI-agent code</span>
-    <button class="toggle" id="tg" type="button" aria-label="Toggle colour theme">Day / Night</button>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="index.html">Home</a>
+      <a href="operators.html">Operators</a>
+      <a href="developer-guide.html" aria-current="page">Dev Guide</a>
+      <a href="implementation-plan.html">Plan</a>
+      <a href="https://github.com/M30W-M1X/moat">GitHub</a>
+      <a href="index.html#install" class="navcta">Install</a>
+      <button class="toggle" id="tg" type="button" aria-label="Switch between Day Castle and Night Castle">☀</button>
+    </nav>
   </div>
 </header>
 

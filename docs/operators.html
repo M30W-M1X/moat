@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Operator guide for Moat: running moatd, choosing and setting default VM templates, warm pools, egress policies, TLS/mTLS, jailer confinement, and day-2 operations.">
+<meta name="color-scheme" content="light dark">
+<title>Moat — Operator Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap">
+<style>
+  :root{
+    --bg:#f3ebd6; --surface:#fffaf0; --surface-2:#e3d6b8;
+    --ink:#1b1829; --ink-2:#3b3552; --ink-3:#6b6285;
+    --rule:#1b1829; --rule-2:#564e73;
+    --accent:#2294d6; --accent-ink:#115f91; --accent-wash:#d6f1ff;
+    --alarm:#e54826; --alarm-ink:#b32e12; --alarm-wash:#ffe3d8;
+    --gold:#f2b629; --gold-wash:#fff1c4;
+    --grass:#4ea845; --stone:#c2c7d4;
+    --px-shadow:4px 4px 0 #1b1829;
+    --px-shadow-sm:2px 2px 0 #1b1829;
+    --f-pixel:"Press Start 2P",monospace;
+    --f-ui:"Silkscreen",monospace;
+    --f-text:"B612",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --f-mono:"B612 Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --maxw:840px; --sidebar:256px;
+    color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#141226; --surface:#1f1c38; --surface-2:#282447;
+      --ink:#f5eedc; --ink-2:#c7c1de; --ink-3:#8f87b0;
+      --rule:#070610; --rule-2:#4c4475;
+      --accent:#3cc5ff; --accent-ink:#8be2ff; --accent-wash:#102b45;
+      --alarm:#ff6b3d; --alarm-ink:#ff9470; --alarm-wash:#3b1e20;
+      --gold:#ffd15c; --gold-wash:#3b2f14;
+      --grass:#3e8c45; --stone:#6a708c;
+      --px-shadow:4px 4px 0 #070610;
+      --px-shadow-sm:2px 2px 0 #070610;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141226; --surface:#1f1c38; --surface-2:#282447;
+    --ink:#f5eedc; --ink-2:#c7c1de; --ink-3:#8f87b0;
+    --rule:#070610; --rule-2:#4c4475;
+    --accent:#3cc5ff; --accent-ink:#8be2ff; --accent-wash:#102b45;
+    --alarm:#ff6b3d; --alarm-ink:#ff9470; --alarm-wash:#3b1e20;
+    --gold:#ffd15c; --gold-wash:#3b2f14;
+    --grass:#3e8c45; --stone:#6a708c;
+    --px-shadow:4px 4px 0 #070610;
+    --px-shadow-sm:2px 2px 0 #070610;
+  }
+
+  *,*::before,*::after{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  body{
+    margin:0;background:var(--bg);
+    background-image:radial-gradient(var(--surface-2) 1.5px,transparent 1.5px);
+    background-size:16px 16px;
+    color:var(--ink);font-family:var(--f-text);font-size:15.5px;line-height:1.64;
+  }
+  :focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  a{color:var(--accent-ink);text-underline-offset:2px;text-decoration-thickness:2px}
+  a:hover{color:var(--alarm)}
+  code{font-family:var(--f-mono);font-size:.88em;background:var(--surface);border:2px solid var(--rule);padding:.06em .36em}
+  pre{
+    margin:1.1em 0;background:#141226;color:#f5eedc;border:4px solid var(--rule);
+    border-left:6px solid var(--alarm);padding:1em 1.15em;box-shadow:var(--px-shadow);
+    overflow-x:auto;font-family:var(--f-mono);font-size:12.8px;line-height:1.62;
+  }
+  pre code{background:none;border:0;padding:0;font-size:inherit;color:inherit}
+
+  /* ---- Unified Main Site Navigation ---- */
+  .nav{
+    position:sticky;top:0;z-index:60;background:var(--surface);
+    border-bottom:4px solid var(--rule);box-shadow:0 4px 0 rgba(0,0,0,.14);
+  }
+  .nav-in{
+    max-width:calc(var(--sidebar) + var(--maxw) + 96px);margin:0 auto;
+    padding:0 24px;min-height:64px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  }
+  .brand{
+    display:inline-flex;align-items:center;gap:10px;
+    font-family:var(--f-pixel);font-size:13px;text-decoration:none;color:var(--ink);
+  }
+  .brand svg{width:30px;height:30px;display:block;shape-rendering:crispEdges}
+  .nav-links{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap}
+  .nav-links a{
+    font-family:var(--f-ui);font-size:11.5px;font-weight:700;text-transform:uppercase;
+    text-decoration:none;color:var(--ink-2);padding:5px 9px;border:2px solid transparent;
+  }
+  .nav-links a:hover{color:var(--alarm);border-color:var(--rule);background:var(--bg)}
+  .nav-links a[aria-current="page"]{
+    background:var(--gold-wash);color:var(--ink);border:2px solid var(--rule);
+    box-shadow:var(--px-shadow-sm);
+  }
+  .nav-links .navcta{
+    background:var(--alarm);color:#fff;border:3px solid var(--rule);padding:6px 11px;
+    box-shadow:var(--px-shadow-sm);
+  }
+  .nav-links .navcta:hover{background:var(--alarm-ink);color:#fff;transform:translate(1px,1px)}
+  .themebtn,.menubtn{
+    background:var(--gold-wash);border:3px solid var(--rule);color:var(--ink);
+    width:36px;height:34px;cursor:pointer;font-family:var(--f-ui);font-size:14px;
+    display:grid;place-items:center;box-shadow:var(--px-shadow-sm);
+  }
+  .menubtn{display:none;margin-left:auto}
+  @media (max-width:860px){
+    .menubtn{display:grid}
+    .nav-links{display:none;width:100%;padding:8px 0 14px;flex-direction:column;align-items:stretch;border-top:3px solid var(--rule)}
+    .nav-links.open{display:flex}
+    .nav-links a{padding:8px 10px}
+  }
+
+  /* ---- Layout ---- */
+  .wrap{
+    max-width:calc(var(--sidebar) + var(--maxw) + 96px);margin:0 auto;
+    padding:0 24px;display:grid;grid-template-columns:var(--sidebar) minmax(0,1fr);gap:44px;
+  }
+  nav.toc{
+    position:sticky;top:68px;align-self:start;height:calc(100vh - 80px);
+    overflow-y:auto;padding:24px 0 40px;font-size:13px;
+  }
+  nav.toc ol{list-style:none;margin:0;padding:0;counter-reset:s}
+  nav.toc > ol > li:not(.grp){counter-increment:s;margin:.2em 0}
+  nav.toc > ol > li > a{
+    display:block;padding:.35em .65em;border:2px solid transparent;
+    color:var(--ink-2);text-decoration:none;
+  }
+  nav.toc > ol > li > a::before{content:counter(s) ".\00a0";color:var(--alarm);font-family:var(--f-ui);font-size:11px}
+  nav.toc > ol > li > a:hover{background:var(--surface);border-color:var(--rule);color:var(--ink)}
+  nav.toc a.active{background:var(--accent-wash);border:2px solid var(--rule);color:var(--accent-ink);font-weight:700;box-shadow:var(--px-shadow-sm)}
+  nav.toc .grp{
+    font-family:var(--f-ui);font-size:10.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--ink-3);padding:1.3em .6em .45em;
+  }
+
+  main{padding:34px 0 100px;min-width:0}
+  h1{font-family:var(--f-pixel);font-size:clamp(1.15rem,2.4vw,1.65rem);line-height:1.42;margin:0 0 14px}
+  .lede{color:var(--ink-2);font-size:1.05rem;max-width:64ch;margin:0}
+  .pillbar{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0 0}
+  .pill{
+    font-family:var(--f-ui);font-size:11px;background:var(--gold-wash);color:var(--ink);
+    border:3px solid var(--rule);padding:4px 10px;box-shadow:var(--px-shadow-sm);
+  }
+
+  section{padding-top:34px;margin-top:28px;border-top:4px dashed var(--rule-2);scroll-margin-top:76px}
+  section:first-of-type{border-top:0;margin-top:10px}
+  h2{font-family:var(--f-pixel);font-size:15px;line-height:1.48;margin:0 0 12px}
+  h2 .n{
+    font-family:var(--f-pixel);font-size:11px;color:#fff;background:var(--alarm);
+    border:2px solid var(--rule);padding:2px 6px;margin-right:10px;
+  }
+  h3{font-family:var(--f-ui);font-size:15.5px;margin:1.7em 0 .4em;color:var(--ink)}
+  p{margin:.7em 0;max-width:66ch}
+  ul,ol{max-width:66ch;padding-left:1.35em}
+  li{margin:.32em 0}
+
+  .card{
+    background:var(--surface);border:4px solid var(--rule);padding:18px 20px;
+    margin:1.2em 0;box-shadow:var(--px-shadow);
+  }
+  .card.warn{border-left:8px solid var(--alarm);background:var(--alarm-wash)}
+  .card.tip{border-left:8px solid var(--accent);background:var(--accent-wash)}
+  .card .k{
+    font-family:var(--f-ui);font-size:10.5px;text-transform:uppercase;
+    color:var(--alarm-ink);display:block;margin-bottom:6px;
+  }
+  .card.tip .k{color:var(--accent-ink)}
+
+  table{
+    border-collapse:collapse;width:100%;margin:1.2em 0;font-size:13.5px;
+    display:block;overflow-x:auto;background:var(--surface);
+    border:4px solid var(--rule);box-shadow:var(--px-shadow);
+  }
+  th,td{border:2px solid var(--rule);padding:.55em .75em;text-align:left;vertical-align:top}
+  th{background:var(--gold-wash);font-family:var(--f-ui);font-size:11px;text-transform:uppercase;color:var(--ink)}
+  tbody tr:nth-child(even){background:var(--bg)}
+
+  .foot{
+    margin-top:54px;padding-top:20px;border-top:4px solid var(--rule);
+    font-size:12.5px;color:var(--ink-2);
+  }
+  @media (max-width:940px){
+    .wrap{grid-template-columns:1fr;gap:0}
+    nav.toc{position:static;height:auto;border-bottom:4px solid var(--rule);padding:14px 0;columns:2}
+    nav.toc .grp{padding-top:.6em}
+  }
+  @media (max-width:560px){ nav.toc{columns:1} }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="index.html" aria-label="Moat — home">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2" width="2" height="3" fill="var(--stone)"/>
+        <rect x="6" y="2" width="4" height="3" fill="var(--stone)"/>
+        <rect x="12" y="2" width="2" height="3" fill="var(--stone)"/>
+        <rect x="7" y="0" width="2" height="2" fill="var(--alarm)"/>
+        <rect x="2" y="4" width="12" height="8" fill="var(--stone)"/>
+        <rect x="6" y="8" width="4" height="4" fill="#1b1829"/>
+        <rect x="7" y="9" width="2" height="3" fill="var(--gold)"/>
+        <rect x="0" y="12" width="16" height="4" fill="var(--accent)"/>
+      </svg>
+      MOAT
+    </a>
+    <button class="menubtn" id="menubtn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <nav class="nav-links" id="navlinks" aria-label="Primary">
+      <a href="index.html">Home</a>
+      <a href="operators.html" aria-current="page">Operators</a>
+      <a href="developer-guide.html">Dev Guide</a>
+      <a href="implementation-plan.html">Plan</a>
+      <a href="https://github.com/M30W-M1X/moat">GitHub</a>
+      <a href="index.html#install" class="navcta">Install</a>
+      <button class="themebtn" id="theme" type="button" aria-label="Switch between Day Castle and Night Castle">☀</button>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Operator contents">
+    <ol>
+      <li class="grp">Getting started</li>
+      <li><a href="#quickstart">How to run Moat</a></li>
+      <li><a href="#default-vm">Choosing &amp; setting the default VM</a></li>
+      <li><a href="#import">Importing container images</a></li>
+      <li class="grp">Performance &amp; sizing</li>
+      <li><a href="#storage">Read-only rootfs vs. sparse copy</a></li>
+      <li><a href="#pools">Warm pools &amp; snapshot pools</a></li>
+      <li><a href="#sizing">Sizing CPU, RAM, disk &amp; quotas</a></li>
+      <li class="grp">Security &amp; isolation</li>
+      <li><a href="#tokens">Tokens &amp; per-tenant policy</a></li>
+      <li><a href="#network">Networking &amp; strict egress</a></li>
+      <li><a href="#transport">Unix sockets, TLS/mTLS &amp; jailer</a></li>
+      <li><a href="#trust">Image verification &amp; Cosign</a></li>
+      <li class="grp">Day-2 operations</li>
+      <li><a href="#audit">Audit logs, reports &amp; SIEM</a></li>
+      <li><a href="#day2">Monitoring, recovery &amp; uninstall</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <h1>Moat Operator Guide</h1>
+    <p class="lede">How to install, configure, pick default VM templates, harden, and operate <code>moatd</code> on your own Linux host.</p>
+    <div class="pillbar">
+      <span class="pill">Linux x86_64 + KVM</span>
+      <span class="pill">Config: /etc/moat/moatd.json</span>
+      <span class="pill">Data: /var/lib/moat</span>
+      <span class="pill">MIT License</span>
+    </div>
+
+    <!-- 1. QUICKSTART -->
+    <section id="quickstart">
+      <h2><span class="n">01</span>How to run Moat</h2>
+      <p>Moat ships four binaries that work together or independently:</p>
+      <ul>
+        <li><code>moatd</code> — the long-running HTTP/JSON (and Unix socket) daemon that manages sandboxes, warm pools, egress proxying, secret scanning, and the audit log.</li>
+        <li><code>moat</code> — the operator and developer CLI for one-shot runs (<code>moat run</code>), host checks (<code>moat doctor</code>), templates (<code>moat template</code>), snapshots, audit queries (<code>moat audit</code>), orphan reaping (<code>moat reap</code>), and removal (<code>moat uninstall</code>).</li>
+        <li><code>moat-mcp</code> — stdio Model Context Protocol bridge that lets Claude Code, Cursor, or any MCP client drive <code>moatd</code>.</li>
+        <li><code>moat-uffd</code> — optional userfaultfd demand-paging helper for snapshot restores with <code>use_uffd: true</code>.</li>
+      </ul>
+
+      <h3>Start the daemon under systemd</h3>
+      <pre><code># 1. Verify KVM, Firecracker, cgroup v2 delegation, and images.lock
+moat doctor
+
+# 2. Enable and start moatd (system install)
+sudo systemctl enable --now moatd
+sudo journalctl -u moatd -f
+
+# Or user-mode install (--user)
+systemctl --user enable --now moatd</code></pre>
+
+      <h3>One-shot CLI usage (no daemon required)</h3>
+      <pre><code># Run an untrusted script in a fresh microVM with file I/O and a timeout
+moat run -put ./script.py:/work/script.py -get /work/out.json:./out.json \
+  -timeout 30s -- python3 /work/script.py
+
+# Use a specific kernel or rootfs image
+moat run -rootfs /var/lib/moat/python-rootfs.ext4 -- python3 -c "print(2+2)"</code></pre>
+      <p>Every CLI run copies the rootfs into a private per-VM run directory and deletes it on exit unless you pass <code>-keep</code>, so one-shot runs never mutate shared template images.</p>
+    </section>
+
+    <!-- 2. DEFAULT VM -->
+    <section id="default-vm">
+      <h2><span class="n">02</span>Choosing &amp; setting the default VM</h2>
+      <p>A <strong>template</strong> is a named kernel + ext4 rootfs pair with resource caps and optional exec defaults (<code>env</code>, <code>workdir</code>, <code>default_argv</code>). Every sandbox starts from one template.</p>
+
+      <div class="card tip">
+        <span class="k">Rule for the default VM</span>
+        In <code>moatd.json</code>, <strong>the first entry in the <code>templates</code> array is the default template</strong>. Whenever an API caller or MCP agent omits <code>"template"</code> on <code>POST /v1/sandboxes</code> (or <code>moat_create</code>), <code>moatd</code> starts a sandbox from <code>templates[0]</code>.
+      </div>
+
+      <h3>Which template should be your default?</h3>
+      <table>
+        <thead>
+          <tr><th>Template</th><th>Base userland</th><th>Disk size</th><th>Best default for...</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>default</code> (built-in)</td>
+            <td>Alpine Linux (musl) + <code>guest-agent</code></td>
+            <td>256 MiB (verified by <code>images.lock</code>)</td>
+            <td>Smallest attack surface, fastest starts, shell scripts, and verified supply-chain environments.</td>
+          </tr>
+          <tr>
+            <td><code>python</code> (imported)</td>
+            <td><code>python:3.12-slim</code> (Debian glibc)</td>
+            <td>~400 MiB</td>
+            <td>AI coding agents doing data analysis, Python scripting, and test execution.</td>
+          </tr>
+          <tr>
+            <td><code>dev-shell</code></td>
+            <td>Python, Node, Go, C toolchain, git</td>
+            <td>1 GiB</td>
+            <td>General-purpose coding assistants that switch languages across tasks.</td>
+          </tr>
+          <tr>
+            <td><code>rhel9</code></td>
+            <td>Red Hat UBI 9 (glibc + <code>dnf</code>)</td>
+            <td>1 GiB</td>
+            <td>Enterprise Linux compatibility and glibc-compiled binaries.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>How to change the default VM in <code>moatd.json</code></h3>
+      <p>Put your preferred template <strong>first</strong> in <code>templates</code> and restart <code>moatd</code>. You can also keep <code>default</code> as a second entry or restrict specific tokens to specific templates.</p>
+      <pre><code>{
+  "image_verify": "enforce",
+  "templates": [
+    {
+      "name": "python",
+      "kernel": "/var/lib/moat/vmlinux",
+      "rootfs": "/var/lib/moat/python-rootfs.ext4",
+      "vcpus": 2,
+      "mem_mib": 1024,
+      "cpu_max": 2,
+      "mem_max_mib": 1024,
+      "pids_max": 256,
+      "pool": 2,
+      "read_only_root": true,
+      "scratch_mib": 512,
+      "workdir": "/work",
+      "env": { "PYTHONUNBUFFERED": "1" }
+    },
+    {
+      "name": "minimal",
+      "kernel": "/var/lib/moat/vmlinux",
+      "rootfs": "/var/lib/moat/rootfs.ext4",
+      "vcpus": 1,
+      "mem_mib": 256,
+      "read_only_root": true,
+      "scratch_mib": 256
+    }
+  ],
+  "tokens": [
+    { "id": "agent", "secret": "replace-me", "max_concurrent": 4, "max_ttl": "20m" }
+  ]
+}</code></pre>
+
+      <h3>How to override the default VM for the CLI</h3>
+      <p>The <code>moat</code> CLI resolves its default kernel and rootfs in this order:</p>
+      <ol>
+        <li>Explicit flags: <code>moat run -kernel /path/vmlinux -rootfs /path/custom.ext4 -- ...</code></li>
+        <li><code>$MOAT_DATA</code> directory (reads <code>$MOAT_DATA/vmlinux</code> and <code>$MOAT_DATA/rootfs.ext4</code>)</li>
+        <li><code>$XDG_DATA_HOME/moat</code>, then <code>~/.local/share/moat</code>, then <code>/var/lib/moat</code></li>
+      </ol>
+      <p>To make a custom template the CLI default for your shell, point <code>MOAT_DATA</code> at a directory containing your <code>vmlinux</code> and <code>rootfs.ext4</code> (or symlink <code>rootfs.ext4</code> to your chosen image when not using <code>image_verify=enforce</code> on that directory).</p>
+
+      <h3>Inspecting installed templates</h3>
+      <pre><code>moat template list                  # list all *-rootfs.ext4 images in MOAT_DATA
+moat template show python           # print metadata, source digest, ENV, WORKDIR, ENTRYPOINT</code></pre>
+    </section>
+
+    <!-- 3. IMPORT -->
+    <section id="import">
+      <h2><span class="n">03</span>Importing container images as VM templates</h2>
+      <p>You do not need to write a Dockerfile to create a custom VM. <code>moat template import</code> converts any <code>linux/amd64</code> OCI container image or archive into an ext4 rootfs with <code>/sbin/guest-agent</code> injected, preserving the image's <code>ENV</code>, <code>WORKDIR</code>, and <code>ENTRYPOINT</code>:</p>
+      <pre><code># Pull from a registry and register it directly into moatd.json
+moat template import python:3.12-slim --name python --config /etc/moat/moatd.json
+
+# Import an air-gapped docker-save or OCI tarball
+moat template import --from-archive ./internal-ci.tar --name ci --config /etc/moat/moatd.json
+
+# Reload moatd after updating moatd.json
+sudo systemctl restart moatd</code></pre>
+      <p>If you want the newly imported template to be the default VM, move its object to index <code>0</code> of <code>"templates"</code> in <code>moatd.json</code>.</p>
+    </section>
+
+    <!-- 4. STORAGE -->
+    <section id="storage">
+      <h2><span class="n">04</span>Read-only rootfs vs. sparse copy</h2>
+      <p>Moat never shares writable disk state between two sandboxes. Each template supports two storage modes:</p>
+      <table>
+        <thead>
+          <tr><th>Mode</th><th>Config</th><th>How it works</th><th>When to use</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Read-only rootfs + overlayfs</strong> (recommended)</td>
+            <td><code>"read_only_root": true</code>,<br><code>"scratch_mib": 512</code></td>
+            <td>Attaches the template ext4 read-only (<code>/dev/vda</code>) and pairs it with a tiny sparse per-VM ext4 scratch disk (<code>/dev/vdb</code>) mounted as an overlayfs upper layer at boot.</td>
+            <td>Best for large templates (<code>python</code>, <code>dev-shell</code>, <code>rhel9</code>) and high sandbox churn. Zero base image copying; fast startup; low disk I/O.</td>
+          </tr>
+          <tr>
+            <td><strong>Private sparse/reflink copy</strong> (default)</td>
+            <td><code>"read_only_root": false</code></td>
+            <td>Copies the template rootfs into the sandbox run directory using <code>cp --reflink=auto --sparse=always</code> and deletes it on destroy.</td>
+            <td>Simple default on XFS/Btrfs/overlay-free workflows or when tools inside the guest expect a single mutable ext4 root.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 5. POOLS -->
+    <section id="pools">
+      <h2><span class="n">05</span>Warm pools &amp; snapshot pools</h2>
+      <p>Warm pools keep pre-started, non-networked microVMs ready so <code>POST /v1/sandboxes</code> hands out a clean VM in ~1 ms instead of waiting for a cold start. Each VM is still strictly single-use and destroyed on release.</p>
+      <ul>
+        <li><strong>Per-template pools:</strong> set <code>"pool": 4</code> directly on any template in <code>moatd.json</code>. Each template gets its own isolated pool — requests for <code>python</code> never borrow a VM from <code>default</code>.</li>
+        <li><strong>Global fallback:</strong> <code>"defaults": { "pool": N }</code> (or <code>-pool N</code>) sets the pool size for the default template when that template leaves <code>"pool": 0</code>.</li>
+        <li><strong>Snapshot-templated warm pools:</strong> pre-warm an environment once with <code>moat snapshot</code>, then point the template at it with <code>"snapshot_dir": "/var/lib/moat/snaps/python"</code> (and optionally <code>"use_uffd": true</code> for demand-paged memory). Moat automatically resyncs the guest wall clock after every restore so TLS and timestamps stay accurate.</li>
+      </ul>
+      <pre><code># Build a primed snapshot once
+moat snapshot -id python-snap -rootfs /var/lib/moat/python-rootfs.ext4 \
+  -out /var/lib/moat/snaps/python -exec 'python3 -c "import ssl, json"'
+
+# Reference it in moatd.json
+{
+  "name": "python",
+  "rootfs": "/var/lib/moat/python-rootfs.ext4",
+  "pool": 4,
+  "snapshot_dir": "/var/lib/moat/snaps/python",
+  "use_uffd": false
+}</code></pre>
+    </section>
+
+    <!-- 6. SIZING -->
+    <section id="sizing">
+      <h2><span class="n">06</span>Sizing CPU, RAM, disk &amp; quotas</h2>
+      <p>Every sandbox enforces both guest-level and host-level cgroup v2 caps:</p>
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Scope</th><th>Recommendation</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>vcpus</code>, <code>mem_mib</code></td><td>Guest VM sizing</td><td><code>1 vCPU / 256 MiB</code> for shell/minimal; <code>2 vCPU / 1024 MiB</code> for Python/Node; <code>4 vCPU / 4096 MiB</code> for Go/Rust builds.</td></tr>
+          <tr><td><code>cpu_max</code>, <code>mem_max_mib</code>, <code>pids_max</code></td><td>Host cgroup v2 on VMM</td><td>Set <code>mem_max_mib</code> slightly above <code>mem_mib</code> (e.g., +64–128 MiB for VMM overhead) and <code>pids_max: 256</code> to neutralize fork-bombs.</td></tr>
+          <tr><td><code>disk_bw</code>, <code>net_bw</code></td><td>Firecracker token buckets (bytes/sec)</td><td>Cap noisy build sandboxes (e.g., <code>104857600</code> = 100 MiB/s) so one sandbox cannot starve host I/O.</td></tr>
+          <tr><td><code>defaults.global_max</code>, <code>token_max</code></td><td>Concurrency limits</td><td>Keep <code>global_max * avg_mem_mib</code> below 75% of host RAM. Excess requests get HTTP <code>429</code> and an audit event.</td></tr>
+          <tr><td><code>defaults.default_ttl</code>, <code>max_ttl</code></td><td>Sandbox lifetime</td><td><code>15m</code> default / <code>1h</code> max prevents forgotten agent sandboxes from lingering.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 7. TOKENS -->
+    <section id="tokens">
+      <h2><span class="n">07</span>Tokens &amp; per-tenant policy</h2>
+      <p>Every <code>/v1/...</code> API route requires <code>Authorization: Bearer &lt;secret&gt;</code>. Callers can only list, exec in, or destroy sandboxes created by their own token. Give each agent, CI pipeline, or team its own token with least-privilege rules:</p>
+      <pre><code>{
+  "id": "ci-python",
+  "secret": "use-a-long-random-secret",
+  "templates": ["python"],
+  "max_concurrent": 4,
+  "max_ttl": "20m",
+  "deny_network": false,
+  "egress_allow": ["pypi.org", "files.pythonhosted.org"],
+  "egress_deny": ["evil.pypi.org"],
+  "allow_secret_override": false,
+  "audit_read": ""
+}</code></pre>
+      <ul>
+        <li><code>egress_allow</code> / <code>egress_deny</code> scope outbound hosts per token. <strong>Global deny rules always win over per-token allow rules.</strong></li>
+        <li><code>allow_secret_override</code> defaults to <code>false</code>. Keep it off for AI agents so they cannot bypass the ingress secret firewall.</li>
+        <li><code>audit_read: "all"</code> grants read-only visibility across all tokens on <code>GET /v1/audit</code> and <code>GET /v1/sandboxes/{id}/report</code> (intended for a dedicated SecOps token).</li>
+      </ul>
+    </section>
+
+    <!-- 8. NETWORK -->
+    <section id="network">
+      <h2><span class="n">08</span>Networking &amp; strict egress</h2>
+      <p>Sandboxes have <strong>no network interface by default</strong> (<code>"networked": false</code>). When a caller requests <code>"networked": true</code> (and the token permits it):</p>
+      <ul>
+        <li>Moat allocates a dedicated <code>/30</code> subnet from <code>net_pool</code> (default <code>10.62.0.0/16</code>) inside a per-VM network namespace, and releases it on sandbox destroy.</li>
+        <li><code>nftables</code> unconditionally drops routes to the host, loopback, <code>169.254.0.0/16</code> (cloud metadata), and RFC-1918 private ranges.</li>
+        <li>Run <code>moatd</code> with <code>-egress-transparent 0.0.0.0:3128</code> and <code>"defaults": { "strict_egress": true }</code> so guest TCP 80/443 is DNATed transparently to the SNI/Host-filtering proxy and the forward chain defaults to <code>policy drop</code> (allowing only proxy traffic and configured DNS).</li>
+      </ul>
+      <div class="card warn">
+        <span class="k">Privileges required for networking</span>
+        Per-VM network namespaces and <code>nftables</code> require root or systemd capabilities <code>CAP_NET_ADMIN</code> and <code>CAP_SYS_ADMIN</code>. Uncomment the capability lines in <code>/etc/systemd/system/moatd.service</code> when enabling networked sandboxes.
+      </div>
+    </section>
+
+    <!-- 9. TRANSPORT & JAILER -->
+    <section id="transport">
+      <h2><span class="n">09</span>Unix sockets, TLS/mTLS &amp; jailer</h2>
+
+      <h3>Local-only host (recommended for solo devs and local MCP)</h3>
+      <p>Bind <code>moatd</code> exclusively to a <code>0660</code> Unix domain socket with no TCP listener:</p>
+      <pre><code># In /etc/moat/moatd.json
+"socket": "/run/moat/moatd.sock"
+
+# In systemd ExecStart
+ExecStart=/usr/local/bin/moatd -addr "" -config /etc/moat/moatd.json</code></pre>
+
+      <h3>Remote API with native TLS 1.2+ or mTLS</h3>
+      <pre><code># In /etc/moat/moatd.json (or via -tls-cert / -tls-key / -tls-client-ca)
+"tls_cert": "/etc/moat/server.pem",
+"tls_key": "/etc/moat/server.key",
+"tls_client_ca": "/etc/moat/clients-ca.pem"</code></pre>
+      <p>Setting <code>tls_client_ca</code> enforces mutual TLS (<code>RequireAndVerifyClientCert</code>) on every TCP connection in addition to bearer-token auth.</p>
+
+      <h3>Firecracker jailer confinement</h3>
+      <p>Enable <code>"defaults": { "jail": true, "jail_uid": 1001, "jail_gid": 1001 }</code> (or <code>-jail</code>) so each Firecracker VMM runs chrooted, under a seccomp filter, and with dropped privileges. Requires root or <code>CAP_SYS_ADMIN</code>.</p>
+    </section>
+
+    <!-- 10. TRUST -->
+    <section id="trust">
+      <h2><span class="n">10</span>Image verification &amp; Cosign</h2>
+      <p>At startup, <code>moatd</code> reads <code>images.lock</code> beside each template's images. In the default <code>"image_verify": "enforce"</code> mode:</p>
+      <ul>
+        <li>Every template covered by <code>images.lock</code> must match its kernel and rootfs SHA-256 digests. Failed templates are dropped before serving, and <code>moatd</code> exits non-zero if zero usable templates remain.</li>
+        <li>Secondary imported templates that share the verified kernel still have their kernel digest checked.</li>
+        <li>Set <code>"cosign_identity"</code> and <code>"cosign_issuer"</code> (or <code>MOAT_COSIGN_IDENTITY</code> / <code>MOAT_COSIGN_ISSUER</code>) to also verify <code>images.lock.sig</code> with Cosign before startup.</li>
+      </ul>
+    </section>
+
+    <!-- 11. AUDIT -->
+    <section id="audit">
+      <h2><span class="n">11</span>Audit logs, reports &amp; SIEM forwarding</h2>
+      <p>The audit log is enabled by default (written to <code>/var/lib/moat/audit</code> or <code>audit.dir</code>). Every event is metadata-only (no secrets, file bodies, or stdout) and chained by SHA-256.</p>
+      <pre><code># Follow live events
+moat audit tail
+
+# Query a specific token or event type
+moat audit query -token ci -type secret.block -since -24h
+
+# Rollup everything one sandbox did (works after destruction)
+moat audit report sb-7f3a19c4
+
+# Verify the entire hash chain against tampering
+moat audit verify</code></pre>
+      <p>To stream events to Splunk, Datadog, Vector, or a custom webhook collector without slowing API calls, add <code>"webhook_url": "https://siem.internal/moat"</code> under <code>"audit"</code> (or pass <code>-audit-webhook</code>).</p>
+    </section>
+
+    <!-- 12. DAY 2 -->
+    <section id="day2">
+      <h2><span class="n">12</span>Monitoring, recovery &amp; uninstall</h2>
+
+      <h3>Prometheus metrics</h3>
+      <p>Scrape <code>GET /metrics</code> and alert on:</p>
+      <ul>
+        <li><code>rate(moat_secret_findings_total{action="block"}[5m]) &gt; 0</code> — credentials hitting the ingress firewall.</li>
+        <li><code>rate(moat_quota_rejects_total[5m]) &gt; 0</code> — callers hitting concurrency caps.</li>
+        <li><code>moat_pool_ready == 0</code> — warm pool exhausted (falling back to cold starts).</li>
+        <li><code>increase(moat_audit_dropped_total[5m]) &gt; 0</code> — audit writer falling behind or disk pressure.</li>
+      </ul>
+
+      <h3>Crash recovery &amp; orphan reaping</h3>
+      <p><code>moatd</code> automatically reaps orphaned Firecracker processes left by a host crash on startup and logs <code>orphan.reap</code> audit events. To sweep orphans manually:</p>
+      <pre><code>moat reap</code></pre>
+
+      <h3>Clean uninstall</h3>
+      <pre><code>moat uninstall --dry-run      # preview what will be removed
+moat uninstall --keep-data    # remove binaries + unit, keep images &amp; audit logs
+moat uninstall                # full removal (add --user for $HOME installs)</code></pre>
+    </section>
+
+    <footer class="foot">
+      <strong>Moat</strong> · MIT License · <a href="index.html">Home</a> · <a href="developer-guide.html">Developer Guide</a> · <a href="implementation-plan.html">Implementation Plan</a> · <a href="https://github.com/M30W-M1X/moat">GitHub</a>
+    </footer>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement, btn = document.getElementById("theme");
+  var saved; try { saved = localStorage.getItem("moat-theme"); } catch(e){}
+  if (saved === "dark" || saved === "light") root.setAttribute("data-theme", saved);
+  function cur(){
+    var a = root.getAttribute("data-theme");
+    if (a) return a;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function paint(){ btn.textContent = cur() === "dark" ? "☾" : "☀"; }
+  paint();
+  btn.addEventListener("click", function(){
+    var next = cur() === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("moat-theme", next); } catch(e){}
+    paint();
+  });
+
+  var mb = document.getElementById("menubtn"), nl = document.getElementById("navlinks");
+  if (mb && nl){
+    mb.addEventListener("click", function(){
+      var open = nl.classList.toggle("open");
+      mb.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+
+  /* Active TOC highlighting */
+  var links = Array.prototype.slice.call(document.querySelectorAll("nav.toc a[href^='#']"));
+  var secs = links.map(function(a){ return document.querySelector(a.getAttribute("href")); }).filter(Boolean);
+  if ("IntersectionObserver" in window && secs.length){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting){
+          links.forEach(function(a){ a.classList.toggle("active", a.getAttribute("href") === "#" + e.target.id); });
+        }
+      });
+    }, { rootMargin: "-15% 0px -70% 0px" });
+    secs.forEach(function(s){ io.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>

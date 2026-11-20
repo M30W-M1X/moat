@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Moat runs every command an AI agent executes inside a throwaway, KVM-isolated Firecracker microVM with no host filesystem, network, or credentials, then destroys it. Open source, self-hosted.">
+<meta name="description" content="Moat runs every command an AI agent executes inside a throwaway, KVM-isolated Firecracker microVM with no host filesystem, network, or credentials, then destroys it. Open source, MIT licensed, self-hosted.">
 <meta name="color-scheme" content="light dark">
 <meta property="og:title" content="Moat — hardware-isolated sandboxes for AI agents">
-<meta property="og:description" content="Give your agent root. Burn the VM. Open-source, self-hosted microVM isolation for untrusted agent commands.">
+<meta property="og:description" content="Give your agent root. Burn the VM. Open-source, MIT-licensed, self-hosted microVM isolation for untrusted agent commands.">
 <meta property="og:type" content="website">
 <title>Moat — hardware-isolated sandboxes for AI agents</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -40,12 +40,10 @@
     --grass-dark:#367d31;
     --stone:#c2c7d4;
     --stone-dark:#8d94a8;
-    --sky-top:#9cd8ff;
     --sky-bot:#d7f1ff;
-    --stamp:#d9381e;
 
     --px-shadow:4px 4px 0 var(--ink);
-    --px-shadow-sm:3px 3px 0 var(--ink);
+    --px-shadow-sm:2px 2px 0 var(--ink);
     --maxw:1180px;
     --gutter:clamp(16px, 4vw, 48px);
 
@@ -78,11 +76,9 @@
       --grass-dark:#26592d;
       --stone:#6a708c;
       --stone-dark:#464a66;
-      --sky-top:#0d102b;
       --sky-bot:#1f2454;
-      --stamp:#ff6b3d;
       --px-shadow:4px 4px 0 #070610;
-      --px-shadow-sm:3px 3px 0 #070610;
+      --px-shadow-sm:2px 2px 0 #070610;
     }
   }
   :root[data-theme="dark"]{
@@ -106,11 +102,9 @@
     --grass-dark:#26592d;
     --stone:#6a708c;
     --stone-dark:#464a66;
-    --sky-top:#0d102b;
     --sky-bot:#1f2454;
-    --stamp:#ff6b3d;
     --px-shadow:4px 4px 0 #070610;
-    --px-shadow-sm:3px 3px 0 #070610;
+    --px-shadow-sm:2px 2px 0 #070610;
   }
 
   *,*::before,*::after{box-sizing:border-box}
@@ -129,7 +123,7 @@
   ::selection{background:var(--alarm); color:#fff}
   :focus-visible{outline:3px solid var(--gold); outline-offset:2px}
 
-  h1,h2{font-family:var(--f-pixel); font-weight:400; line-height:1.35; margin:0}
+  h1,h2{font-family:var(--f-pixel); font-weight:400; line-height:1.38; margin:0}
   h3,h4{font-family:var(--f-ui); font-weight:700; line-height:1.25; margin:0}
   p{margin:0; max-width:68ch}
   a{color:var(--water-ink); text-underline-offset:3px; text-decoration-thickness:2px}
@@ -144,7 +138,7 @@
   /* ============ Castle battlement divider ============ */
   section{
     position:relative;
-    padding-block:clamp(54px, 7vw, 96px);
+    padding-block:clamp(54px, 7vw, 94px);
     border-top:4px solid var(--rule);
   }
   section:not(.hero)::before{
@@ -161,7 +155,7 @@
     pointer-events:none;
   }
   section > .wrap > h2{
-    font-size:clamp(1.1rem, 2.3vw, 1.55rem);
+    font-size:clamp(1.08rem, 2.3vw, 1.52rem);
     max-width:34ch;
     color:var(--ink);
   }
@@ -172,98 +166,102 @@
     margin-top:16px;
   }
 
-  /* ============ Top Castle Wall Nav ============ */
+  /* ============ Unified Main Site Nav ============ */
   .nav{
     position:sticky; top:0; z-index:60;
     background:var(--linen-2);
     border-bottom:4px solid var(--rule);
     box-shadow:0 4px 0 rgba(0,0,0,.14);
   }
-  .nav .wrap{display:flex; align-items:center; gap:18px; height:64px}
+  .nav .wrap{display:flex; align-items:center; gap:14px; min-height:64px; flex-wrap:wrap}
   .brand{
-    display:flex; align-items:center; gap:12px;
-    font-family:var(--f-pixel); font-size:14px;
+    display:inline-flex; align-items:center; gap:11px;
+    font-family:var(--f-pixel); font-size:13.5px;
     text-decoration:none; color:var(--ink);
   }
-  .brand svg{width:32px; height:32px; display:block; shape-rendering:crispEdges}
-  .nav nav{display:flex; gap:16px; margin-left:auto; align-items:center}
-  .nav nav a{
-    font-family:var(--f-ui); font-size:12px; text-decoration:none;
+  .brand svg{width:30px; height:30px; display:block; shape-rendering:crispEdges}
+  .nav-links{display:flex; gap:10px; margin-left:auto; align-items:center; flex-wrap:wrap}
+  .nav-links a{
+    font-family:var(--f-ui); font-size:11.5px; text-decoration:none;
     color:var(--ink-2); font-weight:700; text-transform:uppercase;
+    padding:5px 9px; border:2px solid transparent;
   }
-  .nav nav a:hover{color:var(--alarm)}
-  .nav .navcta{
-    font-family:var(--f-ui); font-size:12px;
-    background:var(--alarm); color:#fff;
-    border:3px solid var(--rule); padding:6px 12px;
+  .nav-links a:hover{color:var(--alarm); border-color:var(--rule); background:var(--linen)}
+  .nav-links a[aria-current="page"]{
+    background:var(--gold-wash); color:var(--ink); border:2px solid var(--rule);
     box-shadow:var(--px-shadow-sm);
   }
-  .nav .navcta:hover{background:var(--alarm-ink); color:#fff; transform:translate(2px,2px); box-shadow:1px 1px 0 var(--rule)}
-  .themebtn{
+  .nav-links .navcta{
+    background:var(--alarm); color:#fff;
+    border:3px solid var(--rule); padding:6px 11px;
+    box-shadow:var(--px-shadow-sm);
+  }
+  .nav-links .navcta:hover{background:var(--alarm-ink); color:#fff; transform:translate(1px,1px)}
+  .themebtn,.menubtn{
     background:var(--gold-wash); border:3px solid var(--rule); color:var(--ink);
-    width:38px; height:34px; cursor:pointer; font-family:var(--f-ui); font-size:14px;
+    width:36px; height:34px; cursor:pointer; font-family:var(--f-ui); font-size:14px;
     display:grid; place-items:center; box-shadow:var(--px-shadow-sm);
   }
-  .themebtn:hover{transform:translate(1px,1px); box-shadow:2px 2px 0 var(--rule)}
-  @media (max-width:860px){ .nav nav a:not(.navcta):not(.themebtn){display:none} }
+  .menubtn{display:none; margin-left:auto}
+  @media (max-width:860px){
+    .menubtn{display:grid}
+    .nav-links{display:none; width:100%; padding:8px 0 14px; flex-direction:column; align-items:stretch; border-top:3px solid var(--rule)}
+    .nav-links.open{display:flex}
+    .nav-links a{padding:8px 10px}
+  }
 
-  /* ============ HERO: PIXEL CASTLE KEEP ============ */
-  .hero{border-top:none; padding-block:clamp(24px,3vw,42px) clamp(44px,6vw,74px)}
+  /* ============ HERO (clean, no interactive castle) ============ */
+  .hero{border-top:none; padding-block:clamp(28px,4vw,52px) clamp(44px,6vw,74px)}
   .hero .frame{
     border:4px solid var(--rule);
     background:var(--linen-2);
     box-shadow:6px 6px 0 var(--rule);
   }
-  .hero .grid{display:grid; grid-template-columns:1.32fr 1fr}
-  .hero .plan-col{border-right:4px solid var(--rule); padding:clamp(14px,2vw,22px); min-width:0}
+  .hero .grid{display:grid; grid-template-columns:1.15fr 1fr}
+  .hero .lead-col{
+    border-right:4px solid var(--rule);
+    padding:clamp(22px,3vw,36px);
+    display:flex; flex-direction:column; justify-content:space-between; gap:20px;
+    min-width:0;
+  }
   .hero .side-col{display:flex; flex-direction:column; min-width:0}
 
-  .castle-stage{
-    border:3px solid var(--rule);
-    background:linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bot) 68%, var(--grass) 68%, var(--grass-dark) 100%);
-    overflow:hidden;
-    position:relative;
+  .hero-pills{display:flex; flex-wrap:wrap; gap:8px}
+  .hero-pill{
+    font-family:var(--f-ui); font-size:10.5px; text-transform:uppercase;
+    background:var(--gold-wash); color:var(--ink); border:2px solid var(--rule);
+    padding:3px 8px; box-shadow:var(--px-shadow-sm);
   }
-  #castle-svg{width:100%; height:auto; display:block; shape-rendering:crispEdges}
+  .keepline h1{font-size:clamp(1.35rem, 2.7vw, 2.15rem); color:var(--ink)}
+  .keepline h1 .b{color:var(--alarm); display:block; margin-top:10px}
+  .keepline p{margin-top:16px; color:var(--ink-2); font-size:clamp(.97rem,1.25vw,1.05rem); max-width:50ch}
 
-  .keepline{margin-top:18px; padding-top:16px; border-top:3px dashed var(--rule-2)}
-  .keepline h1{font-size:clamp(1.25rem, 2.5vw, 1.95rem); color:var(--ink)}
-  .keepline h1 .b{color:var(--alarm); display:block; margin-top:8px}
-  .keepline p{margin-top:14px; color:var(--ink-2); font-size:clamp(.95rem,1.25vw,1.03rem); max-width:50ch}
+  .hero-actions{display:flex; flex-wrap:wrap; gap:10px; margin-top:4px}
 
-  /* Attack trace controls */
-  .trace{padding:clamp(14px,2vw,20px); border-bottom:4px solid var(--rule); flex:0 0 auto; background:var(--linen)}
-  .trace .lab{display:block; margin-bottom:10px; color:var(--ink-2)}
-  .trace .btns{display:flex; flex-wrap:wrap; gap:8px}
-  .tbtn{
-    font-family:var(--f-ui); font-size:11px; color:var(--ink);
-    background:var(--linen-2); border:3px solid var(--rule);
-    padding:6px 9px; cursor:pointer; line-height:1.2;
-    box-shadow:2px 2px 0 var(--rule);
+  /* Sub-nav anchor bar under hero */
+  .jumpbar{
+    margin-top:20px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    padding:10px 14px; background:var(--linen-2); border:3px solid var(--rule);
+    box-shadow:var(--px-shadow-sm);
   }
-  .tbtn:hover{background:var(--gold-wash); transform:translate(1px,1px); box-shadow:1px 1px 0 var(--rule)}
-  .tbtn[aria-pressed="true"]{background:var(--alarm); color:#fff; transform:translate(2px,2px); box-shadow:none}
-  .trace .readout{
-    margin-top:14px; font-size:13.5px; color:var(--ink-2);
-    background:var(--linen-2); border:3px solid var(--rule); padding:10px 12px;
-    min-height:4.4em;
+  .jumpbar .lab{margin-right:4px}
+  .jumpbar a{
+    font-family:var(--f-ui); font-size:11px; text-decoration:none; text-transform:uppercase;
+    color:var(--ink); background:var(--linen); border:2px solid var(--rule); padding:4px 9px;
   }
-  .trace .readout b{
-    color:var(--alarm); font-family:var(--f-ui); font-weight:700; font-size:11px;
-    letter-spacing:.06em; text-transform:uppercase; display:block; margin-bottom:4px;
-  }
+  .jumpbar a:hover{background:var(--gold-wash); color:var(--alarm)}
 
   /* Terminal field report */
   .report{flex:1 1 auto; display:flex; flex-direction:column; min-height:0; background:#141226; color:#f5eedc}
   .report .cap{
-    display:flex; align-items:center; gap:9px; padding:9px 14px;
+    display:flex; align-items:center; gap:9px; padding:10px 14px;
     border-bottom:3px solid #070610; background:#231f42;
     font-family:var(--f-ui); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:#ffd15c;
   }
   .report .cap .dot{width:10px; height:10px; background:#ff6b3d; border:2px solid #070610; flex:0 0 auto}
   .report .body{
-    padding:14px 15px 16px; font-family:var(--f-mono); font-size:12px; line-height:1.72;
-    white-space:pre-wrap; word-break:break-word; overflow-x:auto; flex:1 1 auto; min-height:220px;
+    padding:16px 16px 18px; font-family:var(--f-mono); font-size:12.2px; line-height:1.75;
+    white-space:pre-wrap; word-break:break-word; overflow-x:auto; flex:1 1 auto; min-height:260px;
   }
   .report .u{color:#6ce0ff}
   .report .m{color:#9a92ba}
@@ -292,8 +290,8 @@
 
   @media (max-width:960px){
     .hero .grid{grid-template-columns:1fr}
-    .hero .plan-col{border-right:none; border-bottom:4px solid var(--rule)}
-    .report .body{min-height:190px}
+    .hero .lead-col{border-right:none; border-bottom:4px solid var(--rule)}
+    .report .body{min-height:210px}
   }
 
   /* ============ Pixel RPG Dialog Boxes ============ */
@@ -334,7 +332,7 @@
   /* Legend ledger */
   .legend{margin-top:36px; border:4px solid var(--rule); background:var(--linen-2); box-shadow:var(--px-shadow)}
   .legend .row{
-    display:grid; grid-template-columns:52px 175px 1fr; gap:16px; align-items:center;
+    display:grid; grid-template-columns:52px 180px 1fr; gap:16px; align-items:center;
     padding:16px 18px; border-bottom:3px solid var(--rule);
   }
   .legend .row:last-child{border-bottom:none}
@@ -410,8 +408,8 @@
     .reading:nth-last-child(-n+4){border-bottom:3px solid var(--rule)}
     .reading:nth-last-child(-n+2){border-bottom:none}
   }
-  .reading .v{font-family:var(--f-pixel); font-size:clamp(1.1rem,2.3vw,1.5rem); color:var(--alarm)}
-  .reading .v .u{font-size:.7rem; color:var(--water-ink); margin-left:4px}
+  .reading .v{font-family:var(--f-pixel); font-size:clamp(1.05rem,2.2vw,1.45rem); color:var(--alarm)}
+  .reading .v .u{font-size:.68rem; color:var(--water-ink); margin-left:4px}
   .reading .l{margin-top:10px; font-size:.84rem; color:var(--ink-2)}
   .fineprint{margin-top:16px; font-size:11.5px; color:var(--ink-3); font-family:var(--f-mono)}
 
@@ -467,7 +465,7 @@
   .close .actions{display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin-top:6px}
   .btn{
     display:inline-flex; align-items:center; gap:8px; font-family:var(--f-ui); font-weight:700;
-    font-size:13px; padding:12px 20px; text-decoration:none; border:3px solid var(--rule);
+    font-size:12.5px; padding:11px 18px; text-decoration:none; border:3px solid var(--rule);
     box-shadow:var(--px-shadow-sm); cursor:pointer;
   }
   .btn--primary{background:var(--alarm); color:#fff}
@@ -486,28 +484,13 @@
   footer a{color:var(--ink); text-decoration:none; margin-right:16px; font-family:var(--f-ui); font-weight:700; font-size:11.5px; text-transform:uppercase}
   footer a:hover{color:var(--alarm)}
   footer .disc{margin-top:8px; line-height:1.65; color:var(--ink-2); max-width:60ch}
-
-  /* Pixel castle SVG animations */
-  .ring{transition:opacity .25s steps(4), filter .25s steps(4)}
-  .ring.dim{opacity:.42}
-  .ring.hot{filter:drop-shadow(0 0 6px var(--gold))}
-  @keyframes waveShift{ 0%,100%{transform:translateX(0)} 50%{transform:translateX(6px)} }
-  @keyframes flagWave{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(2px)} }
-  @keyframes torchFlicker{ 0%,100%{opacity:1} 50%{opacity:.72} }
-  .wave-anim{animation:waveShift 2.2s steps(3) infinite}
-  .flag-anim{animation:flagWave 1.4s steps(2) infinite}
-  .torch-anim{animation:torchFlicker .55s steps(2) infinite}
-  @media (prefers-reduced-motion:reduce){
-    .wave-anim,.flag-anim,.torch-anim{animation:none}
-  }
 </style>
 </head>
 <body>
 
 <header class="nav">
   <div class="wrap">
-    <a class="brand" href="#top" aria-label="Moat — home">
-      <!-- 16x16 pixel cartoon castle turret icon -->
+    <a class="brand" href="index.html" aria-label="Moat — home">
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <rect x="2" y="2" width="2" height="3" fill="var(--stone)"/>
         <rect x="6" y="2" width="4" height="3" fill="var(--stone)"/>
@@ -523,12 +506,13 @@
       </svg>
       MOAT
     </a>
-    <nav>
-      <a href="#isolation">Keep</a>
-      <a href="#schedule">Defenses</a>
-      <a href="#agent">MCP</a>
-      <a href="#roadmap">Roadmap</a>
+    <button class="menubtn" id="menubtn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <nav class="nav-links" id="navlinks" aria-label="Primary">
+      <a href="index.html" aria-current="page">Home</a>
+      <a href="operators.html">Operators</a>
       <a href="developer-guide.html">Dev Guide</a>
+      <a href="implementation-plan.html">Plan</a>
+      <a href="https://github.com/M30W-M1X/moat">GitHub</a>
       <a href="#install" class="navcta">Install</a>
       <button class="themebtn" id="theme" type="button" aria-label="Switch between Day Castle and Night Castle">☀</button>
     </nav>
@@ -537,227 +521,33 @@
 
 <main id="top">
 
-  <!-- ============ HERO: PIXEL CARTOON CASTLE ============ -->
+  <!-- ============ HERO ============ -->
   <section class="hero">
     <div class="wrap">
       <div class="frame">
         <div class="grid">
 
-          <div class="plan-col">
-            <div class="castle-stage">
-              <svg id="castle-svg" viewBox="0 0 640 420" role="img"
-                   aria-label="16-bit pixel-art cartoon castle surrounded by a sparkling blue moat. The central keep holds the agent command; stone walls represent KVM hardware isolation; the iron portcullis is the secret firewall; the moat blocks host and LAN routes; the outer watchtower is the egress proxy.">
-                <!-- Pixel sky clouds (day) & stars (night) -->
-                <g id="sky-decor">
-                  <g fill="#ffffff" opacity=".9">
-                    <rect x="44" y="36" width="48" height="12"/>
-                    <rect x="56" y="24" width="28" height="12"/>
-                    <rect x="468" y="28" width="60" height="12"/>
-                    <rect x="484" y="16" width="32" height="12"/>
-                    <rect x="176" y="60" width="36" height="8"/>
-                  </g>
-                  <g fill="var(--gold)" opacity=".85">
-                    <rect x="128" y="24" width="4" height="4"/>
-                    <rect x="384" y="20" width="4" height="4"/>
-                    <rect x="572" y="48" width="4" height="4"/>
-                    <rect x="26" y="88" width="4" height="4"/>
-                  </g>
-                </g>
-
-                <!-- Rolling pixel hills -->
-                <rect x="0" y="276" width="640" height="144" fill="var(--grass)"/>
-                <rect x="0" y="288" width="640" height="8" fill="var(--grass-dark)" opacity=".45"/>
-                <rect x="0" y="388" width="640" height="32" fill="var(--grass-dark)"/>
-
-                <!-- E: Outer Watchtower & Signpost (Egress Proxy) -->
-                <g id="p-glacis" class="ring">
-                  <!-- Wooden watchtower left -->
-                  <rect x="28" y="220" width="52" height="72" fill="#8b5a2b" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="20" y="208" width="68" height="16" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="24" y="196" width="12" height="12" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="48" y="196" width="12" height="12" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="72" y="196" width="12" height="12" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="46" y="238" width="16" height="22" fill="#1b1829"/>
-                  <!-- Egress flag -->
-                  <g class="flag-anim">
-                    <rect x="52" y="168" width="4" height="28" fill="#1b1829"/>
-                    <rect x="56" y="168" width="24" height="14" fill="var(--gold)" stroke="#1b1829" stroke-width="3"/>
-                  </g>
-                  <!-- Label E -->
-                  <rect x="16" y="302" width="122" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
-                  <text x="24" y="317" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">E</text>
-                  <text x="38" y="317" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">EGRESS PROXY</text>
-                </g>
-
-                <!-- D: Sparkling Cartoon Pixel Moat (No Host Route / NetNS) -->
-                <g id="p-moat" class="ring">
-                  <rect x="88" y="332" width="464" height="58" fill="var(--water)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="92" y="336" width="456" height="10" fill="#126ea8" opacity=".45"/>
-                  <g class="wave-anim" fill="#ffffff" opacity=".82">
-                    <rect x="116" y="352" width="28" height="4"/>
-                    <rect x="192" y="368" width="32" height="4"/>
-                    <rect x="384" y="350" width="30" height="4"/>
-                    <rect x="464" y="366" width="36" height="4"/>
-                    <rect x="276" y="372" width="24" height="4"/>
-                  </g>
-                  <!-- Cute pixel moat gator eyes peeking out -->
-                  <rect x="424" y="358" width="24" height="10" fill="#3a9d40" stroke="#1b1829" stroke-width="3"/>
-                  <rect x="428" y="354" width="6" height="6" fill="#fff" stroke="#1b1829" stroke-width="2"/>
-                  <rect x="438" y="354" width="6" height="6" fill="#fff" stroke="#1b1829" stroke-width="2"/>
-                  <rect x="430" y="356" width="2" height="2" fill="#1b1829"/>
-                  <rect x="440" y="356" width="2" height="2" fill="#1b1829"/>
-                  <!-- Label D -->
-                  <rect x="430" y="394" width="166" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
-                  <text x="438" y="409" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--water-ink)">D</text>
-                  <text x="454" y="409" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">MOAT · NO HOST ROUTE</text>
-                </g>
-
-                <!-- A & F: Stone Curtain Wall + Twin Battlement Towers (KVM + cgroup/rate caps) -->
-                <g id="p-wall" class="ring">
-                  <!-- Island foundation -->
-                  <rect x="132" y="316" width="376" height="20" fill="var(--grass-dark)" stroke="#1b1829" stroke-width="4"/>
-                  <!-- Main stone curtain wall -->
-                  <rect x="156" y="204" width="328" height="114" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <!-- Pixel stone brick texture -->
-                  <g fill="var(--stone-dark)" opacity=".55">
-                    <rect x="176" y="224" width="24" height="10"/>
-                    <rect x="216" y="244" width="24" height="10"/>
-                    <rect x="180" y="272" width="24" height="10"/>
-                    <rect x="420" y="228" width="24" height="10"/>
-                    <rect x="404" y="264" width="24" height="10"/>
-                    <rect x="440" y="288" width="24" height="10"/>
-                  </g>
-                  <!-- Curtain wall battlements -->
-                  <rect x="220" y="190" width="20" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="260" y="190" width="20" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="360" y="190" width="20" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="400" y="190" width="20" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-
-                  <!-- Left Bastion Tower (A: KVM Wall) -->
-                  <rect x="136" y="144" width="76" height="174" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="128" y="128" width="92" height="20" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="132" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="166" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="200" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="164" y="172" width="20" height="32" fill="#1b1829"/>
-                  <rect x="168" y="176" width="12" height="24" fill="var(--gold)" opacity=".8"/>
-                  <!-- Left pennant -->
-                  <g class="flag-anim">
-                    <rect x="172" y="80" width="4" height="34" fill="#1b1829"/>
-                    <rect x="176" y="80" width="28" height="14" fill="var(--alarm)" stroke="#1b1829" stroke-width="3"/>
-                  </g>
-
-                  <!-- Right Bastion Tower (F: cgroup + Rate Caps) -->
-                  <rect x="428" y="144" width="76" height="174" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="420" y="128" width="92" height="20" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="424" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="458" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="492" y="114" width="16" height="16" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="456" y="172" width="20" height="32" fill="#1b1829"/>
-                  <rect x="460" y="176" width="12" height="24" fill="var(--gold)" opacity=".8"/>
-                  <!-- Right pennant -->
-                  <g class="flag-anim">
-                    <rect x="464" y="80" width="4" height="34" fill="#1b1829"/>
-                    <rect x="468" y="80" width="28" height="14" fill="var(--alarm)" stroke="#1b1829" stroke-width="3"/>
-                  </g>
-
-                  <!-- Flickering wall torches -->
-                  <g class="torch-anim">
-                    <rect x="242" y="252" width="6" height="18" fill="#6e421c" stroke="#1b1829" stroke-width="2"/>
-                    <rect x="240" y="238" width="10" height="14" fill="var(--alarm)"/>
-                    <rect x="243" y="242" width="4" height="8" fill="var(--gold)"/>
-
-                    <rect x="392" y="252" width="6" height="18" fill="#6e421c" stroke="#1b1829" stroke-width="2"/>
-                    <rect x="390" y="238" width="10" height="14" fill="var(--alarm)"/>
-                    <rect x="393" y="242" width="4" height="8" fill="var(--gold)"/>
-                  </g>
-
-                  <!-- Labels A & F -->
-                  <rect x="82" y="66" width="118" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
-                  <text x="90" y="81" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">A</text>
-                  <text x="104" y="81" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">KVM WALL</text>
-
-                  <rect x="486" y="156" width="140" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
-                  <text x="494" y="171" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">F</text>
-                  <text x="508" y="171" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">CGROUP CAPS</text>
-                </g>
-
-                <!-- B: Central Keep (The Ephemeral Command VM) -->
-                <g id="p-keep" class="ring">
-                  <rect x="260" y="88" width="120" height="118" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
-                  <!-- Pointed pixel royal roof -->
-                  <rect x="252" y="76" width="136" height="14" fill="var(--alarm)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="272" y="60" width="96" height="18" fill="var(--alarm)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="292" y="44" width="56" height="18" fill="var(--alarm)" stroke="#1b1829" stroke-width="4"/>
-                  <rect x="312" y="28" width="16" height="18" fill="var(--gold)" stroke="#1b1829" stroke-width="4"/>
-                  <!-- Keep window holding cute pixel robot agent -->
-                  <rect x="292" y="114" width="56" height="56" fill="#141226" stroke="#1b1829" stroke-width="4"/>
-                  <!-- Pixel robot agent sprite -->
-                  <rect x="306" y="128" width="28" height="22" fill="#8be2ff" stroke="#1b1829" stroke-width="2"/>
-                  <rect x="312" y="134" width="6" height="6" fill="#141226"/>
-                  <rect x="322" y="134" width="6" height="6" fill="#141226"/>
-                  <rect x="318" y="120" width="4" height="8" fill="var(--gold)"/>
-                  <rect x="312" y="150" width="16" height="12" fill="var(--alarm)"/>
-                  <!-- Label B -->
-                  <rect x="246" y="8" width="148" height="22" fill="var(--linen-2)" stroke="#1b1829" stroke-width="3"/>
-                  <text x="254" y="23" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">B</text>
-                  <text x="268" y="23" font-family="Silkscreen,monospace" font-size="9.5" fill="var(--ink)">DISPOSABLE KEEP</text>
-                </g>
-
-                <!-- C: Gatehouse, Portcullis & Drawbridge (Ingress Secret Firewall) -->
-                <g id="p-sally" class="ring">
-                  <!-- Gate arch -->
-                  <rect x="278" y="236" width="84" height="82" fill="#231f42" stroke="#1b1829" stroke-width="4"/>
-                  <!-- Iron portcullis bars -->
-                  <g fill="var(--gold)" stroke="#1b1829" stroke-width="2">
-                    <rect x="292" y="240" width="6" height="74"/>
-                    <rect x="310" y="240" width="6" height="74"/>
-                    <rect x="328" y="240" width="6" height="74"/>
-                    <rect x="346" y="240" width="6" height="74"/>
-                    <rect x="282" y="260" width="76" height="6"/>
-                    <rect x="282" y="286" width="76" height="6"/>
-                  </g>
-                  <!-- Wooden drawbridge across moat -->
-                  <rect x="286" y="316" width="68" height="76" fill="#a86d35" stroke="#1b1829" stroke-width="4"/>
-                  <g fill="#7a4c21">
-                    <rect x="290" y="330" width="60" height="4"/>
-                    <rect x="290" y="348" width="60" height="4"/>
-                    <rect x="290" y="366" width="60" height="4"/>
-                    <rect x="290" y="382" width="60" height="4"/>
-                  </g>
-                  <!-- Label C -->
-                  <rect x="196" y="394" width="214" height="22" fill="var(--alarm-wash)" stroke="#1b1829" stroke-width="3"/>
-                  <text x="204" y="409" font-family="Silkscreen,monospace" font-size="10" font-weight="700" fill="var(--alarm)">C</text>
-                  <text x="220" y="409" font-family="Silkscreen,monospace" font-size="9.5" fill="#1b1829">GATE · SECRET FIREWALL</text>
-                </g>
-
-                <!-- Dynamic attack projectile + CONDEMNED stamp layer -->
-                <g id="p-trace"></g>
-                <g id="p-stamp" opacity="0"></g>
-              </svg>
+          <div class="lead-col">
+            <div>
+              <div class="hero-pills">
+                <span class="hero-pill">Firecracker + KVM</span>
+                <span class="hero-pill">Self-hosted</span>
+                <span class="hero-pill">MIT License</span>
+              </div>
+              <div class="keepline" style="margin-top:18px">
+                <h1>Give your agent root.<span class="b">Burn the VM.</span></h1>
+                <p>Moat runs every command your AI agent executes inside a throwaway Firecracker microVM: its own Linux kernel, no host files, no host network, no host secrets. The VM is destroyed the moment the task ends. Open source. Runs on your Linux box.</p>
+              </div>
             </div>
 
-            <div class="keepline">
-              <h1>Give your agent root.<span class="b">Burn the VM.</span></h1>
-              <p>Moat runs every command your AI agent executes inside a throwaway Firecracker microVM: its own kernel, no host files, no host network, no host secrets. The VM is destroyed the moment the task ends. Open source. Runs on your Linux box.</p>
+            <div class="hero-actions">
+              <a class="btn btn--primary" href="#install">Install in 60s</a>
+              <a class="btn btn--ghost" href="operators.html">Operator Guide</a>
+              <a class="btn btn--ghost" href="developer-guide.html">Developer Guide</a>
             </div>
           </div>
 
           <div class="side-col">
-            <div class="trace" aria-label="Trace an attack against the castle">
-              <span class="lab">Siege test &middot; click an attack to watch where it stops</span>
-              <div class="btns" id="tracebtns">
-                <button class="tbtn" type="button" data-trace="files" aria-pressed="false">Read host files</button>
-                <button class="tbtn" type="button" data-trace="creds" aria-pressed="false">Steal credentials</button>
-                <button class="tbtn" type="button" data-trace="lan" aria-pressed="false">Pivot to the LAN</button>
-                <button class="tbtn" type="button" data-trace="exfil" aria-pressed="false">Exfiltrate data</button>
-                <button class="tbtn" type="button" data-trace="fork" aria-pressed="false">Fork-bomb</button>
-                <button class="tbtn" type="button" data-trace="escape" aria-pressed="false">Kernel escape</button>
-                <button class="tbtn" type="button" data-trace="state" aria-pressed="false">Leave state behind</button>
-              </div>
-              <p class="readout" id="readout" aria-live="polite"><b>The agent in the keep</b>Pick an attack. Watch the castle defense that turns it back.</p>
-            </div>
-
             <div class="report" aria-label="Recorded moat run session">
               <div class="cap"><span class="dot" aria-hidden="true"></span>Field report &middot; sandbox sb-2f9c41 &middot; contained</div>
               <div class="body" id="termbody"></div>
@@ -776,6 +566,18 @@
 
         </div>
       </div>
+
+      <nav class="jumpbar" aria-label="On this page">
+        <span class="lab">Jump to:</span>
+        <a href="#survey">Why Moat</a>
+        <a href="#isolation">Isolation</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#agent">MCP Setup</a>
+        <a href="#schedule">Threat Model</a>
+        <a href="#readings">Benchmarks</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="#faq-sec">FAQ</a>
+      </nav>
     </div>
   </section>
 
@@ -786,7 +588,6 @@
       <p class="lede">Coding agents now install packages, run generated scripts, and call tools on their own. Where that runs decides what a bad command, or a prompt injection, can reach.</p>
       <div class="survey">
         <div class="cond">
-          <!-- Pixel art: exposed host cottage on fire -->
           <svg viewBox="0 0 200 100" aria-hidden="true">
             <rect x="0" y="72" width="200" height="28" fill="var(--grass)"/>
             <rect x="64" y="40" width="72" height="36" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
@@ -802,7 +603,6 @@
           <p>The command runs as you. It can read <span class="mono">~/.aws</span>, your SSH keys, your browser cookies, and everything you can <span class="mono">rm</span>. One bad tool call is a bad day.</p>
         </div>
         <div class="cond">
-          <!-- Pixel art: container crate over shared kernel basement -->
           <svg viewBox="0 0 200 100" aria-hidden="true">
             <rect x="0" y="64" width="200" height="36" fill="var(--alarm-wash)"/>
             <rect x="0" y="62" width="200" height="4" fill="#1b1829"/>
@@ -815,7 +615,6 @@
           <p>Namespaces are a packaging boundary, not a security one for hostile code. Container escapes are a recurring class of CVE, and a leaked host mount or socket undoes the rest.</p>
         </div>
         <div class="cond">
-          <!-- Pixel art: cloud stealing a scroll -->
           <svg viewBox="0 0 200 100" aria-hidden="true">
             <rect x="20" y="56" width="44" height="30" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
             <rect x="122" y="28" width="56" height="22" fill="#fff" stroke="#1b1829" stroke-width="4"/>
@@ -846,23 +645,18 @@
             <rect x="0" y="0" width="520" height="308" fill="var(--sky-bot)"/>
             <rect x="0" y="246" width="520" height="62" fill="var(--grass-dark)"/>
 
-            <!-- Bedrock: Host kernel -->
             <rect x="18" y="246" width="484" height="46" fill="#464a66" stroke="#1b1829" stroke-width="4"/>
             <text x="36" y="274" font-family="Silkscreen,monospace" font-size="11" fill="#f5eedc">HOST KERNEL &middot; YOUR MACHINE</text>
 
-            <!-- Iron foundation: KVM -->
             <rect x="46" y="192" width="428" height="50" fill="var(--water)" stroke="#1b1829" stroke-width="4"/>
             <text x="64" y="222" font-family="Silkscreen,monospace" font-size="11" fill="#fff">KVM &middot; HARDWARE VIRTUALIZATION</text>
 
-            <!-- Stone Vault: Firecracker Jailer -->
             <rect x="74" y="138" width="372" height="50" fill="var(--stone)" stroke="#1b1829" stroke-width="4"/>
             <text x="92" y="168" font-family="Silkscreen,monospace" font-size="10.5" fill="#1b1829">FIRECRACKER VMM &middot; JAILER + SECCOMP</text>
 
-            <!-- Upper Chamber: Guest Kernel + OverlayFS -->
             <rect x="106" y="84" width="308" height="50" fill="var(--gold-wash)" stroke="#1b1829" stroke-width="4"/>
             <text x="122" y="114" font-family="Silkscreen,monospace" font-size="10.5" fill="#1b1829">GUEST KERNEL &middot; NETNS &middot; OVERLAY DISK</text>
 
-            <!-- Keep Crown: Agent Command -->
             <rect x="148" y="24" width="224" height="56" fill="var(--alarm)" stroke="#1b1829" stroke-width="4"/>
             <text x="260" y="48" font-family="Silkscreen,monospace" font-size="11" fill="#fff" text-anchor="middle">THE AGENT COMMAND</text>
             <text x="260" y="66" font-family="B612 Mono,monospace" font-size="9.5" fill="#fff" text-anchor="middle">contained here, then burned</text>
@@ -879,8 +673,8 @@
   <!-- ============ LEGEND ============ -->
   <section id="legend">
     <div class="wrap">
-      <h2>Seven guarantees, keyed to the castle.</h2>
-      <p class="lede">Every letter on the castle is a control that ships in the free, self-hosted core. This is the whole boundary.</p>
+      <h2>Seven guarantees that ship in the core.</h2>
+      <p class="lede">Every control below ships in the MIT-licensed, self-hosted core. This is the whole boundary.</p>
       <div class="legend">
         <div class="row"><span class="key">A</span><span class="term">Hardware isolation</span><span class="def">Firecracker + KVM, a separate guest kernel per task. Not namespaces. Container-escape-class kernel bugs do not apply.</span></div>
         <div class="row"><span class="key">B</span><span class="term">Ephemeral by default</span><span class="def">One microVM per task, never reused. Destroyed on exit, TTL, or idle. An orphan reaper cleans up anything a crash leaves running.</span></div>
@@ -897,7 +691,7 @@
   <section id="workflow">
     <div class="wrap">
       <h2>Create, use, destroy. Then start again from scratch.</h2>
-      <p class="lede">The agent never accumulates state. Every task starts in a clean box and ends with the box gone. From a warm pool, a fresh sandbox is ready in about a millisecond.</p>
+      <p class="lede">The agent never accumulates state. Every task starts in a clean box and ends with the box gone. From a warm pool, a fresh sandbox is ready in under a millisecond.</p>
       <div class="works">
         <div class="work"><span class="no">1</span><div><h3>Ask for a sandbox</h3><pre>moat_create { "template": "python", "ttl_seconds": 600, "network": "deny" }
 <span class="rtn">&rarr; { "id": "sb-7f3a19c4", "expires_at": "2026-08-30T18:40Z" }</span></pre></div></div>
@@ -937,7 +731,7 @@
         <div class="plate"><span class="lab k">MCP tools</span><h3>Six verbs</h3><p><span class="mono">moat_create</span>, <span class="mono">moat_exec</span>, <span class="mono">moat_write_file</span>, <span class="mono">moat_read_file</span>, <span class="mono">moat_list</span>, <span class="mono">moat_destroy</span>. Captured exec output, exit codes, timeouts, and secret-block errors are all first-class results.</p></div>
         <div class="plate"><span class="lab k">SKILL.md</span><h3>The playbook, in the repo</h3><p>Describes the create&rarr;write&rarr;exec&rarr;read&rarr;destroy loop, when a command belongs in a sandbox, how to surface a blocked secret to the user instead of overriding it, and defaulting to <span class="mono">network: deny</span>.</p></div>
       </div>
-      <p class="fineprint">Works with any MCP client (Claude Code, Claude Desktop, Cursor, Continue), plus a plain HTTP/JSON API and the <span class="mono">moat</span> CLI.</p>
+      <p class="fineprint">Works with any MCP client (Claude Code, Claude Desktop, Cursor, Continue), plus a plain HTTP/JSON API and the <span class="mono">moat</span> CLI. See the <a href="operators.html#default-vm">Operator Guide</a> to pick or import your default VM template.</p>
     </div>
   </section>
 
@@ -945,19 +739,19 @@
   <section id="schedule">
     <div class="wrap">
       <h2>Every way a command tries to reach you &mdash; and the wall that stops it.</h2>
-      <p class="lede">Each row maps to a defense on the castle above. Hover a row to light it up.</p>
+      <p class="lede">Threat by threat, enforced by hardware virtualization, the host kernel, and the daemon boundary.</p>
       <div class="scroll">
         <table>
           <caption>Defensive schedule &middot; threat &rarr; control</caption>
           <thead><tr><th scope="col">If the command tries to&hellip;</th><th scope="col">Moat's control</th></tr></thead>
           <tbody>
-            <tr data-ring="wall"><td class="thr">Read or write host files</td><td>No host filesystem is mounted. The guest sees only a shared read-only rootfs and its own ephemeral copy-on-write scratch disk.</td></tr>
-            <tr data-ring="sally"><td class="thr">Steal host credentials</td><td>The host environment is deny-by-default. Every variable, file, and stdin crossing into a sandbox is scanned for keys, tokens, and private material, and blocked unless explicitly allowed and audited.</td></tr>
-            <tr data-ring="moat"><td class="thr">Pivot to your LAN or cloud metadata</td><td>Each VM gets its own network namespace. nftables drops traffic to the host, to <span class="mono">169.254.169.254</span>, and to RFC&#8209;1918 ranges.</td></tr>
-            <tr data-ring="glacis"><td class="thr">Exfiltrate data over the network</td><td>Egress is allowed only through a domain-filtered proxy with global and per-token allowlists. Transparent DNAT and strict <span class="mono">policy drop</span> nftables rules stop guests from bypassing <span class="mono">HTTP_PROXY</span> or reaching arbitrary ports.</td></tr>
-            <tr data-ring="wall"><td class="thr">Fork-bomb, exhaust memory, or thrash disk</td><td>cgroup v2 <span class="mono">cpu.max</span> / <span class="mono">memory.max</span> / <span class="mono">pids.max</span> on the VMM, plus Firecracker token-bucket rate limiters on the disk and NIC.</td></tr>
-            <tr data-ring="wall"><td class="thr">Exploit a container-escape-class kernel bug</td><td>There is no shared kernel. The guest runs its own kernel under KVM, launched by a Firecracker process under a seccomp filter with dropped privileges.</td></tr>
-            <tr data-ring="keep"><td class="thr">Leave state behind for the next task</td><td>One microVM per task, never reused. Stopped and discarded on exit, TTL, or idle timeout. An orphan reaper cleans up anything a crash leaves running.</td></tr>
+            <tr><td class="thr">Read or write host files</td><td>No host filesystem is mounted. The guest sees only a shared read-only rootfs and its own ephemeral copy-on-write scratch disk.</td></tr>
+            <tr><td class="thr">Steal host credentials</td><td>The host environment is deny-by-default. Every variable, file, and stdin crossing into a sandbox is scanned for keys, tokens, and private material, and blocked unless explicitly allowed and audited.</td></tr>
+            <tr><td class="thr">Pivot to your LAN or cloud metadata</td><td>Each VM gets its own network namespace. nftables drops traffic to the host, to <span class="mono">169.254.169.254</span>, and to RFC&#8209;1918 ranges.</td></tr>
+            <tr><td class="thr">Exfiltrate data over the network</td><td>Egress is allowed only through a domain-filtered proxy with global and per-token allowlists. Transparent DNAT and strict <span class="mono">policy drop</span> nftables rules stop guests from bypassing <span class="mono">HTTP_PROXY</span> or reaching arbitrary ports.</td></tr>
+            <tr><td class="thr">Fork-bomb, exhaust memory, or thrash disk</td><td>cgroup v2 <span class="mono">cpu.max</span> / <span class="mono">memory.max</span> / <span class="mono">pids.max</span> on the VMM, plus Firecracker token-bucket rate limiters on the disk and NIC.</td></tr>
+            <tr><td class="thr">Exploit a container-escape-class kernel bug</td><td>There is no shared kernel. The guest runs its own kernel under KVM, launched by a Firecracker process under a seccomp filter with dropped privileges.</td></tr>
+            <tr><td class="thr">Leave state behind for the next task</td><td>One microVM per task, never reused. Stopped and discarded on exit, TTL, or idle timeout. An orphan reaper cleans up anything a crash leaves running.</td></tr>
           </tbody>
         </table>
       </div>
@@ -970,12 +764,12 @@
       <h2>The cost of a sandbox should be a rounding error.</h2>
       <p class="lede">Fast enough to give every command its own VM.</p>
       <div class="readings">
-        <div class="reading"><div class="v">24<span class="u">ms</span></div><div class="l">Cold start to a ready in-VM agent</div></div>
-        <div class="reading"><div class="v">25<span class="u">ms</span></div><div class="l">Snapshot restore to a ready agent</div></div>
-        <div class="reading"><div class="v">1<span class="u">ms</span></div><div class="l">Warm-pool acquire, p50</div></div>
-        <div class="reading"><div class="v">2<span class="u">MiB</span></div><div class="l">Diff-snapshot memory image, 256&nbsp;MiB guest</div></div>
+        <div class="reading"><div class="v">20<span class="u">ms</span></div><div class="l">Firecracker VMM cold start (median of 5 runs)</div></div>
+        <div class="reading"><div class="v">35<span class="u">ms</span></div><div class="l">Snapshot restore to ready agent + clock resync</div></div>
+        <div class="reading"><div class="v">&lt;1<span class="u">ms</span></div><div class="l">Warm-pool acquire p50 (444&ndash;755&nbsp;&micro;s over 25 cycles)</div></div>
+        <div class="reading"><div class="v">4.4<span class="u">MiB</span></div><div class="l">Diff-snapshot memory on disk (256&nbsp;MiB guest, 3&nbsp;ms write)</div></div>
       </div>
-      <p class="fineprint">Indicative measurements on one dev box (Fedora, KVM, x86_64). Not guarantees. Your numbers move with hardware and template size.</p>
+      <p class="fineprint">Indicative measurements on one developer machine (AMD Ryzen 7 5700G, Linux 7.2, KVM, x86_64, Firecracker v1.16.1, 256&nbsp;MiB Alpine guest). Not guarantees. Numbers move with hardware and template size.</p>
     </div>
   </section>
 
@@ -1005,7 +799,7 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
   <section id="roadmap">
     <div class="wrap">
       <h2>Single-node production is built. Multi-node fleet is next.</h2>
-      <p class="lede">The isolation engine, self-serve MCP product, and single-node production hardening all ship today under Apache-2.0. Multi-node fleet orchestration and platform reach come next.</p>
+      <p class="lede">The isolation engine, self-serve MCP product, and single-node production hardening all ship today under the MIT License. Multi-node fleet orchestration and platform reach come next.</p>
 
       <div class="schedule">
         <div class="entry">
@@ -1052,9 +846,9 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
   <!-- ============ LICENSING ============ -->
   <section id="opensource">
     <div class="wrap">
-      <h2>Apache-2.0. The boundary is never paywalled.</h2>
+      <h2>MIT License. The boundary is never paywalled.</h2>
       <div class="cols c2">
-        <div class="plate" style="background:var(--water-wash)"><span class="lab k">Free forever</span><h3>Everything that isolates</h3><p>The daemon, CLI, guest agent, MCP server, <span class="mono">SKILL.md</span>, single-node operation, and every guarantee on the castle. Apache-2.0, self-hosted, no telemetry.</p></div>
+        <div class="plate" style="background:var(--water-wash)"><span class="lab k">Free forever</span><h3>Everything that isolates</h3><p>The daemon, CLI, guest agent, MCP server, <span class="mono">SKILL.md</span>, single-node operation, and every security control. MIT licensed, self-hosted, no telemetry.</p></div>
         <div class="plate"><span class="lab k">Open-core, later</span><h3>Operating a fleet</h3><p>Multi-node scheduling, the web console, SSO / RBAC, and managed hosting. Convenience for teams running Moat at scale, never the security guarantee.</p></div>
       </div>
     </div>
@@ -1069,7 +863,7 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
         <details><summary>Do I need root?</summary><p>The daemon needs access to <span class="mono">/dev/kvm</span> and can run inside a delegated systemd cgroup slice without full root. The installer sets this up. Networked sandboxes and the Firecracker jailer require root or <span class="mono">CAP_NET_ADMIN</span> / <span class="mono">CAP_SYS_ADMIN</span>.</p></details>
         <details><summary>Does my code or data leave my machine?</summary><p>No. Moat runs entirely on your host. Nothing is sent anywhere. The filtered egress proxy is the only outbound path, and you set its allowlist.</p></details>
         <details><summary>Which agents work with it?</summary><p>Anything that speaks MCP (Claude Code, Claude Desktop, Cursor, Continue, and others), plus a plain HTTP/JSON API and the <span class="mono">moat</span> CLI for everything else.</p></details>
-        <details><summary>What's the overhead?</summary><p>A microVM adds a few MiB of memory and single-digit-millisecond start latency from a warm pool. Cold start to a ready agent is about 24&nbsp;ms.</p></details>
+        <details><summary>What's the overhead?</summary><p>A microVM adds a few MiB of memory and sub-millisecond start latency from a warm pool. Cold VMM start is ~20&nbsp;ms and snapshot restore with clock resync is ~35&nbsp;ms.</p></details>
         <details><summary>GPU workloads?</summary><p>Not yet. Firecracker has no device passthrough. GPU support is on the roadmap via an alternative VMM backend.</p></details>
         <details><summary>macOS or Windows?</summary><p>The host must be Linux with KVM. On macOS, run Moat inside a Linux VM. On Windows, WSL2 with nested virtualization works.</p></details>
       </div>
@@ -1081,11 +875,11 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
     <div class="wrap">
       <span class="stamp" aria-hidden="true">Condemned &middot; 0 bytes persisted</span>
       <h2>Let the agent run wild.</h2>
-      <p>In a castle that is disposable, disconnected, and empty &mdash; then burned.</p>
+      <p>In a box that is disposable, disconnected, and empty &mdash; then burned.</p>
       <div class="actions">
         <a class="btn btn--primary" href="#install">Install Moat</a>
-        <a class="btn btn--ghost" href="developer-guide.html">Read Developer Guide</a>
-        <a class="btn btn--ghost" href="implementation-plan.html">Implementation Plan</a>
+        <a class="btn btn--ghost" href="operators.html">Operator Guide</a>
+        <a class="btn btn--ghost" href="developer-guide.html">Developer Guide</a>
       </div>
     </div>
   </div>
@@ -1095,18 +889,19 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
   <div class="wrap">
     <div class="block">
       <div class="cell">
-        <span class="lab">Castle Map</span>
+        <span class="lab">Site Map</span>
         <div style="font-family:var(--f-mono); color:var(--ink); font-size:13px">moat &middot; hardware-isolated sandboxes for AI agents</div>
         <div style="margin-top:10px">
+          <a href="index.html">Home</a>
+          <a href="operators.html">Operators</a>
           <a href="developer-guide.html">Dev Guide</a>
           <a href="implementation-plan.html">Plan</a>
-          <a href="#install">Install</a>
           <a href="https://github.com/M30W-M1X/moat">GitHub</a>
         </div>
       </div>
       <div class="cell">
         <span class="lab">Notes</span>
-        <p class="disc">Moat is an independent open-source project. Not affiliated with, or endorsed by, Amazon Web Services. &ldquo;Firecracker&rdquo; is a trademark of Amazon.com, Inc. Benchmarks are indicative measurements on one machine, not guarantees.</p>
+        <p class="disc">MIT License. Moat is an independent open-source project. Not affiliated with, or endorsed by, Amazon Web Services. &ldquo;Firecracker&rdquo; is a trademark of Amazon.com, Inc. Benchmarks are indicative measurements on one machine, not guarantees.</p>
       </div>
     </div>
   </div>
@@ -1137,6 +932,17 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
     });
   })();
 
+  /* ---- mobile nav menu ---- */
+  (function(){
+    var mb = document.getElementById("menubtn"), nl = document.getElementById("navlinks");
+    if (mb && nl){
+      mb.addEventListener("click", function(){
+        var open = nl.classList.toggle("open");
+        mb.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    }
+  })();
+
   /* ---- copy buttons ---- */
   document.querySelectorAll(".copy").forEach(function(b){
     b.addEventListener("click", function(){
@@ -1149,111 +955,13 @@ moat uninstall                    # binaries, images, unit, config, all of it</p
     });
   });
 
-  /* ---- pixel castle siege trace ---- */
-  var svg = document.getElementById("castle-svg");
-  if (svg){
-    var TRACE = {
-      files:  { ring: "wall",   x1: 320, y1: 142, x2: 174, y2: 186, label: "Stopped at the KVM wall", text: "No host filesystem is mounted. The guest sees a shared read-only rootfs and its own ephemeral overlayfs scratch disk." },
-      creds:  { ring: "sally",  x1: 320, y1: 392, x2: 320, y2: 274, label: "Blocked at the iron portcullis", text: "Every file, env var, and stdin crossing in is scanned for secrets and blocked with 409 unless explicitly allowed and audited." },
-      lan:    { ring: "moat",   x1: 320, y1: 142, x2: 432, y2: 360, label: "Sunk in the moat", text: "A per-VM network namespace with nftables dropping routes to the host, 169.254.169.254, and RFC-1918 ranges." },
-      exfil:  { ring: "glacis", x1: 320, y1: 142, x2: 56,  y2: 224, label: "Turned at the watchtower", text: "Egress only through a domain-filtered proxy with global and per-token lists, enforced by transparent DNAT and strict policy drop." },
-      fork:   { ring: "wall",   x1: 320, y1: 142, x2: 466, y2: 186, label: "Capped at the east bastion", text: "cgroup v2 cpu.max / memory.max / pids.max on the VMM, plus Firecracker token-bucket rate limiters on the disk and NIC." },
-      escape: { ring: "wall",   x1: 320, y1: 142, x2: 204, y2: 236, label: "Stopped by the KVM stone wall", text: "No shared kernel. The guest runs its own Linux kernel under KVM, confined by a Firecracker jailer with seccomp." },
-      state:  { ring: "keep",   x1: 320, y1: 142, x2: 320, y2: 142, label: "The entire keep is burned", text: "One microVM per task, never reused. Stopped and discarded on exit, TTL, or idle. An orphan reaper sweeps anything left behind." }
-    };
-    var traceG = document.getElementById("p-trace");
-    var stampG = document.getElementById("p-stamp");
-    var readout = document.getElementById("readout");
-    var btns = Array.prototype.slice.call(document.querySelectorAll("#tracebtns .tbtn"));
-    var ringEls = {
-      glacis: svg.querySelector("#p-glacis"),
-      moat:   svg.querySelector("#p-moat"),
-      wall:   svg.querySelector("#p-wall"),
-      sally:  svg.querySelector("#p-sally"),
-      keep:   svg.querySelector("#p-keep")
-    };
-
-    function clearTrace(){
-      traceG.innerHTML = "";
-      stampG.setAttribute("opacity", "0");
-      stampG.innerHTML = "";
-      Object.keys(ringEls).forEach(function(k){ if (ringEls[k]) ringEls[k].classList.remove("hot", "dim"); });
-      document.querySelectorAll("#schedule tr[data-ring]").forEach(function(tr){ tr.style.background = ""; });
-    }
-
-    function runTrace(kind){
-      clearTrace();
-      var t = TRACE[kind]; if (!t) return;
-      var ns = "http://www.w3.org/2000/svg";
-
-      Object.keys(ringEls).forEach(function(k){
-        if (!ringEls[k]) return;
-        if (k === t.ring) ringEls[k].classList.add("hot");
-        else ringEls[k].classList.add("dim");
-      });
-
-      if (kind !== "state"){
-        var ln = document.createElementNS(ns, "line");
-        ln.setAttribute("x1", t.x1); ln.setAttribute("y1", t.y1);
-        ln.setAttribute("x2", t.x2); ln.setAttribute("y2", t.y2);
-        ln.setAttribute("stroke", "#ff6b3d");
-        ln.setAttribute("stroke-width", "6");
-        ln.setAttribute("stroke-dasharray", "10 8");
-        traceG.appendChild(ln);
-
-        // Pixelated impact burst at the defense point
-        var burst = document.createElementNS(ns, "g");
-        burst.innerHTML =
-          '<rect x="' + (t.x2 - 14) + '" y="' + (t.y2 - 14) + '" width="28" height="28" fill="#e54826" stroke="#1b1829" stroke-width="3"/>' +
-          '<rect x="' + (t.x2 - 8) + '" y="' + (t.y2 - 8) + '" width="16" height="16" fill="#ffd15c"/>' +
-          '<text x="' + t.x2 + '" y="' + (t.y2 + 4) + '" text-anchor="middle" font-family="Press Start 2P,monospace" font-size="10" fill="#1b1829">X</text>';
-        traceG.appendChild(burst);
-      } else {
-        stampG.innerHTML =
-          '<rect x="218" y="102" width="204" height="58" fill="#e54826" stroke="#1b1829" stroke-width="4"/>' +
-          '<text x="320" y="138" text-anchor="middle" font-family="Press Start 2P,monospace" font-size="14" fill="#fff">VM BURNED</text>';
-        stampG.setAttribute("opacity", "1");
-      }
-
-      readout.innerHTML = "<b>" + t.label + "</b>" + t.text;
-      var row = document.querySelector('#schedule tr[data-ring="' + t.ring + '"]');
-      if (row) row.style.background = "var(--gold-wash)";
-    }
-
-    btns.forEach(function(b){
-      b.addEventListener("click", function(){
-        var active = b.getAttribute("aria-pressed") === "true";
-        btns.forEach(function(x){ x.setAttribute("aria-pressed", "false"); });
-        if (active){
-          clearTrace();
-          readout.innerHTML = "<b>The agent in the keep</b>Pick an attack. Watch the castle defense that turns it back.";
-          return;
-        }
-        b.setAttribute("aria-pressed", "true");
-        runTrace(b.getAttribute("data-trace"));
-      });
-    });
-
-    document.querySelectorAll("#schedule tr[data-ring]").forEach(function(tr){
-      tr.addEventListener("mouseenter", function(){
-        var k = tr.getAttribute("data-ring");
-        if (ringEls[k]) ringEls[k].classList.add("hot");
-      });
-      tr.addEventListener("mouseleave", function(){
-        if (!btns.some(function(x){ return x.getAttribute("aria-pressed") === "true"; })){
-          Object.keys(ringEls).forEach(function(k){ if (ringEls[k]) ringEls[k].classList.remove("hot"); });
-        }
-      });
-    });
-  }
-
   /* ---- live terminal field report ---- */
   (function(){
     var host = document.getElementById("termbody");
     if (!host) return;
     var lines = [
       { c: "u",   t: "$ moat run --put .:/work -- python3 summarize.py report.pdf" },
-      { c: "tag", t: "moat: sandbox sb-2f9c41 ready in 7ms   python · net=deny · cpu 1.0 · mem 512M · ttl 15m" },
+      { c: "tag", t: "moat: sandbox sb-2f9c41 ready in <1ms   python · net=deny · cpu 1.0 · mem 512M · ttl 15m" },
       { c: "tag", t: "moat: copied ./ → /work   (2 files, 214 KB, scanned — no secrets)" },
       { c: "b",   t: "summarize.py: extracted 9 pages from report.pdf" },
       { c: "b",   t: "summarize.py: GET http://169.254.169.254/latest/meta-data/iam/" },
