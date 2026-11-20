@@ -68,10 +68,10 @@ func TestDecideRecordsAudit(t *testing.T) {
 	if p.decide(req2, "evil.example", "proxy") {
 		t.Fatal("evil.example should be denied")
 	}
-	time.Sleep(100 * time.Millisecond)
+	rec.Flush()
 
-	allow, _ := audit.Query(dir, audit.Filter{Types: []string{audit.TypeEgressAllow}})
-	deny, _ := audit.Query(dir, audit.Filter{Types: []string{audit.TypeEgressDeny}})
+	allow, _ := rec.LiveQuery(audit.Filter{Types: []string{audit.TypeEgressAllow}})
+	deny, _ := rec.LiveQuery(audit.Filter{Types: []string{audit.TypeEgressDeny}})
 	if len(allow) != 1 || allow[0].Sandbox != "sb-42" || allow[0].Attrs["host"] != "pypi.org" {
 		t.Fatalf("allow event wrong: %+v", allow)
 	}

@@ -61,7 +61,7 @@ func TestLiveReportAndSandboxToken(t *testing.T) {
 	_ = r.RecordSync(ctx, Event{Type: TypeSandboxCreate, Sandbox: "sb-9", Token: "ci",
 		Attrs: map[string]any{"template": "python"}})
 	r.Record(Event{Type: TypeExec, Sandbox: "sb-9", Token: "ci", Attrs: map[string]any{"exit": 0, "dur_ms": 5}})
-	time.Sleep(50 * time.Millisecond) // let the async event land
+	r.Flush()
 
 	tok, ok := r.SandboxToken("sb-9")
 	if !ok || tok != "ci" {
