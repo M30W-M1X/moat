@@ -153,12 +153,10 @@ bytes crossing *into* a sandbox; the *egress proxy* filters traffic going *out*.
 
 ## Evidence on Hand
 
-- **Working software.** Engine phases P1–P5 and milestone M1 are built and on
+- **Working software.** Engine phases P1–P5 and milestones M1–M2 are built and on
   `main`. Tagged release `v0.1.0` at `github.com/M30W-M1X/moat/releases/tag/v0.1.0`
-  (binaries + images + `checksums.txt` + `install.sh`). **The repo is private
-  right now**, so those URLs are not publicly reachable and the `curl | sh`
-  install does not yet work for anyone outside the account. Making the repo
-  public is a pending decision.
+  (binaries + images + `checksums.txt` + `install.sh`). Public repo and GitHub
+  Pages site at `https://m30w-m1x.github.io/moat/`.
 - **Benchmarks**, measured on one developer machine (AMD Ryzen 7 5700G, Linux
   7.2, KVM, x86_64, Firecracker v1.16.1, 256 MiB Alpine guest) — not
   guarantees: Firecracker VMM cold start ~20 ms; snapshot restore to ready agent

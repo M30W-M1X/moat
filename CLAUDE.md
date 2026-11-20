@@ -57,11 +57,9 @@ for VM lifecycle, never "boot" / "tear down").
 - `~/Documents/ClaudeVault/projects/microvm-controller/Build Log.md` — what got built per phase
 - `~/Documents/ClaudeVault/projects/microvm-controller/Gotchas.md` — footguns, `G-N`, symptom → cause → fix
 - `~/Documents/ClaudeVault/projects/microvm-controller/Product Plan.md` — "Moat" product plan: name, GTM, roadmap (M1 self-serve / M2 fleet)
-- `docs/implementation-plan.html` (this repo) — rendered plan; published artifact:
-  https://claude.ai/code/artifact/9ae3fa52-4ebd-4290-b665-8e14dfc9dd84
-- `docs/index.html` (this repo) — the **Moat** marketing landing page + roadmap.
-  Standalone document, future GitHub Pages site (Pages → deploy from branch,
-  `/docs`). Working artifact: https://claude.ai/code/artifact/ae391a8e-05cb-4351-8fb6-9249a10ed085
+- `ROADMAP.md` & `docs/roadmap.html` (this repo) — shipped milestones and upcoming work
+- `docs/index.html` (this repo) — the **Moat** GitHub Pages site (`https://m30w-m1x.github.io/moat/`),
+  deployed from `main` branch `/docs`.
 
 > **Note (2026-08-30):** the project is now productized as **Moat** — an
 > open-source, self-hosted sandbox that runs untrusted AI-agent commands in a

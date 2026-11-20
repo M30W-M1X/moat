@@ -4,6 +4,8 @@
 
 Moat is an open-source, self-hosted sandbox for AI coding agents and untrusted code. Every task runs inside its own disposable Firecracker microVM on KVM — separate Linux kernel, no host filesystem, no host network, no host credentials — then disappears the moment the task ends.
 
+**Website & Docs:** https://m30w-m1x.github.io/moat/
+
 No containers sharing your kernel. No third-party cloud holding your source code. One command on your Linux machine.
 
 ---
@@ -159,6 +161,7 @@ make kernel           # fetch the pinned vmlinux (once)
 | [`SKILL.md`](SKILL.md) | Agent playbook for ephemeral sandbox usage |
 | [`demo/README.md`](demo/README.md) | Self-checking end-to-end isolation walk-through |
 | [`build/templates/README.md`](build/templates/README.md) | Building custom templates and importing OCI images |
+| [`ROADMAP.md`](ROADMAP.md) | Shipped milestones and upcoming API, density, and multi-node fleet work |
 | [`docs/developer-guide.md`](docs/developer-guide.md) | Deep architecture, package map, security model, image pipeline, and operations |
 
 ---

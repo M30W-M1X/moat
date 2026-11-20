@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Moat roadmap: shipped isolation engine, self-serve MCP product, single-node production hardening, and upcoming API, density, and multi-node fleet milestones.">
+<meta name="color-scheme" content="light dark">
+<title>Moat — Roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap">
+<style>
+  :root{
+    --bg:#f3ebd6; --surface:#fffaf0; --surface-2:#e3d6b8;
+    --ink:#1b1829; --ink-2:#3b3552; --ink-3:#6b6285;
+    --rule:#1b1829; --rule-2:#564e73;
+    --accent:#2294d6; --accent-ink:#115f91; --accent-wash:#d6f1ff;
+    --alarm:#e54826; --alarm-ink:#b32e12; --alarm-wash:#ffe3d8;
+    --gold:#f2b629; --gold-wash:#fff1c4;
+    --grass:#4ea845; --stone:#c2c7d4;
+    --px-shadow:4px 4px 0 #1b1829;
+    --px-shadow-sm:2px 2px 0 #1b1829;
+    --f-pixel:"Press Start 2P",monospace;
+    --f-ui:"Silkscreen",monospace;
+    --f-text:"B612",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --f-mono:"B612 Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --maxw:960px;
+    color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#141226; --surface:#1f1c38; --surface-2:#282447;
+      --ink:#f5eedc; --ink-2:#c7c1de; --ink-3:#8f87b0;
+      --rule:#070610; --rule-2:#4c4475;
+      --accent:#3cc5ff; --accent-ink:#8be2ff; --accent-wash:#102b45;
+      --alarm:#ff6b3d; --alarm-ink:#ff9470; --alarm-wash:#3b1e20;
+      --gold:#ffd15c; --gold-wash:#3b2f14;
+      --grass:#3e8c45; --stone:#6a708c;
+      --px-shadow:4px 4px 0 #070610;
+      --px-shadow-sm:2px 2px 0 #070610;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141226; --surface:#1f1c38; --surface-2:#282447;
+    --ink:#f5eedc; --ink-2:#c7c1de; --ink-3:#8f87b0;
+    --rule:#070610; --rule-2:#4c4475;
+    --accent:#3cc5ff; --accent-ink:#8be2ff; --accent-wash:#102b45;
+    --alarm:#ff6b3d; --alarm-ink:#ff9470; --alarm-wash:#3b1e20;
+    --gold:#ffd15c; --gold-wash:#3b2f14;
+    --grass:#3e8c45; --stone:#6a708c;
+    --px-shadow:4px 4px 0 #070610;
+    --px-shadow-sm:2px 2px 0 #070610;
+  }
+
+  *,*::before,*::after{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);
+    background-image:radial-gradient(var(--surface-2) 1.5px,transparent 1.5px);
+    background-size:16px 16px;
+    color:var(--ink);font-family:var(--f-text);font-size:15.5px;line-height:1.64;
+  }
+  :focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  a{color:var(--accent-ink);text-underline-offset:2px;text-decoration-thickness:2px}
+  a:hover{color:var(--alarm)}
+  code{font-family:var(--f-mono);font-size:.88em;background:var(--surface);border:2px solid var(--rule);padding:.06em .36em}
+
+  /* ---- Unified Main Site Nav ---- */
+  .nav{
+    position:sticky;top:0;z-index:60;background:var(--surface);
+    border-bottom:4px solid var(--rule);box-shadow:0 4px 0 rgba(0,0,0,.14);
+  }
+  .nav-in{
+    max-width:1180px;margin:0 auto;padding:0 clamp(16px,4vw,48px);
+    min-height:64px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  }
+  .brand{
+    display:inline-flex;align-items:center;gap:10px;
+    font-family:var(--f-pixel);font-size:13px;text-decoration:none;color:var(--ink);
+  }
+  .brand svg{width:30px;height:30px;display:block;shape-rendering:crispEdges}
+  .nav-links{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap}
+  .nav-links a{
+    font-family:var(--f-ui);font-size:11.5px;font-weight:700;text-transform:uppercase;
+    text-decoration:none;color:var(--ink-2);padding:5px 9px;border:2px solid transparent;
+  }
+  .nav-links a:hover{color:var(--alarm);border-color:var(--rule);background:var(--bg)}
+  .nav-links a[aria-current="page"]{
+    background:var(--gold-wash);color:var(--ink);border:2px solid var(--rule);
+    box-shadow:var(--px-shadow-sm);
+  }
+  .nav-links .navcta{
+    background:var(--alarm);color:#fff;border:3px solid var(--rule);padding:6px 11px;
+    box-shadow:var(--px-shadow-sm);
+  }
+  .nav-links .navcta:hover{background:var(--alarm-ink);color:#fff}
+  .themebtn,.menubtn{
+    background:var(--gold-wash);border:3px solid var(--rule);color:var(--ink);
+    width:36px;height:34px;cursor:pointer;font-family:var(--f-ui);font-size:14px;
+    display:grid;place-items:center;box-shadow:var(--px-shadow-sm);
+  }
+  .menubtn{display:none;margin-left:auto}
+  @media (max-width:860px){
+    .menubtn{display:grid}
+    .nav-links{display:none;width:100%;padding:8px 0 14px;flex-direction:column;align-items:stretch;border-top:3px solid var(--rule)}
+    .nav-links.open{display:flex}
+    .nav-links a{padding:8px 10px}
+  }
+
+  main{max-width:var(--maxw);margin:0 auto;padding:42px clamp(16px,4vw,48px) 96px}
+  h1{font-family:var(--f-pixel);font-size:clamp(1.2rem,2.5vw,1.7rem);line-height:1.4;margin:0 0 14px}
+  .lede{color:var(--ink-2);font-size:1.05rem;max-width:64ch;margin:0 0 32px}
+  h2{font-family:var(--f-pixel);font-size:14px;line-height:1.45;margin:40px 0 16px}
+
+  .card{
+    background:var(--surface);border:4px solid var(--rule);padding:22px 24px;
+    margin-bottom:18px;box-shadow:var(--px-shadow);
+  }
+  .card.next{background:var(--gold-wash)}
+  .card.future{background:var(--bg)}
+  .top{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:10px}
+  .id{
+    font-family:var(--f-pixel);font-size:11px;color:#fff;background:var(--accent-ink);
+    border:2px solid var(--rule);padding:4px 8px;
+  }
+  .card h3{font-family:var(--f-ui);font-size:1.06rem;margin:0}
+  .badge{
+    font-family:var(--f-ui);font-size:10px;text-transform:uppercase;font-weight:700;
+    padding:3px 8px;border:2px solid var(--rule);margin-left:auto;
+  }
+  .badge.built{background:var(--grass);color:#fff}
+  .badge.up{background:var(--alarm);color:#fff}
+  .badge.later{background:var(--gold);color:#1b1829}
+  .card p{margin:0 0 10px;color:var(--ink-2)}
+  .card ul{margin:8px 0 0;padding-left:20px;color:var(--ink-2)}
+  .card li{margin:6px 0}
+
+  .promise{
+    margin-top:34px;border:4px solid var(--rule);border-left:8px solid var(--accent);
+    background:var(--accent-wash);padding:18px 20px;box-shadow:var(--px-shadow);
+  }
+  .promise strong{font-family:var(--f-ui);display:block;margin-bottom:6px;color:var(--ink)}
+
+  .foot{
+    margin-top:48px;padding-top:20px;border-top:4px solid var(--rule);
+    font-size:12.5px;color:var(--ink-2);
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="index.html" aria-label="Moat — home">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2" width="2" height="3" fill="var(--stone)"/>
+        <rect x="6" y="2" width="4" height="3" fill="var(--stone)"/>
+        <rect x="12" y="2" width="2" height="3" fill="var(--stone)"/>
+        <rect x="7" y="0" width="2" height="2" fill="var(--alarm)"/>
+        <rect x="2" y="4" width="12" height="8" fill="var(--stone)"/>
+        <rect x="6" y="8" width="4" height="4" fill="#1b1829"/>
+        <rect x="7" y="9" width="2" height="3" fill="var(--gold)"/>
+        <rect x="0" y="12" width="16" height="4" fill="var(--accent)"/>
+      </svg>
+      MOAT
+    </a>
+    <button class="menubtn" id="menubtn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <nav class="nav-links" id="navlinks" aria-label="Primary">
+      <a href="index.html">Home</a>
+      <a href="operators.html">Operators</a>
+      <a href="developer-guide.html">Dev Guide</a>
+      <a href="roadmap.html" aria-current="page">Roadmap</a>
+      <a href="https://github.com/M30W-M1X/moat">GitHub</a>
+      <a href="index.html#install" class="navcta">Install</a>
+      <button class="themebtn" id="theme" type="button" aria-label="Switch between Day Castle and Night Castle">☀</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Moat Roadmap</h1>
+  <p class="lede">Single-node isolation, MCP integration, and production hardening ship today under the MIT License. Here is what is built and what comes next.</p>
+
+  <h2>Shipped</h2>
+
+  <div class="card">
+    <div class="top"><span class="id">v0</span><h3>Isolation Engine</h3><span class="badge built">Shipped</span></div>
+    <p>The Firecracker + KVM control plane, proven on real microVMs.</p>
+    <ul>
+      <li>microVM lifecycle with <code>jailer</code> confinement, per-VM netns, <code>/30</code> IPAM, strict <code>policy drop</code> nftables, and cgroup v2 + disk/NIC rate limiters</li>
+      <li>Read-only rootfs + ephemeral ext4 overlayfs scratch disks (<code>read_only_root</code>) or private sparse/reflink copies</li>
+      <li>PID 1 guest agent over vsock: streamed exec with PTY &amp; timeouts, byte-exact file transfer, zombie reaper, overlayfs pivot, and post-restore clock resync</li>
+      <li>Full &amp; diff snapshots, <code>moat-uffd</code> userfaultfd demand paging, per-template cold or snapshot-backed warm pools, TTL/idle reaper, and startup orphan reconciliation</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="top"><span class="id">M1</span><h3>Self-Serve Agent Sandbox</h3><span class="badge built">Shipped</span></div>
+    <p>Install in one command and point any MCP coding agent at Moat safely.</p>
+    <ul>
+      <li>Ingress secret firewall using vendored Gitleaks rules (<code>409</code> block by default, audited override, optional <code>-secret-redact</code>)</li>
+      <li><code>moat-mcp</code> stdio MCP server (Unix socket or HTTP/HTTPS) and <code>SKILL.md</code> playbook</li>
+      <li><code>install.sh</code> (system and <code>--user</code>), <code>moat doctor</code>, <code>moat template import</code> for any <code>linux/amd64</code> OCI image, and <code>moat uninstall</code></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="top"><span class="id">M2</span><h3>Audit, Trust &amp; Single-Node Hardening</h3><span class="badge built">Shipped</span></div>
+    <p>Tamper-evident accountability, supply-chain trust, and hardened transport.</p>
+    <ul>
+      <li>Hash-chained, metadata-only JSONL audit log, <code>moat audit {tail,query,report,verify}</code>, per-sandbox reports, and async SIEM webhook sink</li>
+      <li>Deterministic, byte-reproducible rootfs builds (<code>make images-verify</code> in CI), CycloneDX SBOM, automated Cosign-signed releases, and <code>images.lock</code> enforcement at startup</li>
+      <li>Native TLS 1.2+ / mTLS, <code>0660</code> Unix domain sockets, per-token egress allow/deny policies, and strict HTTP body/header limits</li>
+    </ul>
+  </div>
+
+  <h2>Up Next</h2>
+
+  <div class="card next">
+    <div class="top"><span class="id">M2.5</span><h3>Single-Node API &amp; Density Polish</h3><span class="badge up">Planned</span></div>
+    <p>Remaining engine optimizations and API features from the original design.</p>
+    <ul>
+      <li><strong>Northbound gRPC API &amp; live snapshots:</strong> gRPC gateway alongside REST, plus <code>POST /v1/sandboxes/{id}/snapshot</code> to checkpoint a running sandbox over the API</li>
+      <li><strong>High-density memory &amp; I/O:</strong> <code>virtio-balloon</code> memory reclaim for idle sandboxes, cgroup v2 <code>io.max</code>, and per-sandbox RSS/vCPU Prometheus gauges</li>
+      <li><strong>Outbound egress DLP &amp; rate limits:</strong> optional credential scanning on outbound proxy traffic and per-sandbox egress request caps</li>
+      <li><strong>UFFD fuzzing &amp; host tuning:</strong> continuous fuzzing of the <code>moat-uffd</code> page-fault path and automated <code>fs.file-max</code> / inotify checks in <code>moat doctor</code></li>
+      <li><strong>Optional Rust guest agent:</strong> <code>&lt;3 MiB</code> static Rust PID 1 drop-in alternative speaking the same <code>agent.v1.Agent</code> protobuf contract</li>
+    </ul>
+  </div>
+
+  <div class="card future">
+    <div class="top"><span class="id">M3</span><h3>Multi-Node Fleet &amp; Platform Reach</h3><span class="badge later">Future</span></div>
+    <p>Operating Moat across clusters of bare-metal hosts and broader developer platforms.</p>
+    <ul>
+      <li><strong>Multi-node fleet control plane (open-core):</strong> scheduling across bare-metal hosts, per-team SSO / RBAC, web console, and managed hosting</li>
+      <li><strong>GPU workloads:</strong> parallel VMM driver backend (Cloud Hypervisor with VFIO or gVisor) since Firecracker has no PCI passthrough</li>
+      <li><strong>Reach &amp; SDKs:</strong> <code>arm64</code> Linux support, downloadable template registry (<code>moat template pull</code>), official Python / TypeScript / Go SDKs, and macOS helper-VM / WSL2 guides</li>
+    </ul>
+  </div>
+
+  <div class="promise">
+    <strong>Licensing commitment</strong>
+    Moat is licensed under the MIT License. Single-node operation, the daemon, CLI, guest agent, MCP server, and every isolation and audit control are free forever — the security boundary is never paywalled.
+  </div>
+
+  <footer class="foot">
+    <strong>Moat</strong> · MIT License · <a href="index.html">Home</a> · <a href="operators.html">Operators</a> · <a href="developer-guide.html">Developer Guide</a> · <a href="https://github.com/M30W-M1X/moat">GitHub</a>
+  </footer>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement, btn = document.getElementById("theme");
+  var saved; try { saved = localStorage.getItem("moat-theme"); } catch(e){}
+  if (saved === "dark" || saved === "light") root.setAttribute("data-theme", saved);
+  function cur(){
+    var a = root.getAttribute("data-theme");
+    if (a) return a;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function paint(){ btn.textContent = cur() === "dark" ? "☾" : "☀"; }
+  paint();
+  btn.addEventListener("click", function(){
+    var next = cur() === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("moat-theme", next); } catch(e){}
+    paint();
+  });
+  var mb = document.getElementById("menubtn"), nl = document.getElementById("navlinks");
+  if (mb && nl){
+    mb.addEventListener("click", function(){
+      var open = nl.classList.toggle("open");
+      mb.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+})();
+</script>
+</body>
+</html>
