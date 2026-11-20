@@ -91,7 +91,7 @@ On the same toolchain (`e2fsprogs`, `podman`, `go`, `tar`), two builds produce i
 
 ```sh
 make images
-SIGN=1 VERSION=v0.2.0 build/release.sh
+SIGN=1 VERSION=v1.0.0 build/release.sh
 ```
 
 `dist/` holds the tarball, `checksums.txt`, and Cosign signatures/bundles (`images.lock.sig` inside the tarball, `checksums.txt.sig` alongside it).

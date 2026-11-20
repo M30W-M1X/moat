@@ -49,7 +49,7 @@ if [ "${SIGN:-0}" = "1" ]; then
 	command -v cosign >/dev/null 2>&1 || { echo "SIGN=1 requires cosign on PATH" >&2; exit 1; }
 	if [ -f "$STAGE/share/images.lock" ] && [ ! -f "$STAGE/share/images.lock.sig" ]; then
 		echo "  sign images.lock"
-		cosign sign-blob --yes \
+		cosign sign-blob --yes --new-bundle-format=false \
 			--output-signature "$STAGE/share/images.lock.sig" \
 			--bundle "$STAGE/share/images.lock.bundle" \
 			"$STAGE/share/images.lock"
@@ -62,7 +62,7 @@ tar -C "$DIST" -czf "$DIST/moat_${VERSION}_${OS}_${ARCH}.tar.gz" "$(basename "$S
 
 if [ "${SIGN:-0}" = "1" ]; then
 	echo "  sign checksums.txt"
-	cosign sign-blob --yes \
+	cosign sign-blob --yes --new-bundle-format=false \
 		--output-signature "$DIST/checksums.txt.sig" \
 		--bundle "$DIST/checksums.txt.bundle" \
 		"$DIST/checksums.txt"
