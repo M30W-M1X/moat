@@ -102,9 +102,16 @@ func runPipes(cmd *exec.Cmd, req *agentv1.ExecRequest, send sendFunc) (timedOut 
 		}
 	}
 
-	if err := cmd.Start(); err != nil {
+	pid, err := children.startAndTrack(func() (int, error) {
+		if err := cmd.Start(); err != nil {
+			return 0, err
+		}
+		return cmd.Process.Pid, nil
+	})
+	if err != nil {
 		return false, err
 	}
+	defer children.untrack(pid)
 	_ = send(startedEvent(cmd))
 
 	if stdin != nil {
@@ -134,10 +141,19 @@ func runTTY(cmd *exec.Cmd, req *agentv1.ExecRequest, send sendFunc) (timedOut bo
 	}
 	// pty.StartWithSize sets Setsid and Setctty. The child is a group leader,
 	// so a kill on -pid ends the whole group.
-	ptmx, err := pty.StartWithSize(cmd, ws)
+	var ptmx *os.File
+	pid, err := children.startAndTrack(func() (int, error) {
+		f, serr := pty.StartWithSize(cmd, ws)
+		if serr != nil {
+			return 0, serr
+		}
+		ptmx = f
+		return cmd.Process.Pid, nil
+	})
 	if err != nil {
 		return false, err
 	}
+	defer children.untrack(pid)
 	defer func() { _ = ptmx.Close() }()
 
 	_ = send(startedEvent(cmd))

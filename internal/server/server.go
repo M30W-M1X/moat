@@ -119,7 +119,7 @@ type Server struct {
 	reg     *registry
 	tmpl    map[string]Template
 	defTmpl string
-	pool    *pool.Pool
+	pools   map[string]*pool.Pool
 	ipam    *netconf.Allocator
 	uplink  string
 	scanner *secretscan.Scanner // nil when SecretScanOff
@@ -177,21 +177,27 @@ func New(cfg Config, log *logrus.Logger) (*Server, error) {
 		log:         log,
 		reg:         newRegistry(cfg.GlobalMax),
 		tmpl:        map[string]Template{},
-		defTmpl:     cfg.Templates[0].Name,
+		pools:       map[string]*pool.Pool{},
 		ipam:        ipam,
 		uplink:      cfg.Uplink,
 		promReg:     prometheus.NewRegistry(),
 		janitorStop: make(chan struct{}),
 	}
-	for _, t := range cfg.Templates {
-		s.tmpl[t.Name] = t
-	}
 
-	imgRes, err := verifyImages(cfg, log)
+	imgRes, usable, err := verifyImages(cfg, log)
 	if err != nil {
 		return nil, err
 	}
 	s.imageResults = imgRes
+	for _, t := range cfg.Templates {
+		if !usable[t.Name] {
+			continue
+		}
+		if s.defTmpl == "" {
+			s.defTmpl = t.Name
+		}
+		s.tmpl[t.Name] = t
+	}
 
 	s.maxUp = cfg.MaxUploadBytes
 	if s.maxUp <= 0 {
@@ -208,10 +214,11 @@ func New(cfg Config, log *logrus.Logger) (*Server, error) {
 	}
 
 	s.m = newMetrics(s.promReg, func() float64 {
-		if s.pool == nil {
-			return 0
+		total := 0
+		for _, p := range s.pools {
+			total += p.Ready()
 		}
-		return float64(s.pool.Ready())
+		return float64(total)
 	})
 
 	s.audit = cfg.Audit
@@ -232,16 +239,26 @@ func New(cfg Config, log *logrus.Logger) (*Server, error) {
 // process, not a per-request one.
 func (s *Server) Start(ctx context.Context) error {
 	s.baseCtx = ctx
-	if s.cfg.PoolSize > 0 {
-		base, err := s.tmpl[s.defTmpl].machine()
+	for name, t := range s.tmpl {
+		psize := t.PoolSize
+		if psize == 0 && name == s.defTmpl {
+			psize = s.cfg.PoolSize
+		}
+		if psize <= 0 {
+			continue
+		}
+		base, err := t.machine()
 		if err != nil {
 			return err
 		}
-		p, err := pool.New(ctx, pool.Options{Size: s.cfg.PoolSize}, base, s.log)
+		p, err := pool.New(ctx, pool.Options{Size: psize}, base, s.log)
 		if err != nil {
-			return fmt.Errorf("warm pool: %w", err)
+			for _, existing := range s.pools {
+				existing.Close()
+			}
+			return fmt.Errorf("warm pool %s: %w", name, err)
 		}
-		s.pool = p
+		s.pools[name] = p
 	}
 	s.startedAt = time.Now()
 	_ = s.audit.RecordSync(ctx, audit.Event{
@@ -294,8 +311,8 @@ func (s *Server) Shutdown(ctx context.Context) {
 	case <-ctx.Done():
 		s.log.Warn("shutdown timed out waiting for sandbox teardown")
 	}
-	if s.pool != nil {
-		s.pool.Close()
+	for _, p := range s.pools {
+		p.Close()
 	}
 }
 
@@ -515,13 +532,15 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: start.Add(ttl), Networked: req.Networked, tpl: tpl}
 
 	source := "cold"
-	if !req.Networked && s.pool != nil {
-		acqCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		lease, err := s.pool.Acquire(acqCtx)
-		cancel()
-		if err == nil {
-			sb.lease, sb.cli = lease, lease.Client
-			source = "pool"
+	if !req.Networked {
+		if p := s.pools[name]; p != nil {
+			acqCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			lease, err := p.Acquire(acqCtx)
+			cancel()
+			if err == nil {
+				sb.lease, sb.cli = lease, lease.Client
+				source = "pool"
+			}
 		}
 	}
 	if sb.cli == nil {
@@ -532,6 +551,9 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sb.inst, sb.cli, sb.net = inst, cli, plan
+		if plan != nil {
+			sb.ipam = s.ipam
+		}
 		sb.GuestIP = guestIP(plan)
 	}
 

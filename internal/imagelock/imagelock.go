@@ -101,6 +101,36 @@ func Find(rootfsPath string) string {
 	return ""
 }
 
+// CoversRootFS reports whether l describes rootfsPath. A secondary or imported
+// template placed in the same directory has a different base name.
+func (l *Lock) CoversRootFS(rootfsPath string) bool {
+	if l.Rootfs.Path == "" {
+		return true
+	}
+	return filepath.Base(rootfsPath) == filepath.Base(l.Rootfs.Path)
+}
+
+// CoversKernel reports whether l describes kernelPath.
+func (l *Lock) CoversKernel(kernelPath string) bool {
+	if l.Kernel.Path == "" {
+		return true
+	}
+	return filepath.Base(kernelPath) == filepath.Base(l.Kernel.Path)
+}
+
+// VerifyKernel hashes kernelPath and compares it to the lock. A mismatch
+// returns a *MismatchError that names the file and both digests.
+func (l *Lock) VerifyKernel(kernelPath string) error {
+	got, err := sha256File(kernelPath)
+	if err != nil {
+		return fmt.Errorf("hash %s: %w", l.Kernel.Path, err)
+	}
+	if got != l.Kernel.SHA256 {
+		return &MismatchError{File: l.Kernel.Path, Want: l.Kernel.SHA256, Got: got}
+	}
+	return nil
+}
+
 // VerifyFiles hashes kernelPath and rootfsPath and compares them to the lock. A
 // mismatch returns a *MismatchError that names the file and both digests.
 func (l *Lock) VerifyFiles(kernelPath, rootfsPath string) error {

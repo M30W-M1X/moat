@@ -32,6 +32,7 @@ func main() {
 		mountPseudoFS()
 		ensureBaseEnv()
 		ensureResolvConf()
+		startZombieReaper()
 		// As PID 1 this process must never return. The kernel panics if init
 		// exits.
 		defer haltForever("main returned")
@@ -95,6 +96,8 @@ func mountPseudoFS() {
 		{"sysfs", "/sys", "sysfs", ""},
 		{"devtmpfs", "/dev", "devtmpfs", ""},                            // the kernel usually mounts this already (CONFIG_DEVTMPFS_MOUNT)
 		{"devpts", "/dev/pts", "devpts", "gid=5,mode=620,ptmxmode=666"}, // needed for PTY exec
+		{"tmpfs", "/dev/shm", "tmpfs", "mode=1777"},
+		{"tmpfs", "/run", "tmpfs", "mode=755"},
 	} {
 		_ = os.MkdirAll(x.dst, 0o755)
 		err := syscall.Mount(x.src, x.dst, x.fs, 0, x.data)
@@ -103,6 +106,8 @@ func mountPseudoFS() {
 		}
 		logf("warn: mount %s on %s: %v", x.fs, x.dst, err)
 	}
+	_ = os.MkdirAll("/tmp", 0o1777)
+	_ = os.Chmod("/tmp", 0o1777)
 	// Some rootfs images have no /dev/ptmx node. Point it at the devpts one.
 	if _, err := os.Stat("/dev/ptmx"); err != nil {
 		_ = os.Symlink("pts/ptmx", "/dev/ptmx")

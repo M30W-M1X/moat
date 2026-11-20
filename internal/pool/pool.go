@@ -12,7 +12,6 @@ package pool
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -308,31 +307,22 @@ func (p *Pool) member() (config.Machine, error) {
 	m.KernelImagePath = p.base.KernelImagePath
 	m.VCPUs = p.base.VCPUs
 	m.MemMiB = p.base.MemMiB
+	m.Limits = p.base.Limits
+	m.DiskBWBytesPerSec = p.base.DiskBWBytesPerSec
+	m.NetBWBytesPerSec = p.base.NetBWBytesPerSec
+	m.Jail = p.base.Jail
+	m.JailerUID = p.base.JailerUID
+	m.JailerGID = p.base.JailerGID
+	m.FirecrackerBin = p.base.FirecrackerBin
+	m.JailerBin = p.base.JailerBin
 
 	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
 		return config.Machine{}, err
 	}
 	rootfs := filepath.Join(m.RunDir, "rootfs.ext4")
-	if err := copyFile(p.base.RootFSPath, rootfs); err != nil {
+	if err := vm.CopyRootFS(p.base.RootFSPath, rootfs); err != nil {
 		return config.Machine{}, fmt.Errorf("copy rootfs: %w", err)
 	}
 	m.RootFSPath = rootfs
 	return m, nil
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Sync()
 }

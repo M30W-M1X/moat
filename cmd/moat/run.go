@@ -171,6 +171,13 @@ func runRun(args []string) int {
 		return code
 	}
 
+	cleanupRootFS, err := preparePrivateRootFS(&m, *mf.keep)
+	if err != nil {
+		log.WithError(err).Error("prepare rootfs")
+		return 1
+	}
+	defer cleanupRootFS()
+
 	if *netOn {
 		cleanup, err := setupNet(&m, *netPool, *uplink, log)
 		if err != nil {

@@ -123,3 +123,32 @@ func TestVerifySignatureNoop(t *testing.T) {
 		t.Fatalf("want nil, got %v", err)
 	}
 }
+
+func TestCoversAndVerifyKernel(t *testing.T) {
+	dir := t.TempDir()
+	kern := filepath.Join(dir, "vmlinux")
+	writeFile(t, kern, "kernel-bytes")
+
+	l := &Lock{}
+	l.Kernel.Path = "vmlinux"
+	l.Kernel.SHA256 = sha256OfString("kernel-bytes")
+	l.Rootfs.Path = "rootfs.ext4"
+
+	if !l.CoversRootFS(filepath.Join(dir, "rootfs.ext4")) {
+		t.Fatal("lock must cover matching rootfs basename")
+	}
+	if l.CoversRootFS(filepath.Join(dir, "python-rootfs.ext4")) {
+		t.Fatal("lock must not cover a secondary template rootfs")
+	}
+	if !l.CoversKernel(kern) {
+		t.Fatal("lock must cover matching kernel basename")
+	}
+	if err := l.VerifyKernel(kern); err != nil {
+		t.Fatalf("VerifyKernel pass: %v", err)
+	}
+	writeFile(t, kern, "tampered")
+	var me *MismatchError
+	if err := l.VerifyKernel(kern); !errors.As(err, &me) {
+		t.Fatalf("want *MismatchError, got %v", err)
+	}
+}

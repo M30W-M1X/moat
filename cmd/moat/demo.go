@@ -33,6 +33,13 @@ func runDemo(args []string) int {
 	}
 	mf.apply(&m, log)
 
+	cleanupRootFS, err := preparePrivateRootFS(&m, *mf.keep)
+	if err != nil {
+		log.WithError(err).Error("prepare rootfs")
+		return 1
+	}
+	defer cleanupRootFS()
+
 	ctx, stop := signalContext()
 	defer stop()
 

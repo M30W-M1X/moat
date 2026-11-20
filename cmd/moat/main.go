@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -142,6 +143,26 @@ func (mf machineFlags) apply(m *config.Machine, log *logrus.Logger) {
 	if *mf.jail && os.Geteuid() != 0 {
 		log.Warn("-jail is set but the process is not root. The jailer will probably fail.")
 	}
+}
+
+// preparePrivateRootFS copies m.RootFSPath into m.RunDir so a one-shot CLI run
+// does not write to the shared template image. When keep is false, the returned
+// cleanup removes m.RunDir.
+func preparePrivateRootFS(m *config.Machine, keep bool) (func(), error) {
+	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create run dir: %w", err)
+	}
+	dst := filepath.Join(m.RunDir, "rootfs.ext4")
+	if err := vm.CopyRootFS(m.RootFSPath, dst); err != nil {
+		_ = os.RemoveAll(m.RunDir)
+		return nil, fmt.Errorf("copy rootfs: %w", err)
+	}
+	m.RootFSPath = dst
+	return func() {
+		if !keep {
+			_ = os.RemoveAll(m.RunDir)
+		}
+	}, nil
 }
 
 // bootMachine builds the config, starts the VM, and returns a ready agent

@@ -36,6 +36,12 @@ func runSnapshot(args []string) int {
 		return 1
 	}
 	mf.apply(&m, log)
+	// Copy the rootfs into m.RunDir so prep commands do not mutate the shared
+	// template image. Keep the copy so later restores can open it.
+	if _, err := preparePrivateRootFS(&m, true); err != nil {
+		log.WithError(err).Error("prepare rootfs")
+		return 1
+	}
 	dir := *out
 	if dir == "" {
 		dir = m.SnapshotDir()
