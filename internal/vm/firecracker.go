@@ -27,10 +27,11 @@ import (
 // UFFD restore path starts the VMM and the page-fault handler directly and
 // fills the raw* fields instead.
 type Instance struct {
-	Machine config.Machine
-	machine *firecracker.Machine
-	log     *logrus.Logger
-	pid     int
+	Machine   config.Machine
+	machine   *firecracker.Machine
+	log       *logrus.Logger
+	pid       int
+	vsockPath string
 
 	// Raw (non-SDK) process handles, used only by RestoreUFFD.
 	rawFC   *exec.Cmd
@@ -42,6 +43,15 @@ type Instance struct {
 
 // PID returns the Firecracker process id, or 0 when it is not known.
 func (in *Instance) PID() int { return in.pid }
+
+// VsockUDSPath returns the host vsock Unix socket path bound by this instance.
+// For a restored snapshot this matches the vsock path recorded in the snapshot.
+func (in *Instance) VsockUDSPath() string {
+	if in != nil && in.vsockPath != "" {
+		return in.vsockPath
+	}
+	return in.Machine.VsockUDSPath()
+}
 
 // Boot starts a Firecracker microVM for m from a cold kernel and rootfs. It
 // returns after the guest kernel starts. The caller must call Stop.
@@ -141,6 +151,10 @@ func restoreFrom(ctx context.Context, m config.Machine, snapPath, memPath string
 			return nil, fmt.Errorf("snapshot file %q: %w", p, err)
 		}
 	}
+	vsockPath := resolveSnapshotVsockPath(filepath.Dir(snapPath), snapPath, m.VsockUDSPath())
+	if err := prepareVsockPath(vsockPath); err != nil {
+		return nil, err
+	}
 	cfg, fcBin, err := baseConfig(m)
 	if err != nil {
 		return nil, err
@@ -157,7 +171,12 @@ func restoreFrom(ctx context.Context, m config.Machine, snapPath, memPath string
 		sc.ResumeVM = true
 		sc.EnableDiffSnapshots = trackDirty
 	})
-	return startMachine(ctx, m, cfg, fcBin, log, resume)
+	in, err := startMachine(ctx, m, cfg, fcBin, log, resume)
+	if err != nil {
+		return nil, err
+	}
+	in.vsockPath = vsockPath
+	return in, nil
 }
 
 // baseConfig fills the parts of the Firecracker config that boot and restore
@@ -198,6 +217,7 @@ func baseConfig(m config.Machine) (firecracker.Config, string, error) {
 
 func startMachine(ctx context.Context, m config.Machine, cfg firecracker.Config, fcBin string, log *logrus.Logger, extra ...firecracker.Opt) (*Instance, error) {
 	opts := []firecracker.Opt{firecracker.WithLogger(logrus.NewEntry(log))}
+	fcOut, fcErr := isolateStdio(os.Stdout, os.Stderr)
 
 	if m.Jail {
 		jailerBin, err := resolveBin(m.JailerBin, "jailer")
@@ -213,15 +233,15 @@ func startMachine(ctx context.Context, m config.Machine, cfg firecracker.Config,
 			JailerBinary:   jailerBin,
 			ChrootBaseDir:  filepath.Dir(m.RunDir),
 			ChrootStrategy: firecracker.NewNaiveChrootStrategy(m.KernelImagePath),
-			Stdout:         os.Stdout,
-			Stderr:         os.Stderr,
+			Stdout:         fcOut,
+			Stderr:         fcErr,
 		}
 	} else {
 		cmd := firecracker.VMCommandBuilder{}.
 			WithBin(fcBin).
 			WithSocketPath(cfg.SocketPath).
-			WithStdout(os.Stdout).
-			WithStderr(os.Stderr).
+			WithStdout(fcOut).
+			WithStderr(fcErr).
 			Build(ctx)
 		opts = append(opts, firecracker.WithProcessRunner(cmd))
 	}
@@ -289,6 +309,9 @@ func (in *Instance) CreateSnapshot(ctx context.Context, snapDir string) error {
 	if err := in.machine.CreateSnapshot(ctx, memPath, snapPath); err != nil {
 		return fmt.Errorf("create snapshot: %w", err)
 	}
+	if err := writeSnapshotMeta(snapDir, in.Machine.ID, in.VsockUDSPath()); err != nil {
+		return fmt.Errorf("write snapshot metadata: %w", err)
+	}
 	return nil
 }
 
@@ -310,6 +333,9 @@ func (in *Instance) CreateSnapshotDiff(ctx context.Context, snapDir string) erro
 	}
 	if err := in.machine.CreateSnapshot(ctx, memPath, snapPath, diff); err != nil {
 		return fmt.Errorf("create diff snapshot: %w", err)
+	}
+	if err := writeSnapshotMeta(snapDir, in.Machine.ID, in.VsockUDSPath()); err != nil {
+		return fmt.Errorf("write snapshot metadata: %w", err)
 	}
 	return nil
 }
@@ -341,6 +367,8 @@ func (in *Instance) Stop(ctx context.Context) error {
 	}
 
 	err := in.machine.StopVMM()
+	_ = os.Remove(in.Machine.APISocketPath())
+	_ = os.Remove(in.VsockUDSPath())
 	_ = os.Remove(in.Machine.PIDPath())
 	in.machine = nil
 	if in.cgroupRemove != nil {

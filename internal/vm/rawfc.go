@@ -67,17 +67,21 @@ func RestoreUFFD(ctx context.Context, m config.Machine, snapDir, uffdBin string,
 	if err := os.MkdirAll(m.RunDir, 0o755); err != nil {
 		return nil, err
 	}
+	vsockPath := resolveSnapshotVsockPath(snapDir, snapPath, m.VsockUDSPath())
+	if err := prepareVsockPath(vsockPath); err != nil {
+		return nil, err
+	}
 	apiSock := m.APISocketPath()
 	uffdSock := filepath.Join(m.RunDir, "uffd.sock")
 	for _, s := range []string{apiSock, uffdSock, m.VsockUDSPath()} {
 		_ = os.Remove(s)
 	}
 
-	in := &Instance{Machine: m, log: log}
+	in := &Instance{Machine: m, log: log, vsockPath: vsockPath}
 
 	// 1. Start the page-fault handler and wait for its socket.
 	in.rawUFFD = exec.CommandContext(ctx, uffdBin, "--socket", uffdSock, "--mem", memPath)
-	in.rawUFFD.Stdout, in.rawUFFD.Stderr = os.Stdout, os.Stderr
+	in.rawUFFD.Stdout, in.rawUFFD.Stderr = isolateStdio(os.Stdout, os.Stderr)
 	if err := in.rawUFFD.Start(); err != nil {
 		return nil, fmt.Errorf("start moat-uffd: %w", err)
 	}
@@ -89,7 +93,7 @@ func RestoreUFFD(ctx context.Context, m config.Machine, snapDir, uffdBin string,
 	// 2. Start Firecracker, inside the network namespace when one is set.
 	start := func() error {
 		in.rawFC = exec.Command(fcBin, "--api-sock", apiSock)
-		in.rawFC.Stdout, in.rawFC.Stderr = os.Stdout, os.Stderr
+		in.rawFC.Stdout, in.rawFC.Stderr = isolateStdio(os.Stdout, os.Stderr)
 		return in.rawFC.Start()
 	}
 	if m.Net != nil {
@@ -129,11 +133,11 @@ func (in *Instance) stopRaw() error {
 	for _, c := range []*exec.Cmd{in.rawFC, in.rawUFFD} {
 		if c != nil && c.Process != nil {
 			_ = c.Process.Kill()
-			_, _ = c.Process.Wait()
+			_ = c.Wait()
 		}
 	}
 	_ = os.Remove(in.Machine.APISocketPath())
-	_ = os.Remove(in.Machine.VsockUDSPath())
+	_ = os.Remove(in.VsockUDSPath())
 	_ = os.Remove(filepath.Join(in.Machine.RunDir, "uffd.sock"))
 	_ = os.Remove(in.Machine.PIDPath())
 	in.rawFC, in.rawUFFD = nil, nil

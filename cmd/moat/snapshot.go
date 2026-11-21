@@ -95,7 +95,7 @@ func writeDiffSnapshot(ctx context.Context, m config.Machine, dir, cmd string, l
 		log.WithError(err).Error("restore for diff")
 		return 1
 	}
-	cli, err := agentclient.Dial(m.VsockUDSPath(), config.VsockPort)
+	cli, err := agentclient.Dial(inst.VsockUDSPath(), config.VsockPort)
 	if err != nil {
 		log.WithError(err).Error("dial agent")
 		stopMachine(inst, nil, log)
@@ -180,7 +180,7 @@ func runRestore(args []string) int {
 	}
 	defer stopMachine(inst, nil, log)
 
-	cli, err := agentclient.Dial(m.VsockUDSPath(), config.VsockPort)
+	cli, err := agentclient.Dial(inst.VsockUDSPath(), config.VsockPort)
 	if err != nil {
 		log.WithError(err).Error("dial agent")
 		return 1

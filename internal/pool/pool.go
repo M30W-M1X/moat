@@ -280,7 +280,7 @@ func (p *Pool) grow(ctx context.Context) error {
 		return err
 	}
 
-	cli, err := agentclient.Dial(m.VsockUDSPath(), config.VsockPort)
+	cli, err := agentclient.Dial(inst.VsockUDSPath(), config.VsockPort)
 	if err != nil {
 		_ = inst.Stop(context.Background())
 		_ = os.RemoveAll(m.RunDir)
