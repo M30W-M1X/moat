@@ -44,11 +44,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "Moat ${{ github.ref_name }}" \
-            --latest \
-            dist/moat_${{ github.ref_name }}_linux_amd64.tar.gz \
-            dist/checksums.txt \
-            dist/checksums.txt.sig \
-            dist/checksums.txt.bundle \
-            --generate-notes
+          TAG="${{ github.ref_name }}"
+          NOTES="$(git tag -l --format='%(contents:body)' "$TAG")"
+          if [ -n "$NOTES" ]; then
+            gh release create "$TAG" \
+              --title "Moat $TAG" \
+              --latest \
+              --notes "$NOTES" \
+              "dist/moat_${TAG}_linux_amd64.tar.gz" \
+              dist/checksums.txt \
+              dist/checksums.txt.sig \
+              dist/checksums.txt.bundle
+          else
+            gh release create "$TAG" \
+              --title "Moat $TAG" \
+              --latest \
+              --generate-notes \
+              "dist/moat_${TAG}_linux_amd64.tar.gz" \
+              dist/checksums.txt \
+              dist/checksums.txt.sig \
+              dist/checksums.txt.bundle
+          fi
